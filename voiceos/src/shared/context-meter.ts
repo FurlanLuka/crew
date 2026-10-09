@@ -1,27 +1,29 @@
-// The box's context meter, as words: "42k / 200k", and how close to full it is.
+// The box's context meter, as words: "42k / 200k", and how close Claude Code is to compacting.
 import type { ContextUsage } from './protocol.js';
 
 export type ContextLevel = 'ok' | 'high' | 'full';
 
-// Amber from here: room for a few long turns left.
-const HIGH_SHARE = 0.7;
-// Red from here: Claude Code compacts on its own soon.
-const FULL_SHARE = 0.9;
+// Shares of the point where Claude Code compacts on its own (else of the window): amber with room
+// for a few long turns left, red when it compacts soon.
+const HIGH_SHARE = 0.8;
+const FULL_SHARE = 0.95;
 
 export const formatTokens = (tokens: number): string => {
 	if (tokens < 1000) {
 		return String(Math.round(tokens));
 	}
 
-	if (tokens < 1_000_000) {
+	// Compared once rounded: 999,600 is "1M", never "1000k".
+	if (Math.round(tokens / 1000) < 1000) {
 		return `${Math.round(tokens / 1000)}k`;
 	}
 
 	return `${(tokens / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
 };
 
-export const describeContextLevel = ({ used, max }: ContextUsage): ContextLevel => {
-	const share = max > 0 ? used / max : 0;
+export const describeContextLevel = ({ used, max, compactAt }: ContextUsage): ContextLevel => {
+	const limit = compactAt ?? max;
+	const share = limit > 0 ? used / limit : 0;
 
 	return share >= FULL_SHARE ? 'full' : share >= HIGH_SHARE ? 'high' : 'ok';
 };
@@ -29,7 +31,12 @@ export const describeContextLevel = ({ used, max }: ContextUsage): ContextLevel 
 export const formatContextUsage = ({ used, max }: ContextUsage): string =>
 	`${formatTokens(used)} / ${formatTokens(max)}`;
 
-export const describeContextTitle = ({ used, max }: ContextUsage): string =>
-	`Context: ${used.toLocaleString('en')} of ${max.toLocaleString('en')} tokens (${
-		max > 0 ? Math.round((used / max) * 100) : 0
-	}%)`;
+export const describeContextTitle = ({ used, max, compactAt }: ContextUsage): string => {
+	const percent = max > 0 ? Math.round((used / max) * 100) : 0;
+	const compacts =
+		compactAt === undefined
+			? ''
+			: `; Claude Code compacts on its own at ${formatTokens(compactAt)}`;
+
+	return `Context: ${used.toLocaleString('en')} of ${max.toLocaleString('en')} tokens (${percent}%)${compacts}`;
+};

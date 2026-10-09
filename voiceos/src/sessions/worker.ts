@@ -183,12 +183,6 @@ export interface WorkerOptions {
 	peerServer?: () => McpSdkServerConfigWithInstance;
 }
 
-// What leaves the context a different size: a turn, a compaction finished, a clear.
-const changesContext = (observation: Observation): boolean =>
-	observation.type === 'turn_ended' ||
-	observation.type === 'conversation_reset' ||
-	(observation.type === 'compacting' && !observation.isCompacting);
-
 // Claude Code's own rule: Skip (and the flag that allows it) is refused as root unless IS_SANDBOX
 // says the machine is a deliberate sandbox.
 export const isRootOutsideSandbox = (
@@ -234,6 +228,7 @@ export class Worker {
 	private isBriefingPending: boolean;
 	private isAwaitingBriefedTurn = false;
 	private mode: SdkMode;
+	private isCompacting = false;
 	private canSkip: boolean;
 
 	constructor(private options: WorkerOptions) {
@@ -407,6 +402,20 @@ export class Worker {
 		}
 	}
 
+	// What leaves the context a different size: a turn, a clear, a compaction that ran. "Not
+	// compacting" also follows every ordinary request (status null), so only the end of one counts.
+	private changesContext(observation: Observation): boolean {
+		if (observation.type === 'compacting') {
+			const hasEnded = this.isCompacting && !observation.isCompacting;
+
+			this.isCompacting = observation.isCompacting;
+
+			return hasEnded;
+		}
+
+		return observation.type === 'turn_ended' || observation.type === 'conversation_reset';
+	}
+
 	// How full the context is, for the box's meter. 'summary' answers from the last response's usage:
 	// no token-count calls on every turn.
 	private async readContext(): Promise<void> {
@@ -419,8 +428,16 @@ export class Worker {
 				return;
 			}
 
-			log.debug('context', { ref, used: usage.totalTokens, max: usage.rawMaxTokens });
-			emit({ type: 'context_usage', ref, used: usage.totalTokens, max: usage.rawMaxTokens });
+			const compactAt = usage.isAutoCompactEnabled ? usage.autoCompactThreshold : undefined;
+
+			log.debug('context', { ref, used: usage.totalTokens, max: usage.rawMaxTokens, compactAt });
+			emit({
+				type: 'context_usage',
+				ref,
+				used: usage.totalTokens,
+				max: usage.rawMaxTokens,
+				...(compactAt === undefined ? {} : { compactAt }),
+			});
 		} catch (error) {
 			log.warn('context not read', { ref, error: String(error) });
 		}
@@ -555,7 +572,7 @@ export class Worker {
 
 					emit(observation);
 
-					if (changesContext(observation)) {
+					if (this.changesContext(observation)) {
 						void this.readContext();
 					}
 				}

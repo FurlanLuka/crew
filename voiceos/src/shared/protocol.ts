@@ -460,11 +460,12 @@ export interface SwitchOffer {
 // The most text one message carries: the gateway refuses more, so the page never sends it.
 export const MAX_TEXT_CHARS = 20_000;
 
-// Tokens in a session's context and the window they are measured against (Claude Code's
-// autocompact window).
+// Tokens in a session's context and the model's window they are measured against; compactAt is
+// where Claude Code compacts on its own, when it does.
 export interface ContextUsage {
 	used: number;
 	max: number;
+	compactAt?: number;
 }
 
 // A session's permission mode, as the developer picks it (the chip, /mode, voice). Each is a Claude
@@ -774,7 +775,7 @@ export type Observation =
 	| { type: 'held_line_announced'; ref: string; id: string }
 	| { type: 'session_started'; ref: string }
 	// How full its context is now: after each turn, a compaction, a clear, or a start.
-	| { type: 'context_usage'; ref: string; used: number; max: number }
+	| { type: 'context_usage'; ref: string; used: number; max: number; compactAt?: number }
 	// A worker could not run the mode it was asked for (Skip as root: Claude Code refuses it); kept is
 	// the mode it runs instead.
 	| { type: 'mode_refused'; ref: string; mode: SdkMode; kept: SdkMode; reason: 'root' }

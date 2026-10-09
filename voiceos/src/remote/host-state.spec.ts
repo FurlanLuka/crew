@@ -125,3 +125,25 @@ describe("a session's commands on the remote", () => {
 		]);
 	});
 });
+
+describe("a session's context reading on the remote", () => {
+	it('kept beside its commands and given in the snapshot; a clear drops it', () => {
+		const REVIEW = { name: 'review', description: 'Review a change', argumentHint: '<pr>' };
+		const read: Observation[] = [
+			{ type: 'session_started', ref: 'store/main' },
+			{ type: 'context_usage', ref: 'store/main', used: 41_600, max: 200_000, compactAt: 167_000 },
+			{ type: 'commands_listed', ref: 'store/main', commands: [REVIEW] },
+		];
+		const state = read.reduce(trackObservation, createHostState());
+
+		expect(buildSnapshot(state, []).sessions[0]).toMatchObject({
+			commands: [REVIEW],
+			context: { used: 41_600, max: 200_000, compactAt: 167_000 },
+		});
+
+		const cleared = trackObservation(state, { type: 'conversation_reset', ref: 'store/main' });
+
+		expect(buildSnapshot(cleared, []).sessions[0]).not.toHaveProperty('context');
+		expect(buildSnapshot(cleared, []).sessions[0]).toMatchObject({ commands: [REVIEW] });
+	});
+});

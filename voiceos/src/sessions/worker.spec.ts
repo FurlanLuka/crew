@@ -164,30 +164,41 @@ describe('Worker', () => {
 		};
 	};
 
-	// The env is what strips the API key (billing) and turns on the Artifact tools: it must reach the SDK.
 	describe('context meter', () => {
 		const turnEnded = { type: 'result', subtype: 'success', result: 'Done.', total_cost_usd: 0 };
-		const withUsage = (getContextUsage: () => Promise<unknown>) => () => ({
-			async *[Symbol.asyncIterator]() {
-				yield turnEnded;
-			},
-			getContextUsage,
-		});
 
-		it('a turn ends → how full the context is, read from Claude Code and reported', async () => {
+		// A query that yields these messages and answers each reading with 41.6k of 200k.
+		const withUsage = (messages: unknown[], answer?: () => Promise<unknown>) => {
 			const asked: unknown[] = [];
-			const { worker, observations, finished } = createWorker([], {
-				runQuery: withUsage(async () => {
-					asked.push('summary');
+			const runQuery = () => ({
+				async *[Symbol.asyncIterator]() {
+					yield* messages;
+				},
+				getContextUsage: async (options: unknown) => {
+					asked.push(options);
 
-					return { totalTokens: 41_600, rawMaxTokens: 200_000 };
-				}),
+					return answer ? answer() : { totalTokens: 41_600, rawMaxTokens: 200_000 };
+				},
 			});
+
+			return { asked, runQuery };
+		};
+
+		const run = async (messages: unknown[], answer?: () => Promise<unknown>) => {
+			const usage = withUsage(messages, answer);
+			const { worker, observations, finished } = createWorker([], { runQuery: usage.runQuery });
 
 			worker.start();
 			await finished;
 			await Bun.sleep(1);
 
+			return { asked: usage.asked, observations };
+		};
+
+		it('a turn ends → one summary reading (no token counts), reported', async () => {
+			const { asked, observations } = await run([turnEnded]);
+
+			expect(asked).toEqual([{ detail: 'summary' }]);
 			expect(observations).toContainEqual({
 				type: 'context_usage',
 				ref: 'store/main',
@@ -196,22 +207,48 @@ describe('Worker', () => {
 			});
 		});
 
-		it('the reading fails → nothing reported, the session goes on', async () => {
-			const { worker, observations, finished } = createWorker([], {
-				runQuery: withUsage(async () => {
-					throw new Error('control request timed out');
-				}),
-			});
+		it.each([
+			[
+				'its start (a resumed session is already full)',
+				[{ type: 'system', subtype: 'init', session_id: 's1' }],
+				1,
+			],
+			['a compaction starting', [{ type: 'system', subtype: 'status', status: 'compacting' }], 0],
+			[
+				'a compaction that ran',
+				[
+					{ type: 'system', subtype: 'status', status: 'compacting' },
+					{ type: 'system', subtype: 'compact_boundary', compact_metadata: { pre_tokens: 90_000 } },
+					{ type: 'system', subtype: 'status', status: null },
+				],
+				1,
+			],
+			[
+				'ordinary requests (status null, no compaction)',
+				[
+					{ type: 'system', subtype: 'status', status: 'requesting' },
+					{ type: 'system', subtype: 'status', status: null },
+				],
+				0,
+			],
+			['a clear', [{ type: 'conversation_reset' }], 1],
+		] as const)('%s → %d reading', async (_case, messages, readings) => {
+			const { asked } = await run([...messages]);
 
-			worker.start();
-			await finished;
-			await Bun.sleep(1);
+			expect(asked).toHaveLength(readings);
+		});
+
+		it('the reading fails → nothing reported, the session goes on', async () => {
+			const { observations } = await run([turnEnded], async () => {
+				throw new Error('control request timed out');
+			});
 
 			expect(observations.some((observation) => observation.type === 'context_usage')).toBe(false);
 			expect(observations).toContainEqual(expect.objectContaining({ type: 'turn_ended' }));
 		});
 	});
 
+	// The env is what strips the API key (billing) and turns on the Artifact tools: it must reach the SDK.
 	it('the session runs with exactly the env it was given', () => {
 		const env = { CREW_REF: 'store/main', CLAUDE_CODE_ARTIFACT: '1', HOME: '/Users/me' };
 		const { worker, queryOptions } = createWorker([], { env });

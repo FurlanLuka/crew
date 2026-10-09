@@ -5,6 +5,7 @@
 import { z } from 'zod';
 import type {
 	AsideStatus,
+	ContextUsage,
 	Observation,
 	PendingAsk,
 	SessionCommand,
@@ -32,6 +33,9 @@ export interface SessionSnapshot {
 	// Its "/" commands: a main that restarted has none until it hears them again. Absent from an
 	// older remote.
 	commands?: SessionCommand[];
+	// How full its context was at the last reading: the meter shows it again after a reconnect.
+	// Absent from an older remote.
+	context?: ContextUsage;
 }
 
 export interface AsideInFlight {
@@ -184,6 +188,9 @@ const snapshotSchema = z.object({
 						}),
 					)
 					.max(500)
+					.optional(),
+				context: z
+					.object({ used: z.number(), max: z.number(), compactAt: z.number().optional() })
 					.optional(),
 			}),
 		)

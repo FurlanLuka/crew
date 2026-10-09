@@ -1068,17 +1068,18 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 		}
 
 		case 'context_usage': {
+			const { used, max, compactAt } = input;
 			const current = state.sessions[input.ref]?.context;
 
 			// A turn and the compaction inside it can each report the same reading: the page needn't redraw.
-			if (current?.used === input.used && current.max === input.max) {
+			if (current?.used === used && current.max === max && current.compactAt === compactAt) {
 				return withoutEffects(state);
 			}
 
 			return withoutEffects(
 				updateSession(state, input.ref, (session) => ({
 					...session,
-					context: { used: input.used, max: input.max },
+					context: { used, max, ...(compactAt === undefined ? {} : { compactAt }) },
 				})),
 			);
 		}

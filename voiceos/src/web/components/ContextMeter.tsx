@@ -1,6 +1,7 @@
 // How full the session's context is, right of the box: tap it to compact or clear. Both go to the
 // session as /compact and /clear, so Voice OS's own confirm comes first.
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
+import { useDismiss } from '../use-dismiss.js';
 import {
 	describeContextLevel,
 	describeContextTitle,
@@ -22,30 +23,9 @@ interface ContextMeterProps {
 export const ContextMeter = ({ sessionRef, context, send }: ContextMeterProps) => {
 	const [isOpen, setIsOpen] = useState(false);
 	const wrapRef = useRef<HTMLDivElement | null>(null);
+	const closeMenu = useCallback(() => setIsOpen(false), []);
 
-	useEffect(() => {
-		if (!isOpen) {
-			return;
-		}
-
-		const close = (event: Event) => {
-			if (
-				event instanceof KeyboardEvent
-					? event.key === 'Escape'
-					: !wrapRef.current?.contains(event.target as Node)
-			) {
-				setIsOpen(false);
-			}
-		};
-
-		document.addEventListener('pointerdown', close);
-		document.addEventListener('keydown', close);
-
-		return () => {
-			document.removeEventListener('pointerdown', close);
-			document.removeEventListener('keydown', close);
-		};
-	}, [isOpen]);
+	useDismiss(isOpen, wrapRef, closeMenu);
 
 	const run = (command: string) => {
 		setIsOpen(false);

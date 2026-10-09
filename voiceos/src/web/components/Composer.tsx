@@ -94,6 +94,7 @@ export const Composer = ({
 	const discord = isOnDiscord ? state.discord : null;
 	const onScreen = readScreenRef(state);
 	const screenRef = onScreen && state.sessions[onScreen] ? onScreen : null;
+	const screenContext = screenRef ? (state.sessions[screenRef]?.context ?? null) : null;
 	const slash = useSlashCommands({
 		state,
 		sessionRef: screenRef,
@@ -272,12 +273,8 @@ export const Composer = ({
 						{MAX_TEXT_CHARS.toLocaleString('en')} characters
 					</span>
 				) : null}
-				{!isDictating && screenRef && state.sessions[screenRef]?.context ? (
-					<ContextMeter
-						sessionRef={screenRef}
-						context={state.sessions[screenRef].context}
-						send={send}
-					/>
+				{!isDictating && screenRef && screenContext ? (
+					<ContextMeter sessionRef={screenRef} context={screenContext} send={send} />
 				) : null}
 				<span className={`vo-route route ${routeClass}`}>{routeLabel}</span>
 			</div>

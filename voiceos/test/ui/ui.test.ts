@@ -3401,13 +3401,14 @@ describe('slash commands', () => {
 		store.dispatch({ type: 'conversation_reset', ref: REF });
 		const { context, page } = await openWithCommands();
 
+		await fieldOf(page).waitFor({ timeout: 5000 });
 		expect(await page.locator('.ctx-meter').count()).toBe(0);
 
-		store.dispatch({ type: 'context_usage', ref: REF, used: 150_000, max: 200_000 });
+		store.dispatch({ type: 'context_usage', ref: REF, used: 170_000, max: 200_000 });
 		const meter = page.locator('.ctx-meter');
 
 		await meter.waitFor({ timeout: 5000 });
-		expect(await meter.textContent()).toBe('150k / 200k');
+		expect(await meter.textContent()).toBe('170k / 200k');
 		expect(await meter.getAttribute('class')).toContain('high');
 
 		await meter.click();
@@ -3418,9 +3419,28 @@ describe('slash commands', () => {
 			),
 		);
 		expect(await page.getByRole('menu').count()).toBe(0);
+		await page
+			.locator('section[aria-label="confirm"]')
+			.getByText(/Compact .*context\?/)
+			.waitFor({ timeout: 5000 });
 
-		const held = store.state.asks.find((ask) => ask.ref === REF && ask.kind === 'command');
-		store.dispatch({ type: 'answer_command', askId: held?.id ?? '', isApproved: false });
+		const dismiss = () => {
+			const held = store.state.asks.find((ask) => ask.ref === REF && ask.kind === 'command');
+
+			store.dispatch({ type: 'answer_command', askId: held?.id ?? '', isApproved: false });
+		};
+
+		dismiss();
+		await meter.click();
+		await page.getByRole('menuitem', { name: /Clear/ }).click();
+		await waitUntil(() =>
+			store.state.asks.some(
+				(ask) => ask.ref === REF && ask.kind === 'command' && ask.command === 'clear',
+			),
+		);
+		dismiss();
+		// The shared store: later tests start with no reading.
+		store.dispatch({ type: 'conversation_reset', ref: REF });
 		await context.close();
 	}, 20_000);
 
@@ -3428,6 +3448,11 @@ describe('slash commands', () => {
 		const { context, page } = await openWithCommands();
 
 		await page.setViewportSize({ width: 390, height: 800 });
+		// The context meter is left out at this width, like the route chip.
+		store.dispatch({ type: 'context_usage', ref: REF, used: 41_600, max: 200_000 });
+		await page.waitForTimeout(200);
+		expect(await page.locator('.ctx-wrap').isVisible()).toBe(false);
+		store.dispatch({ type: 'conversation_reset', ref: REF });
 		const chip = await page.locator('.perm-chip').boundingBox();
 		const field = await fieldOf(page).boundingBox();
 
