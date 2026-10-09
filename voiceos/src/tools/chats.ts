@@ -167,8 +167,9 @@ export const removeChat = async ({
 	}
 
 	log.info('plain session removed', { ref });
-	// Its name goes with it: names.json keeps nothing for a session that is gone.
+	// Its name and mode go with it: names.json and modes.json keep nothing for a session that is gone.
 	toolContext.dispatch({ type: 'rename_session', ref, name: '' });
+	toolContext.dispatch({ type: 'set_mode', ref, mode: 'auto', by: 'voice' });
 
 	return {
 		...succeed(`removed ${ref}; Voice OS said so: say nothing`),

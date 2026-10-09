@@ -440,7 +440,7 @@ export const QUESTION_UNHEARD_MS = 30_000;
 // What a yes does. switch (the default): go there. activate: "<X> isn't active. Activate it?" — words
 // said to it wait in its queue and go once it is up. deactivate: "<X> is working. Deactivate anyway?".
 // send_now: "Okay, after its current work. Send it now?" — the words just queued go now instead.
-export type SwitchOfferKind = 'switch' | 'activate' | 'deactivate' | 'send_now';
+export type SwitchOfferKind = 'switch' | 'activate' | 'deactivate' | 'send_now' | 'skip_mode';
 
 export interface SwitchOffer {
 	ref: string;
@@ -456,6 +456,20 @@ export interface SwitchOffer {
 // Answered at once or not at all: a later "yes" belongs to something else.
 // The most text one message carries: the gateway refuses more, so the page never sends it.
 export const MAX_TEXT_CHARS = 20_000;
+
+// A session's permission mode, as the developer picks it (the chip, /mode, voice). Each is a Claude
+// Code mode: Auto its classifier, Plan plans only, Ask brings every permission to the developer,
+// Skip runs everything unchecked. Absent from State.modes is Auto.
+export const SESSION_MODES = ['auto', 'plan', 'ask', 'skip'] as const;
+export type SessionMode = (typeof SESSION_MODES)[number];
+// The mode Claude Code runs: what a SessionMode is on the wire to a worker.
+export type SdkMode = 'auto' | 'plan' | 'default' | 'bypassPermissions';
+
+export interface SessionModeEntry {
+	mode: SessionMode;
+	// The mode before Plan: what an approved plan returns to.
+	beforePlan?: SessionMode;
+}
 
 // A model the box's /model may name: an alias or a full id ("opus", "claude-opus-5-5[1m]"). The page
 // checks it before sending, the gateway again.
@@ -565,6 +579,9 @@ export interface State {
 	active: string[];
 	// The developer's own names for sessions, by full ref; Voice OS's alone, crew never sees them.
 	names: Record<string, string>;
+	// Each session's permission mode the developer picked, by full ref; absent is Auto. Kept across
+	// restarts (modes.json).
+	modes: Record<string, SessionModeEntry>;
 	// Files attached to a session, waiting for the next words that reach it (typed or spoken).
 	// Not kept across restarts.
 	attachments: Record<string, Attachment[]>;
@@ -642,6 +659,8 @@ export type Action =
 	| { type: 'reload_session'; ref: string; kind: 'plugins' | 'skills'; force?: true }
 	// The box's /model: the session's model, switched without a restart.
 	| { type: 'set_model'; ref: string; model: string }
+	// The chip, /mode, or voice (by): the session's permission mode, kept until changed.
+	| { type: 'set_mode'; ref: string; mode: SessionMode; by: 'page' | 'voice' }
 	// Set by the kernel: the developer heard a held line another way (asked about that session by name).
 	| { type: 'held_line_heard'; ref: string; id: string }
 	| { type: 'answer_permission'; askId: string; decision: PermissionDecision; message?: string }
@@ -744,6 +763,9 @@ export type Observation =
 	// The held line was announced ("<session> is done", "needs you").
 	| { type: 'held_line_announced'; ref: string; id: string }
 	| { type: 'session_started'; ref: string }
+	// A worker could not run the mode it was asked for (Skip as root: Claude Code refuses it); kept is
+	// the mode it runs instead.
+	| { type: 'mode_refused'; ref: string; mode: SdkMode; kept: SdkMode; reason: 'root' }
 	| { type: 'turn_started'; ref: string }
 	| { type: 'text_delta'; ref: string; text: string }
 	| { type: 'assistant_text'; ref: string; text: string }
@@ -860,7 +882,9 @@ export type Observation =
 	// The active set saved before a restart, merged with any activated since boot.
 	| { type: 'active_loaded'; refs: string[] }
 	// The names saved before a restart.
-	| { type: 'names_loaded'; names: Record<string, string> };
+	| { type: 'names_loaded'; names: Record<string, string> }
+	// The modes saved before a restart; loaded before the active set, so sessions start in theirs.
+	| { type: 'modes_loaded'; modes: Record<string, SessionModeEntry> };
 
 export type Input = Action | Observation;
 

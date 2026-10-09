@@ -25,12 +25,14 @@ import type {
 import type { Effect, MachineChange, ReducerResult } from './reducer.js';
 import {
 	dispatchQueueHead,
+	isWorkerUp,
 	releaseRefs,
 	startWorker,
 	updateSession,
 	withoutEffects,
 } from './helpers.js';
 import { matchMachine } from './active.js';
+import { canChooseMode, readMode, toSdkMode } from '../shared/modes.js';
 import { canRun, isActive } from '../shared/active.js';
 
 const MACHINE_INPUTS = [
@@ -83,6 +85,7 @@ const dropMachineSessions = (state: State, removed: string[]): State => {
 		order: state.order.filter(isKept),
 		active: state.active.filter(isKept),
 		names: Object.fromEntries(Object.entries(state.names).filter(([ref]) => isKept(ref))),
+		modes: Object.fromEntries(Object.entries(state.modes).filter(([ref]) => isKept(ref))),
 		asks: state.asks.filter((ask) => isKept(ask.ref)),
 		devServers: Object.fromEntries(Object.entries(state.devServers).filter(([ref]) => isKept(ref))),
 		devStarting: state.devStarting.filter(isKept),
@@ -205,7 +208,17 @@ const resync = ({ state, id, inputs, stamped, reduceInner }: ResyncParams): Redu
 	// Its active sessions run there and its inactive ones do not, whatever its snapshot said.
 	const matched = matchMachine(next, id);
 
-	return { state: matched.state, effects: [...effects, ...matched.effects] };
+	// A mode switch the link dropped (the main restarted before the remote took it) is put right:
+	// each running session there is told its mode again. A session starting now has it already.
+	const modes = matched.state.order.flatMap((ref): Effect[] => {
+		return machineOf(ref) === id &&
+			isWorkerUp(matched.state.sessions[ref]?.status) &&
+			canChooseMode(matched.state, ref)
+			? [{ type: 'worker_set_mode', ref, mode: toSdkMode(readMode(matched.state, ref)) }]
+			: [];
+	});
+
+	return { state: matched.state, effects: [...effects, ...matched.effects, ...modes] };
 };
 
 export const reduceMachine = (

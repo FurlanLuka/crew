@@ -15,6 +15,7 @@ import { describeRouteChip } from '../../shared/route-chip.js';
 import { describeListening, isListeningMode } from '../listen-mode.js';
 import { AttachButton } from './AttachmentChips.js';
 import { SlashMenu } from './SlashMenu.js';
+import { ModeChip } from './ModeChip.js';
 import { readScreenRef } from '../../state/helpers.js';
 import { useSlashCommands } from '../use-slash-commands.js';
 import { ATTACHED_ONLY_TEXT, type Attachments } from '../use-attachments.js';
@@ -220,6 +221,7 @@ export const Composer = ({
 			onSubmit={handleSubmit}
 		>
 			<SlashMenu slash={slash} onPicked={() => fieldRef.current?.focus()} />
+			{screenRef ? <ModeChip state={state} sessionRef={screenRef} send={send} /> : null}
 			<textarea
 				ref={fieldRef}
 				rows={1}

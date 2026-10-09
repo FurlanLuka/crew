@@ -155,7 +155,7 @@ describe('RemoteHost', () => {
 	it('the same effect twice (resent after a drop) → applied once, acknowledged', () => {
 		const { host, handled } = createHost();
 		const main = connect(host);
-		const start = { type: 'worker_start' as const, ref: 'store/main' };
+		const start = { type: 'worker_start' as const, ref: 'store/main', mode: 'auto' as const };
 
 		main.say(hello());
 		main.say({ type: 'effect', seq: 1, effect: start });

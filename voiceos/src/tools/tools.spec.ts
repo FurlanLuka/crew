@@ -568,6 +568,7 @@ describe('forward', () => {
 			'open_doc',
 			'hands_free',
 			'rename_session',
+			'set_mode',
 		];
 
 		expect(names(false)).toEqual(base);

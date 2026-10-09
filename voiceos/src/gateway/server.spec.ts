@@ -303,6 +303,7 @@ describe('parseClientMessage', () => {
 	// A field the schema does not know is dropped silently, so every action must come back as sent.
 	const actions: ActionsByType = {
 		send: { type: 'send', ref: 'store/main', text: 'run the tests' },
+		set_mode: { type: 'set_mode', ref: 'store/main', mode: 'skip', by: 'page' },
 		add_machine: { type: 'add_machine', host: 'dev@vm1.example.com', name: 'Build box' },
 		rename_machine: { type: 'rename_machine', id: 'vm1', name: 'Build box' },
 		remove_machine: { type: 'remove_machine', id: 'vm1' },
@@ -454,6 +455,12 @@ describe('parseClientMessage', () => {
 			{ type: 'set_model', ref: 'store/main', model: 'opus; rm -rf ~' },
 			{ type: 'set_model', ref: 'store/main', model: '' },
 			{ type: 'set_model', ref: 'store/main', model: 'x'.repeat(81) },
+			// Voice OS's names only: Claude Code's mode never comes from a page.
+			{ type: 'set_mode', ref: 'store/main', mode: 'bypassPermissions', by: 'page' },
+			{ type: 'set_mode', ref: 'store/main', mode: 'loud', by: 'page' },
+			{ type: 'set_mode', ref: 'store/main', mode: 'skip' },
+			// The saved modes come from the server's own file.
+			{ type: 'modes_loaded', modes: { 'store/main': { mode: 'skip' } } },
 			{ type: 'reload_session', ref: 'store/main', kind: 'mcp' },
 			{ type: 'reload_session', ref: 'store/main', kind: 'plugins', force: false },
 		];

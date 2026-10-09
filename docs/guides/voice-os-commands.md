@@ -14,7 +14,7 @@ commands to learn. Any language you speak works the same way (see
 - [How your words are routed](#how-your-words-are-routed)
 - [Talking to sessions](#talking-to-sessions): `forward`, `send_to`, `queued_message`, `interrupt`
 - [Moving around](#moving-around): `switch_view`, `go_back`, `play_missed`
-- [Active sessions](#active-sessions): `activate`, `deactivate`, `list_sessions`, `new_session`, `remove_session`
+- [Active sessions](#active-sessions): `activate`, `deactivate`, `list_sessions`, `new_session`, `remove_session`, `set_mode`
 - [Answering what waits on you](#answering-what-waits-on-you): `answer`, `allow_denied`, `dev_offer`
 - [Asking how things are](#asking-how-things-are): `read_state`, `status_update`, `read_history`
 - [Dev servers](#dev-servers): `crew_dev`
@@ -227,6 +227,18 @@ to it by its name like any session. A folder that does not exist there is refuse
 **What happens:** "Removed research. Its folder stays." Its Claude stops and it leaves your lists;
 the folder and its files are never touched. One that is working is asked about first. Worktrees are
 never removed by voice: deactivate stops one, and Set up removes it.
+
+### Switch a session's permission mode — `set_mode`
+
+- "Switch to plan mode." · "Plan mode here." · "Back to auto mode."
+- "Put checkout in ask mode." · "Skip permissions here."
+
+**What happens:** the session switches at once, keeps the mode until you change it (across restarts
+too), and its stream shows "Mode: Plan". Auto lets Claude Code's classifier decide, Plan only plans,
+Ask brings every permission to you as a card, and Skip runs everything without checks. Skip is asked
+first ("Skip permissions for checkout?"), and a machine where Claude Code runs as root refuses it.
+Approving a plan returns the session to the mode it had before Plan. Words that only sound like a
+mode go to the session: "plan this out", "ask checkout whether…", "skip the tests".
 
 ## Answering what waits on you
 

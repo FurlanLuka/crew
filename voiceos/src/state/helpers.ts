@@ -3,6 +3,7 @@ import type {
 	Observation,
 	PeerFrom,
 	Session,
+	SessionStatus,
 	Stamped,
 	State,
 	StreamItem,
@@ -12,6 +13,7 @@ import { readShownText } from '../shared/spoken-tags.js';
 import { toSpokenName } from '../shared/spoken.js';
 import { isReachable, readElsewhereMachine, readSessionLabel } from '../shared/machines.js';
 import { canRun } from '../shared/active.js';
+import { readMode, toSdkMode } from '../shared/modes.js';
 
 // Withdrawn side questions remembered, so a late answer to one is never said or queued.
 export const WITHDRAWN_KEPT = 20;
@@ -235,6 +237,10 @@ export const sendNow = ({
 	};
 };
 
+// A worker is up: started, and not yet stopped.
+export const isWorkerUp = (status: SessionStatus | undefined): boolean =>
+	status === 'idle' || status === 'running' || status === 'blocked';
+
 // Only an active session (or a setup session, for Set up's chat) runs: words sent to an inactive
 // one wait in its queue until it is activated.
 export const startWorker = (state: State, ref: string): ReducerResult => {
@@ -242,7 +248,7 @@ export const startWorker = (state: State, ref: string): ReducerResult => {
 		return withoutEffects(state);
 	}
 
-	const effects: Effect[] = [{ type: 'worker_start', ref }];
+	const effects: Effect[] = [{ type: 'worker_start', ref, mode: toSdkMode(readMode(state, ref)) }];
 
 	return {
 		state: updateSession(state, ref, (session) => ({

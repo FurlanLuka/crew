@@ -1451,9 +1451,9 @@ describe('listWaitingItems', () => {
 		]);
 	});
 
-	it('"Activate it?" and "Deactivate anyway?" wait under their own kind', () => {
+	it('"Activate it?", "Deactivate anyway?" and "Skip permissions?" wait under their own kind', () => {
 		const state = createFixtureState({}, now);
-		const offered = (kind: 'activate' | 'deactivate'): State => ({
+		const offered = (kind: 'activate' | 'deactivate' | 'skip_mode'): State => ({
 			...state,
 			switchOffer: { ref: 'checkout-api/main', at: now - 2000, kind },
 		});
@@ -1463,6 +1463,10 @@ describe('listWaitingItems', () => {
 		]);
 		expect(listWaitingItems(offered('deactivate'), now)).toEqual([
 			{ ref: 'checkout-api/main', what: 'deactivate_offer', at: now - 2000 },
+		]);
+		// The kernel's prompt names this kind: a bare yes to "Skip permissions for X?" is set_mode skip.
+		expect(listWaitingItems(offered('skip_mode'), now)).toEqual([
+			{ ref: 'checkout-api/main', what: 'skip_mode_offer', at: now - 2000 },
 		]);
 	});
 

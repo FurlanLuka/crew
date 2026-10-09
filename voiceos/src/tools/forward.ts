@@ -111,6 +111,7 @@ const TOOLS_THAT_TAKE_WORDS: ToolName[] = [
 	'hands_free',
 	'crew_dev',
 	'rename_session',
+	'set_mode',
 	'rename_machine',
 	'open_doc',
 	'debug_note',

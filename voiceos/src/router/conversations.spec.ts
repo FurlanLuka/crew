@@ -2090,6 +2090,58 @@ describe('conversations', () => {
 	});
 });
 
+describe('permission modes', () => {
+	it('"switch to plan mode" on a session\'s screen → that session in Plan, "Plan mode." said, nothing sent to it', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main');
+
+		convo.script([toolUse('t1', 'set_mode', { ref: null, mode: 'plan' })]);
+		await convo.say('Switch to plan mode.');
+
+		expect(convo.heard).toEqual(['> Switch to plan mode.', 'Plan mode.']);
+		expect(convo.store.state.modes['store-front/main']).toEqual({ mode: 'plan' });
+		expect(convo.inputs).not.toContainEqual(expect.objectContaining({ type: 'send' }));
+	});
+
+	it('"put checkout in ask mode" from another screen → checkout in Ask, said by name, the screen\'s session untouched', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main', 'checkout-api/main');
+
+		convo.script([toolUse('t1', 'set_mode', { ref: 'checkout-api/main', mode: 'ask' })]);
+		await convo.say('Put checkout api in ask mode.');
+
+		expect(convo.heard).toEqual([
+			'> Put checkout api in ask mode.',
+			'checkout api, main is in Ask mode.',
+		]);
+		expect(convo.store.state.modes).toEqual({ 'checkout-api/main': { mode: 'ask' } });
+		expect(convo.inputs).not.toContainEqual(expect.objectContaining({ type: 'send' }));
+	});
+
+	it('"skip permissions for checkout" → asked first; yes switches it, the screen\'s session untouched', async () => {
+		const convo = createConversation({ refs: REFS, view: 'store-front/main' });
+		await convo.startSessions('store-front/main', 'checkout-api/main');
+
+		convo.script([toolUse('t1', 'set_mode', { ref: 'checkout-api/main', mode: 'skip' })]);
+		await convo.say('Skip permissions for checkout api.');
+
+		expect(convo.heard).toEqual([
+			'> Skip permissions for checkout api.',
+			'Skip permissions for checkout api, main?',
+		]);
+		expect(convo.store.state.modes).toEqual({});
+
+		convo.script([toolUse('t2', 'set_mode', { ref: 'checkout-api/main', mode: 'skip' })]);
+		await convo.say('Yes.');
+
+		expect(convo.heard.slice(-2)).toEqual([
+			'> Yes.',
+			'checkout api, main is skipping permissions.',
+		]);
+		expect(convo.store.state.modes).toEqual({ 'checkout-api/main': { mode: 'skip' } });
+	});
+});
+
 describe('voice off', () => {
 	it('typed words still reach the session; its answer is on the page unplayed, never heard — not even once voice is back on', async () => {
 		const convo = createConversation({ refs: REFS, view: 'store-front/main' });

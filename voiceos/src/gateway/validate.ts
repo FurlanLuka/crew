@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { MAX_TEXT_CHARS, MODEL_ID_PATTERN, type ClientMessage } from '../shared/protocol.js';
+import {
+	MAX_TEXT_CHARS,
+	MODEL_ID_PATTERN,
+	SESSION_MODES,
+	type ClientMessage,
+} from '../shared/protocol.js';
 import { isValidHost } from '../shared/machines.js';
 
 const sampleRateSchema = z.number().int().min(8000).max(192000);
@@ -43,6 +48,13 @@ const actionSchema = z.discriminatedUnion('type', [
 		type: z.literal('set_model'),
 		ref: refSchema,
 		model: z.string().regex(MODEL_ID_PATTERN),
+	}),
+	// The page sends Voice OS's names, never Claude Code's: bypassPermissions is not a mode here.
+	z.object({
+		type: z.literal('set_mode'),
+		ref: refSchema,
+		mode: z.enum(SESSION_MODES),
+		by: z.enum(['page', 'voice']),
 	}),
 	z.object({ type: z.literal('held_line_heard'), ref: refSchema, id: z.string() }),
 	z.object({

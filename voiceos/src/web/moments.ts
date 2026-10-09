@@ -90,6 +90,20 @@ const describeSwitchOffer = (state: State): Moment | null => {
 					{ label: 'Keep it', action: null },
 				],
 			};
+		case 'skip_mode':
+			return {
+				key,
+				text: `Skip permissions for ${label}?`,
+				say: 'it runs everything without asking',
+				answers: [
+					{
+						label: 'Skip permissions',
+						action: { type: 'set_mode', ref: offer.ref, mode: 'skip', by: 'page' },
+						isPrimary: true,
+					},
+					{ label: 'Keep its mode', action: null },
+				],
+			};
 		default:
 			return {
 				key,

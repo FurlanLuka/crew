@@ -140,7 +140,7 @@ describe('send', () => {
 		]).state;
 		const queued = run([{ type: 'send', ref: 'store/main', text: 'hello' }], base);
 
-		expect(queued.effects).toEqual([{ type: 'worker_start', ref: 'store/main' }]);
+		expect(queued.effects).toEqual([{ type: 'worker_start', ref: 'store/main', mode: 'auto' }]);
 		expect(queued.state.sessions['store/main']?.status).toBe('starting');
 
 		const started = run([{ type: 'session_started', ref: 'store/main' }], queued.state);

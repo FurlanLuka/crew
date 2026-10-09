@@ -83,7 +83,7 @@ describe('held commands', () => {
 			start: held,
 		});
 
-		expect(effects).toEqual([{ type: 'worker_start', ref: REF }]);
+		expect(effects).toEqual([{ type: 'worker_start', ref: REF, mode: 'auto' }]);
 		expect(state.sessions[REF]?.queue.map((message) => message.text)).toEqual(['/clear']);
 		expect(noticesOf(state)).toEqual([]);
 	});

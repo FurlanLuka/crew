@@ -18,6 +18,7 @@ export type ToolName =
 	| 'crew_dev'
 	| 'ignore_words'
 	| 'rename_session'
+	| 'set_mode'
 	| 'answer'
 	| 'interrupt'
 	| 'mute'
@@ -51,6 +52,7 @@ export const MUTATING_TOOLS: ToolName[] = [
 	'hands_free',
 	'rename_machine',
 	'rename_session',
+	'set_mode',
 ];
 
 interface JsonSchema {
@@ -495,6 +497,20 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 				name: { type: 'string' },
 			},
 			required: ['ref', 'name'],
+			additionalProperties: false,
+		},
+	},
+	{
+		name: 'set_mode',
+		description:
+			'Switch a session\'s permission mode, kept until changed: auto (Claude Code\'s classifier decides), plan (it plans, changes nothing), ask (every permission comes to the developer), skip (it runs everything, nothing checked). "Switch to plan mode", "plan mode here", "put checkout in ask mode", "skip permissions here", "back to auto"; also the yes to Voice OS\'s "Skip permissions for X?". ref: the session, or null for the one on screen. Voice OS asks before skip itself. Never for work: "plan this out", "ask checkout whether…", "skip that", "skip the tests" are words for a session.',
+		input_schema: {
+			type: 'object',
+			properties: {
+				ref: { type: ['string', 'null'] },
+				mode: { type: 'string', enum: ['auto', 'plan', 'ask', 'skip'] },
+			},
+			required: ['ref', 'mode'],
 			additionalProperties: false,
 		},
 	},

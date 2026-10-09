@@ -64,6 +64,19 @@ describe('describeMoment', () => {
 			)?.answers[0]?.action,
 		).toEqual({ type: 'deactivate', ref: 'store-front/main' }));
 
+	it('a Skip confirm → "Skip permissions for X?"; the first answer switches it, the second keeps its mode', () => {
+		const moment = describeMoment(
+			createState({ switchOffer: { ref: 'store-front/main', at: 1, kind: 'skip_mode' } }),
+			NOW,
+		);
+
+		expect(moment?.text).toBe('Skip permissions for store-front/main?');
+		expect(moment?.answers.map((answer) => answer.action)).toEqual([
+			{ type: 'set_mode', ref: 'store-front/main', mode: 'skip', by: 'page' },
+			null,
+		]);
+	});
+
 	it('"For X?" → settle_target either way, and it beats a switch offer', () => {
 		const moment = describeMoment(
 			createState({

@@ -362,8 +362,14 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   set and Esc goes back to Active (`parentView`); `readSessionLabel` (`shared/machines.ts`) is the
   one label rule — a name, else the crew label — and a named session is never prefixed with its
   machine. The always-present **setup** session flag is still `Session.isPinned` (cwd home, crew
-  setup only): the name stays because it is on the wire to remotes. Every session runs in Claude
-  Code's `auto` permission mode. **Voice off** (`State.voiceOff`, `set_voice_off`, the top bar's
+  setup only): the name stays because it is on the wire to remotes. Each session has a permission
+  mode (`State.modes`, `modes.json`, `state/session-modes.ts`; absent = Auto): Auto, Plan, Ask, Skip
+  = Claude Code's `auto`/`plan`/`default`/`bypassPermissions` (`shared/modes.ts`), picked by the
+  composer's chip, `/mode`, or the kernel's `set_mode` (Skip by voice asks first, `skip_mode` offer);
+  it rides on `worker_start`, the manager keeps it through the start window, a resync re-sends it,
+  an approved plan returns to `beforePlan` (carried on the allow as `setMode`), an allow-once restores
+  it, "always" drops `setMode` suggestions, forks never inherit it, and a worker as root refuses Skip
+  (`mode_refused`). Setup sessions stay Auto. **Voice off** (`State.voiceOff`, `set_voice_off`, the top bar's
   struck "voice", `voice-off.json`) is server-wide: no listener or TTS socket, Discord's bot out of
   its channel (`pause`/`resume`), lines to the page unplayed; distinct from the kernel's `mute`
   (less chatter).

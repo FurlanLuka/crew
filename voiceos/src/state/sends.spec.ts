@@ -591,7 +591,7 @@ describe("Set up's chat sending to a machine's setup session", () => {
 
 		const result = reduceAt(start, 10, typed('add store-api as a project'));
 
-		expect(result.effects).toContainEqual({ type: 'worker_start', ref: 'setup' });
+		expect(result.effects).toContainEqual({ type: 'worker_start', ref: 'setup', mode: 'auto' });
 		expect(result.state.sessions.setup?.status).toBe('starting');
 		expect(result.state.sessions.setup?.queue.map((queued) => queued.text)).toEqual([
 			'add store-api as a project',

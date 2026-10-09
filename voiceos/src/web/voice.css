@@ -1395,6 +1395,75 @@
 	color: var(--crit-text);
 	background: rgba(224, 108, 95, 0.14);
 }
+/* The session's permission mode, left of the box. Skip is the one that runs unchecked: it stands out. */
+.skip-badge {
+	padding: 0 6px;
+	border-radius: 6px;
+	background: var(--crit-fill);
+	color: var(--crit-text);
+	font: 11px var(--mono);
+}
+.perm-wrap {
+	position: relative;
+	flex: none;
+}
+.perm-chip {
+	padding: 3px 10px;
+	border: 0;
+	border-radius: 9px;
+	background: var(--fill);
+	color: var(--label-2);
+	font: 12px var(--mono);
+	white-space: nowrap;
+	cursor: pointer;
+}
+.perm-chip:hover,
+.perm-chip[aria-expanded="true"] {
+	color: var(--label);
+	background: var(--fill-hover);
+}
+.perm-chip.skip,
+.perm-option.skip .name {
+	color: var(--crit-text);
+}
+.perm-chip.skip {
+	background: var(--crit-fill);
+}
+.perm-menu {
+	position: absolute;
+	bottom: calc(100% + 10px);
+	left: -8px;
+	z-index: 21;
+	display: grid;
+	width: max-content;
+	min-width: 240px;
+	padding: 6px;
+	border-radius: 12px;
+	background: var(--menu);
+	box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+.perm-option {
+	display: grid;
+	gap: 2px;
+	padding: 7px 10px;
+	border: 0;
+	border-radius: 8px;
+	background: transparent;
+	color: var(--label);
+	text-align: left;
+	cursor: pointer;
+}
+.perm-option:hover,
+.perm-option.on {
+	background: var(--fill-hover);
+}
+.perm-option .name {
+	font-size: 13px;
+}
+.perm-option .hint {
+	color: var(--label-3);
+	font-size: 12px;
+}
 .too-long {
 	color: var(--amber);
 	font-size: 12px;

@@ -27,6 +27,8 @@ import {
 } from './helpers.js';
 import { findRedirectAsk, releaseRedirect } from './redirect.js';
 import { addMeanwhile } from './meanwhile.js';
+import { modeAfterPlanApproval, storeMode, withoutModeChanges } from './session-modes.js';
+import { readMode, toSdkMode } from '../shared/modes.js';
 import {
 	clearHeldAsk,
 	clearHeldLine,
@@ -112,13 +114,13 @@ export const buildPermissionResult = (
 		return { behavior: 'deny', message: message?.trim() || 'The user declined this.' };
 	}
 
-	const shouldRemember =
-		decision === 'always' && ask.kind === 'permission' && ask.suggestions.length > 0;
+	const remembered =
+		decision === 'always' && ask.kind === 'permission' ? withoutModeChanges(ask.suggestions) : [];
 
 	return {
 		behavior: 'allow',
 		updatedInput: ask.input,
-		...(shouldRemember ? { updatedPermissions: ask.suggestions } : {}),
+		...(remembered.length > 0 ? { updatedPermissions: remembered } : {}),
 	};
 };
 
@@ -325,12 +327,15 @@ export const isAllowedOnce = (
 	ask.toolName === allowOnce.toolName &&
 	ask.summary === allowOnce.summary;
 
-export const restoreAutoEffects = (session: Session | undefined): Effect[] =>
-	// Auto mode is back as soon as the allowance is used or given up: one call, not the whole turn.
-	session?.allowOnce ? [{ type: 'worker_set_mode', ref: session.ref, mode: 'auto' }] : [];
+export const restoreModeEffects = (state: State, session: Session | undefined): Effect[] =>
+	// The session's own mode is back as soon as the allowance is used or given up: one call, not the
+	// whole turn.
+	session?.allowOnce
+		? [{ type: 'worker_set_mode', ref: session.ref, mode: toSdkMode(readMode(state, session.ref)) }]
+		: [];
 
 export const endAllowOnce = (state: State, ref: string): ReducerResult => {
-	const effects = restoreAutoEffects(state.sessions[ref]);
+	const effects = restoreModeEffects(state, state.sessions[ref]);
 
 	return effects.length > 0
 		? {
@@ -550,15 +555,23 @@ export const reduceAsk = (state: State, input: AskInput, stamped: Stamped): Redu
 				return withoutEffects(state);
 			}
 
-			const result: AskResult = input.isApproved
-				? { behavior: 'allow', updatedInput: ask.input }
-				: {
-						behavior: 'deny',
-						message:
-							input.message?.trim() || 'The user wants changes to the plan before you start.',
-					};
+			if (!input.isApproved) {
+				return resolveAsk(state, ask, {
+					behavior: 'deny',
+					message: input.message?.trim() || 'The user wants changes to the plan before you start.',
+				});
+			}
 
-			return resolveAsk(state, ask, result);
+			// The mode rides on the allow itself: a separate switch could lose to the CLI's own
+			// leaving of plan mode.
+			const after = modeAfterPlanApproval(state, ask.ref);
+			const stored = storeMode({ state, ref: ask.ref, mode: after });
+
+			return resolveAsk(stored, ask, {
+				behavior: 'allow',
+				updatedInput: ask.input,
+				updatedPermissions: [{ type: 'setMode', mode: toSdkMode(after), destination: 'session' }],
+			});
 		}
 
 		case 'ask_opened': {

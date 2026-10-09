@@ -141,6 +141,7 @@ describe('remove_session', () => {
 		expect(actions).toEqual([
 			{ type: 'deactivate', ref: CHAT },
 			{ type: 'rename_session', ref: CHAT, name: '' },
+			{ type: 'set_mode', ref: CHAT, mode: 'auto', by: 'voice' },
 		]);
 		expect(calls).toEqual([{ machine: 'local', command: { type: 'chat_rm', id: CHAT } }]);
 		expect(result.reply).toBe('Removed research. Its folder stays.');
@@ -168,6 +169,7 @@ describe('remove_session', () => {
 		expect(forced.actions).toEqual([
 			{ type: 'deactivate', ref: CHAT },
 			{ type: 'rename_session', ref: CHAT, name: '' },
+			{ type: 'set_mode', ref: CHAT, mode: 'auto', by: 'voice' },
 		]);
 		expect(forced.calls).toHaveLength(1);
 	});

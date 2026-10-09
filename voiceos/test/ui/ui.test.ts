@@ -2293,6 +2293,7 @@ describe('voice os ui', () => {
 			}));
 		store.dispatch({ type: 'worktrees', worktrees: [...others, chat] });
 		store.dispatch({ type: 'activate', ref: 'chat/3fa9c1' });
+		store.dispatch({ type: 'set_mode', ref: 'chat/3fa9c1', mode: 'plan', by: 'page' });
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'chat/3fa9c1' } });
 		const { context, page } = await signIn();
 		const head = page.locator('.vo-head');
@@ -2312,6 +2313,7 @@ describe('voice os ui', () => {
 		});
 		expect(store.state.active).not.toContain('chat/3fa9c1');
 		expect(store.state.names['chat/3fa9c1']).toBeUndefined();
+		expect(store.state.modes['chat/3fa9c1']).toBeUndefined();
 		await context.close();
 	}, 20_000);
 
@@ -3338,7 +3340,7 @@ describe('slash commands', () => {
 		await context.close();
 	}, 20_000);
 
-	it('typed whole and sent: /model, /reload-plugins force and /voice run here, none reaches Claude', async () => {
+	it('typed whole and sent: /model, /mode, /reload-plugins force and /voice run here, none reaches Claude', async () => {
 		const { context, page } = await openWithCommands();
 		const field = fieldOf(page);
 		const before = received.length;
@@ -3347,16 +3349,17 @@ describe('slash commands', () => {
 				.slice(before)
 				.flatMap((entry) => (entry.message.type === 'action' ? [entry.message.action] : []));
 
-		for (const text of ['/model opus', '/reload-plugins force', '/voice off']) {
+		for (const text of ['/model opus', '/mode plan', '/reload-plugins force', '/voice off']) {
 			await field.fill(text);
 			await field.press('Enter');
 			await page.waitForFunction(() => document.querySelector('textarea')?.value === '');
 		}
 
 		await page.getByText('Voice is off.').waitFor({ timeout: 5000 });
-		await waitUntil(() => actions().length >= 3);
+		await waitUntil(() => actions().length >= 4);
 		expect(actions()).toEqual([
 			{ type: 'set_model', ref: REF, model: 'opus' },
+			{ type: 'set_mode', ref: REF, mode: 'plan', by: 'page' },
 			{ type: 'reload_session', ref: REF, kind: 'plugins', force: true },
 			{ type: 'set_voice_off', voiceOff: true },
 		]);
@@ -3366,6 +3369,49 @@ describe('slash commands', () => {
 		await field.fill('/voice on');
 		await field.press('Enter');
 		await waitUntil(() => !store.state.voiceOff);
+		store.dispatch({ type: 'set_mode', ref: REF, mode: 'auto', by: 'page' });
+		await context.close();
+	}, 20_000);
+
+	it("the mode chip: the session's mode left of the box; a pick switches it and the chip follows", async () => {
+		const { context, page } = await openWithCommands();
+		const chip = page.getByRole('button', { name: /^Permission mode:/ });
+
+		expect(await chip.textContent()).toBe('Auto');
+		await chip.click();
+		await page.getByRole('menuitemradio', { name: /Plan/ }).click();
+		await waitUntil(() => store.state.modes[REF]?.mode === 'plan');
+		await page.waitForFunction(
+			() => document.querySelector('.perm-chip')?.textContent === 'Plan',
+			undefined,
+			{ timeout: 5000 },
+		);
+		expect(await page.getByRole('menu').count()).toBe(0);
+
+		// Skip stands out, on the chip and on the session's tab.
+		store.dispatch({ type: 'set_mode', ref: REF, mode: 'skip', by: 'page' });
+		await page.locator('.perm-chip.skip').waitFor({ timeout: 5000 });
+		expect(await page.locator(`.vo-tab[data-ref="${REF}"] .skip-badge`).count()).toBe(1);
+
+		store.dispatch({ type: 'set_mode', ref: REF, mode: 'auto', by: 'page' });
+		await context.close();
+	}, 20_000);
+
+	it('at phone width the chip and the box share one row', async () => {
+		const { context, page } = await openWithCommands();
+
+		await page.setViewportSize({ width: 390, height: 800 });
+		const chip = await page.locator('.perm-chip').boundingBox();
+		const field = await fieldOf(page).boundingBox();
+
+		expect(chip && field).toBeTruthy();
+		// Side by side: the chip ends before the box starts, and their middles line up.
+		expect((chip?.x ?? 0) + (chip?.width ?? 0)).toBeLessThanOrEqual(field?.x ?? 0);
+		expect(
+			Math.abs(
+				(chip?.y ?? 0) + (chip?.height ?? 0) / 2 - ((field?.y ?? 0) + (field?.height ?? 0) / 2),
+			),
+		).toBeLessThan(12);
 		await context.close();
 	}, 20_000);
 

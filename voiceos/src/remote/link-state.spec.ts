@@ -5,7 +5,7 @@ describe('outbox', () => {
 	it('sent effects wait until acknowledged', () => {
 		let outbox = createOutbox();
 
-		outbox = pushEffect(outbox, { type: 'worker_start', ref: 'a/b' }).outbox;
+		outbox = pushEffect(outbox, { type: 'worker_start', ref: 'a/b', mode: 'auto' }).outbox;
 		outbox = pushEffect(outbox, { type: 'worker_stop', ref: 'a/b' }).outbox;
 		expect(outbox.unacked.map((sent) => sent.seq)).toEqual([1, 2]);
 		expect(ackOutbox(outbox, 1).unacked.map((sent) => sent.seq)).toEqual([2]);

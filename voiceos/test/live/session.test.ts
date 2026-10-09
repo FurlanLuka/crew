@@ -74,9 +74,13 @@ describe.skipIf(!isLive)('live session core', () => {
 			shouldKeepApiKey: isApiKeyAuth,
 			model: 'claude-haiku-4-5',
 			maxBudgetUsd: 0.5,
-			permissionMode,
 		});
 		store.onEffect(manager.handle);
+		// Ask is Claude Code's default mode: every permission comes to Voice OS as a card.
+		store.dispatch({
+			type: 'modes_loaded',
+			modes: permissionMode === 'default' ? { [REF]: { mode: 'ask' } } : {},
+		});
 		store.dispatch({
 			type: 'worktrees',
 			worktrees: [{ ref: REF, label: REF, branch: 'main', cwd: dir, dirs: [], isPinned: false }],

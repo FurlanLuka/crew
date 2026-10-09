@@ -42,7 +42,14 @@ const createHarness = () => {
 
 	store.onEffect(manager.handle);
 
-	return { store, manager, orientation, started: fake.started, prompts: fake.prompts };
+	return {
+		store,
+		manager,
+		orientation,
+		started: fake.started,
+		prompts: fake.prompts,
+		modes: fake.modes,
+	};
 };
 
 const waitTick = () => new Promise((resolve) => setTimeout(resolve, 5));
@@ -129,10 +136,29 @@ describe('SessionManager', () => {
 		expect(harness.manager.listRunning()).toEqual([]);
 	});
 
+	it('a session starts in its mode; a switch while it prepares is the one it starts in', async () => {
+		const harness = createHarness();
+
+		harness.store.dispatch({
+			type: 'modes_loaded',
+			modes: { 'store-front/main': { mode: 'plan' } },
+		});
+		harness.store.dispatch({ type: 'activate', ref: 'store-front/main' });
+		// Still waiting on its orientation: no worker yet to switch.
+		harness.store.dispatch({ type: 'set_mode', ref: 'store-front/main', mode: 'ask', by: 'page' });
+		harness.orientation.resolve('orientation');
+		await waitTick();
+		harness.store.dispatch({ type: 'set_mode', ref: 'store-front/main', mode: 'skip', by: 'page' });
+		await waitTick();
+
+		expect(harness.modes).toEqual(['open default', 'set bypassPermissions']);
+		harness.manager.stopAll();
+	});
+
 	it('a second start while one is preparing → ignored', async () => {
 		const harness = createHarness();
 		harness.store.dispatch({ type: 'activate', ref: 'store-front/main' });
-		harness.manager.handle({ type: 'worker_start', ref: 'store-front/main' });
+		harness.manager.handle({ type: 'worker_start', ref: 'store-front/main', mode: 'auto' });
 		harness.orientation.resolve('orientation');
 		await waitTick();
 

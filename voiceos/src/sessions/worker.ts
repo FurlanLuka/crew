@@ -6,7 +6,7 @@ import {
 	type SDKUserMessage,
 	type SlashCommand,
 } from '@anthropic-ai/claude-agent-sdk';
-import type { Observation, SessionCommand } from '../shared/protocol.js';
+import type { Observation, SdkMode, SessionCommand } from '../shared/protocol.js';
 import { createLogger } from '../log.js';
 import { readGuardedCommand } from '../state/commands.js';
 import { createMapContext, mapMessage, readDenial, type RawMessage } from './events.js';
@@ -171,7 +171,10 @@ export interface WorkerOptions {
 	runQuery?: typeof sdkQuery;
 	model?: string;
 	maxBudgetUsd?: number;
-	permissionMode?: 'auto' | 'default';
+	// The session's mode at start (Auto when unset); setMode changes it for every later query too.
+	permissionMode?: SdkMode;
+	// Claude Code refuses Skip as root outside a sandbox: there the flag is never set. Tests set it.
+	isRootOutsideSandbox?: boolean;
 	claudeBin?: string;
 	// Where tool screenshots are kept for the page; unset shows no images.
 	mediaDir?: string;
@@ -179,6 +182,13 @@ export interface WorkerOptions {
 	isPinned: boolean;
 	peerServer?: () => McpSdkServerConfigWithInstance;
 }
+
+// Claude Code's own rule: Skip (and the flag that allows it) is refused as root unless IS_SANDBOX
+// says the machine is a deliberate sandbox.
+export const isRootOutsideSandbox = (
+	uid: number | undefined = process.getuid?.(),
+	isSandbox: string | undefined = process.env.IS_SANDBOX,
+): boolean => uid === 0 && !isSandbox;
 
 // Claude's own words when a resumed session id is not in its store (the CLI's stderr, carried in the
 // SDK's exit error).
@@ -217,9 +227,13 @@ export class Worker {
 	private sentBeforeInit: string[] = [];
 	private isBriefingPending: boolean;
 	private isAwaitingBriefedTurn = false;
+	private mode: SdkMode;
+	private canSkip: boolean;
 
 	constructor(private options: WorkerOptions) {
 		this.isBriefingPending = options.briefing?.pending ?? false;
+		this.canSkip = !(options.isRootOutsideSandbox ?? isRootOutsideSandbox());
+		this.mode = options.permissionMode ?? 'auto';
 	}
 
 	get id(): string | null {
@@ -233,6 +247,11 @@ export class Worker {
 	}
 
 	start(): void {
+		if (this.mode === 'bypassPermissions' && !this.canSkip) {
+			this.refuseSkip('auto');
+			this.mode = 'auto';
+		}
+
 		void this.run(this.options.resumeId);
 	}
 
@@ -282,8 +301,27 @@ export class Worker {
 		}
 	}
 
-	async setMode(mode: 'default' | 'auto'): Promise<void> {
+	private refuseSkip(kept: SdkMode): void {
+		log.warn('skip permissions refused', { ref: this.options.ref, reason: 'root', kept });
+		this.options.emit({
+			type: 'mode_refused',
+			ref: this.options.ref,
+			mode: 'bypassPermissions',
+			kept,
+			reason: 'root',
+		});
+	}
+
+	async setMode(mode: SdkMode): Promise<void> {
+		if (mode === 'bypassPermissions' && !this.canSkip) {
+			this.refuseSkip(this.mode);
+
+			return;
+		}
+
 		log.info('permission mode', { ref: this.options.ref, mode });
+		// A query reopened later (a resume that failed, a restart) opens in it too.
+		this.mode = mode;
 
 		await this.activeQuery
 			?.setPermissionMode(mode)
@@ -430,7 +468,10 @@ export class Worker {
 				options: {
 					...buildQueryOptions(this.launch),
 					abortController: this.abort,
-					permissionMode: this.options.permissionMode ?? 'auto',
+					permissionMode: this.mode,
+					// Lets the session be switched into Skip while it runs; where Claude Code would refuse
+					// to start with it (root), Skip is refused instead.
+					...(this.canSkip ? { allowDangerouslySkipPermissions: true } : {}),
 					canUseTool: permissions.canUseTool(ref, cwd) as never,
 					includePartialMessages: true,
 					// Reaching other sessions never asks the developer: the main decides each call.
