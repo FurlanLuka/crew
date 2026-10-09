@@ -10,7 +10,7 @@ import type {
 	Snapshot,
 	SessionSnapshot,
 } from './protocol.js';
-import type { SessionCommand, WorktreeInfo } from '../shared/protocol.js';
+import type { ContextUsage, SessionCommand, WorktreeInfo } from '../shared/protocol.js';
 
 export type HostSessionStatus = 'stopped' | 'starting' | 'idle' | 'running';
 
@@ -18,6 +18,7 @@ export interface HostSession {
 	status: HostSessionStatus;
 	lastTurn: LastTurn | null;
 	commands?: SessionCommand[];
+	context?: ContextUsage;
 }
 
 export interface HostState {
@@ -96,12 +97,38 @@ export const trackObservation = (state: HostState, observation: Observation): Ho
 				sessions: {
 					...state.sessions,
 					[observation.ref]: {
+						...state.sessions[observation.ref],
 						status: state.sessions[observation.ref]?.status ?? 'idle',
 						lastTurn: state.sessions[observation.ref]?.lastTurn ?? null,
 						commands: observation.commands,
 					},
 				},
 			};
+		// A cleared conversation's old reading no longer holds.
+		case 'conversation_reset': {
+			const { context: _cleared, ...session } = state.sessions[observation.ref] ?? {
+				status: 'idle' as const,
+				lastTurn: null,
+			};
+
+			return { ...state, sessions: { ...state.sessions, [observation.ref]: session } };
+		}
+		case 'context_usage': {
+			const { used, max, compactAt } = observation;
+
+			return {
+				...state,
+				sessions: {
+					...state.sessions,
+					[observation.ref]: {
+						...state.sessions[observation.ref],
+						status: state.sessions[observation.ref]?.status ?? 'idle',
+						lastTurn: state.sessions[observation.ref]?.lastTurn ?? null,
+						context: { used, max, ...(compactAt === undefined ? {} : { compactAt }) },
+					},
+				},
+			};
+		}
 		case 'worker_exited':
 			return {
 				...setStatus(state, observation.ref, 'stopped'),
@@ -139,6 +166,7 @@ export const buildSnapshot = (state: HostState, worktrees: WorktreeInfo[]): Snap
 				status: session.status as SessionSnapshot['status'],
 				lastTurn: session.lastTurn,
 				...(session.commands ? { commands: session.commands } : {}),
+				...(session.context ? { context: session.context } : {}),
 			}),
 		),
 	asks: state.asks,

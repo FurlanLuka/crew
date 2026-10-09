@@ -252,6 +252,7 @@ export const createSession = (info: WorktreeInfo): Session => ({
 	subagents: [],
 	subagentRuns: [],
 	compactingSince: null,
+	context: null,
 	reportOwed: false,
 	turnFrom: null,
 	replyOwed: null,
@@ -1051,6 +1052,8 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				subagents: [],
 				subagentRuns: [],
 				compactingSince: null,
+				// Until the cleared session's first reading: the old number no longer holds.
+				context: null,
 			}));
 
 			return withoutEffects(
@@ -1061,6 +1064,23 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 					stamped,
 					suffix: 'reset',
 				}),
+			);
+		}
+
+		case 'context_usage': {
+			const { used, max, compactAt } = input;
+			const current = state.sessions[input.ref]?.context;
+
+			// A turn and the compaction inside it can each report the same reading: the page needn't redraw.
+			if (current?.used === used && current.max === max && current.compactAt === compactAt) {
+				return withoutEffects(state);
+			}
+
+			return withoutEffects(
+				updateSession(state, input.ref, (session) => ({
+					...session,
+					context: { used, max, ...(compactAt === undefined ? {} : { compactAt }) },
+				})),
 			);
 		}
 

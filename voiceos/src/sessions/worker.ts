@@ -228,6 +228,7 @@ export class Worker {
 	private isBriefingPending: boolean;
 	private isAwaitingBriefedTurn = false;
 	private mode: SdkMode;
+	private isCompacting = false;
 	private canSkip: boolean;
 
 	constructor(private options: WorkerOptions) {
@@ -401,6 +402,47 @@ export class Worker {
 		}
 	}
 
+	// What leaves the context a different size: a turn, a clear, a compaction that ran. "Not
+	// compacting" also follows every ordinary request (status null), so only the end of one counts.
+	private changesContext(observation: Observation): boolean {
+		if (observation.type === 'compacting') {
+			const hasEnded = this.isCompacting && !observation.isCompacting;
+
+			this.isCompacting = observation.isCompacting;
+
+			return hasEnded;
+		}
+
+		return observation.type === 'turn_ended' || observation.type === 'conversation_reset';
+	}
+
+	// How full the context is, for the box's meter. 'summary' answers from the last response's usage:
+	// no token-count calls on every turn.
+	private async readContext(): Promise<void> {
+		const { ref, emit } = this.options;
+
+		try {
+			const usage = await this.activeQuery?.getContextUsage({ detail: 'summary' });
+
+			if (!usage) {
+				return;
+			}
+
+			const compactAt = usage.isAutoCompactEnabled ? usage.autoCompactThreshold : undefined;
+
+			log.debug('context', { ref, used: usage.totalTokens, max: usage.rawMaxTokens, compactAt });
+			emit({
+				type: 'context_usage',
+				ref,
+				used: usage.totalTokens,
+				max: usage.rawMaxTokens,
+				...(compactAt === undefined ? {} : { compactAt }),
+			});
+		} catch (error) {
+			log.warn('context not read', { ref, error: String(error) });
+		}
+	}
+
 	private async listCommands(): Promise<void> {
 		try {
 			this.emitCommands((await this.activeQuery?.supportedCommands()) ?? []);
@@ -502,6 +544,8 @@ export class Worker {
 					this.sessionId = raw.session_id;
 					this.options.onSessionId(raw.session_id);
 					log.info('session id', { ref, sessionId: raw.session_id });
+					// A resumed session is as full as it was: the meter shows it before the first turn.
+					void this.readContext();
 				}
 
 				// Skills found as it works, or a plugin added: the "/" menu follows.
@@ -527,6 +571,10 @@ export class Worker {
 					}
 
 					emit(observation);
+
+					if (this.changesContext(observation)) {
+						void this.readContext();
+					}
 				}
 			}
 

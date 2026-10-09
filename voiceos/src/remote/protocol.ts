@@ -5,6 +5,7 @@
 import { z } from 'zod';
 import type {
 	AsideStatus,
+	ContextUsage,
 	Observation,
 	PendingAsk,
 	SessionCommand,
@@ -32,6 +33,9 @@ export interface SessionSnapshot {
 	// Its "/" commands: a main that restarted has none until it hears them again. Absent from an
 	// older remote.
 	commands?: SessionCommand[];
+	// How full its context was at the last reading: the meter shows it again after a reconnect.
+	// Absent from an older remote.
+	context?: ContextUsage;
 }
 
 export interface AsideInFlight {
@@ -117,6 +121,7 @@ export type CallResult =
 // What a remote may report. Anything else (limits, narration, the cockpit's own inputs) is dropped.
 export const REMOTE_OBSERVATIONS = new Set<Observation['type']>([
 	'session_started',
+	'context_usage',
 	'mode_refused',
 	'turn_started',
 	'text_delta',
@@ -183,6 +188,9 @@ const snapshotSchema = z.object({
 						}),
 					)
 					.max(500)
+					.optional(),
+				context: z
+					.object({ used: z.number(), max: z.number(), compactAt: z.number().optional() })
 					.optional(),
 			}),
 		)

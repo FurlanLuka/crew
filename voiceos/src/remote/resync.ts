@@ -43,6 +43,11 @@ export const planResync = (state: State, machine: string, snapshot: Snapshot): R
 			inputs.push({ type: 'commands_listed', ref, commands: remote.commands });
 		}
 
+		// The meter's last reading: a main that restarted has none until the next turn.
+		if (remote.context) {
+			inputs.push({ type: 'context_usage', ref, ...remote.context });
+		}
+
 		if (remote.status === 'running') {
 			if (!wasWorking) {
 				inputs.push({ type: 'turn_started', ref });

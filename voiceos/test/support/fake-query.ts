@@ -167,6 +167,8 @@ export const createFakeQuery = ({
 			setPermissionMode: async (mode: string) => {
 				modes.push(`set ${mode}`);
 			},
+			// As full as the turns so far: 1000 tokens each, against a 200k window.
+			getContextUsage: async () => ({ totalTokens: 1000 * sent.length, rawMaxTokens: 200_000 }),
 			supportedCommands: async () => listed,
 			reloadSkills: async () => {
 				reloads.push('skills');

@@ -1,6 +1,7 @@
 // The session's permission mode, left of the box: tap it, pick another. The state says the mode;
 // the chip follows it, so a pick shows once Voice OS has taken it.
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
+import { useDismiss } from '../use-dismiss.js';
 import { MODE_LABELS } from '../../shared/modes.js';
 import {
 	SESSION_MODES,
@@ -29,31 +30,10 @@ interface ModeChipProps {
 export const ModeChip = ({ state, sessionRef, send }: ModeChipProps) => {
 	const [isOpen, setIsOpen] = useState(false);
 	const wrapRef = useRef<HTMLDivElement | null>(null);
+	const closeMenu = useCallback(() => setIsOpen(false), []);
 	const mode = readMode(state, sessionRef);
 
-	useEffect(() => {
-		if (!isOpen) {
-			return;
-		}
-
-		const close = (event: Event) => {
-			if (
-				event instanceof KeyboardEvent
-					? event.key === 'Escape'
-					: !wrapRef.current?.contains(event.target as Node)
-			) {
-				setIsOpen(false);
-			}
-		};
-
-		document.addEventListener('pointerdown', close);
-		document.addEventListener('keydown', close);
-
-		return () => {
-			document.removeEventListener('pointerdown', close);
-			document.removeEventListener('keydown', close);
-		};
-	}, [isOpen]);
+	useDismiss(isOpen, wrapRef, closeMenu);
 
 	if (!canChooseMode(state, sessionRef)) {
 		return null;

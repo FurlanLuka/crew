@@ -56,6 +56,20 @@ describe('planResync', () => {
 		]);
 	});
 
+	it("a fresh main → the session's context reading comes back with it", () => {
+		const context = { used: 41_600, max: 200_000, compactAt: 167_000 };
+		const { inputs } = planResync(
+			mainWith(),
+			'vm1',
+			snapshot({ sessions: [{ ref: 'store/main', status: 'idle', lastTurn: null, context }] }),
+		);
+
+		expect(inputs).toEqual([
+			{ type: 'session_started', ref: REMOTE },
+			{ type: 'context_usage', ref: REMOTE, ...context },
+		]);
+	});
+
 	it('a fresh main, an old turn there → no news: not reported', () => {
 		const { inputs } = planResync(
 			mainWith(),

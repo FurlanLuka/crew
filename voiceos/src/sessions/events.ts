@@ -11,6 +11,7 @@ import {
 	summarizeTool,
 } from './tool-summary.js';
 import { isPeerToolName } from './session-ask-tools.js';
+import { formatTokens } from '../shared/context-meter.js';
 
 export interface RawMessage {
 	// Only the fields read here are typed, so a CLI update that adds fields never breaks the mapping.
@@ -75,9 +76,6 @@ export const readDenial = (message: RawMessage, toolSummaries: Map<string, strin
 		reasonCode: readString(message.decision_reason_code) || null,
 	};
 };
-
-const formatTokens = (tokens: number): string =>
-	tokens >= 1000 ? `${Math.round(tokens / 1000)}k` : String(tokens);
 
 export const describeCompaction = (metadata: RawMessage['compact_metadata']): string => {
 	// The SDK may leave out the size after, and older ones send no sizes at all.
