@@ -319,7 +319,7 @@ func TestGoldenMigrate(t *testing.T) {
 }
 
 func TestGoldenConfigShow(t *testing.T) {
-	checkGolden(t, "config-show.json", configDoc(config.Settings{ServerIP: "192.168.1.20", SSHHost: "build-box", ProxyPort: 80, Domain: "dev.example.com"}))
+	checkGolden(t, "config-show.json", configDoc(config.Settings{ServerIP: "192.168.1.20", SSHHost: "build-box", ProxyPort: 80, Domain: "dev.example.com"}, true))
 }
 
 func TestGoldenProxyStatus(t *testing.T) {
@@ -408,6 +408,13 @@ func TestGoldenCrewLines(t *testing.T) {
 		"fix_hint":              fixHint(ref),
 		"started":               renderStarted(ref, "Created store-front/wrk1", 2, "", "http://localhost:7300/"),
 		"import_collision":      errOf(transfer.ApplyProject(bundle, transfer.Inspect(bundle), "infra-ops", transfer.ProjectOptions{Name: "store-api"})),
+		"restart_not_running":   workspace.RestartRefusal(ref, dev.ErrNotRunning).Error(),
+		"restart_before_66":     workspace.RestartRefusal(ref, dev.ErrStartedBefore66).Error(),
+		"restart_not_in_set":    workspace.RestartRefusal(ref, dev.NotInRunningSetError{Server: "store-api/docs"}).Error(),
+		"plugin_missing":        pluginLine(pluginMissing, ""),
+		"plugin_old":            pluginLine(pluginOld, "6.0.0"),
+		"claude_old":            pluginLine(claudeOld, "2.1.282"),
+		"server_ambiguous":      errOf(dev.ResolveServerName([]dev.DevProject{{Name: "store-api", DevServers: []dev.DevServerConfig{{Name: "web"}}}, {Name: "store-front", DevServers: []dev.DevServerConfig{{Name: "web"}}}}, "web")),
 	}
 	checkGolden(t, "crew-lines.json", lines)
 }

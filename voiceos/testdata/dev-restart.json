@@ -1,0 +1,6 @@
+{
+  "ref": "store-front/main",
+  "project": "store-api",
+  "server": "api",
+  "port": 54012
+}

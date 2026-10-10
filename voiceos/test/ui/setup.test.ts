@@ -564,6 +564,61 @@ describe('worktrees', () => {
 		await context.close();
 	}, 20_000);
 
+	it('Claude Desktop: Open on this Mac runs crew claude --desktop; the SSH link opens it from another computer', async () => {
+		const { context, page } = await open('/setup/worktree/store-front/main');
+		const desktop = page.getByRole('region', { name: 'Claude Desktop' });
+		const link = desktop.locator('a[href^="claude://"]');
+		await link.waitFor({ timeout: 5000 });
+
+		const href = 'claude://code/new?ssh_host=build-box&ssh_folder=%2Fw%2Fstore-front%2Fmain';
+
+		expect(await link.getAttribute('href')).toBe(href);
+		expect(await link.innerText()).toBe(href);
+
+		await desktop.getByRole('button', { name: 'Open on this Mac' }).click();
+		await desktop.locator('.result-line.ok').waitFor({ timeout: 5000 });
+		expect(commandsOf('claude_desktop')).toEqual([
+			{ type: 'claude_desktop', ref: 'store-front/main' },
+		]);
+		await context.close();
+	}, 20_000);
+
+	it('Claude Desktop without an SSH host or Desktop here: the command that sets the host, no button', async () => {
+		const local = server.crew.machines.local;
+
+		if (!local) {
+			throw new Error('no local machine');
+		}
+
+		local.config = { ...local.config, ssh_host: '', desktop_available: false };
+		const { context, page } = await open('/setup/worktree/store-front/main');
+		const desktop = page.getByRole('region', { name: 'Claude Desktop' });
+		await desktop.getByText('crew config set ssh_host <host>').waitFor({ timeout: 5000 });
+
+		expect(await desktop.locator('a[href^="claude://"]').count()).toBe(0);
+		expect(await desktop.getByRole('button', { name: 'Open on this Mac' }).count()).toBe(0);
+		await context.close();
+	}, 20_000);
+
+	it("Claude Desktop on another machine: only the link, over that machine's SSH host", async () => {
+		server.store.dispatch({
+			type: 'machines',
+			machines: [{ id: 'vm1', host: 'dev@vm1', name: 'Build box' }],
+		});
+		const { context, page } = await open('/setup/worktree/store-front/main?on=vm1');
+		const desktop = page.getByRole('region', { name: 'Claude Desktop' });
+		const link = desktop.locator('a[href^="claude://"]');
+		await link.waitFor({ timeout: 5000 });
+
+		expect(await link.getAttribute('href')).toBe(
+			'claude://code/new?ssh_host=dev%40vm1&ssh_folder=%2Fw%2Fstore-front%2Fmain',
+		);
+		expect(await desktop.getByRole('button', { name: 'Open on this Mac' }).count()).toBe(0);
+		expect(commandsOf('config_show')).toEqual([]);
+		server.store.dispatch({ type: 'machines', machines: [] });
+		await context.close();
+	}, 20_000);
+
 	it("a server's log: crew's clean lines, as text", async () => {
 		const { context, page } = await open('/setup/worktree/store-front/main/logs');
 		const log = page.locator('pre.log');

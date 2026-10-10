@@ -4,6 +4,7 @@ import type { SetupCommand } from '../../crew/commands.js';
 import { useCrew } from './api.js';
 import { CommandLine } from './CommandLine.js';
 import { PageHead, type SetupContext } from './common.js';
+import { initialTabKey, type LogTabTarget } from './logs-tab.js';
 import { readLogText } from './readers.js';
 import type { CrewMember, CrewProject } from './types.js';
 
@@ -15,8 +16,7 @@ interface LogsPageProps {
 	worktreeRef: string;
 }
 
-interface LogTab {
-	key: string;
+interface LogTab extends LogTabTarget {
 	label: string;
 	command: (lines: number) => SetupCommand;
 }
@@ -27,12 +27,16 @@ export const LogsPage = ({ ctx, worktreeRef }: LogsPageProps) => {
 	const [lines, setLines] = useState(200);
 	const [isFollowing, setIsFollowing] = useState(true);
 	const [chosen, setChosen] = useState<string | null>(null);
+	// A link (crew server link) names the tab to open on; read once, so a click wins afterwards.
+	const [linkSearch] = useState(() => location.search);
 	const memberRows = members.data ?? [];
 	const tabs: LogTab[] = [
 		...memberRows.flatMap((member) =>
 			(projects.data?.find((project) => project.name === member.name)?.dev_servers ?? []).map(
 				(server): LogTab => ({
-					key: `server ${server.name}`,
+					key: `server ${member.name}/${server.name}`,
+					project: member.name,
+					server: server.name,
 					label: server.name,
 					command: (count) => ({
 						type: 'dev_logs',
@@ -46,6 +50,7 @@ export const LogsPage = ({ ctx, worktreeRef }: LogsPageProps) => {
 		...memberRows.map(
 			(member): LogTab => ({
 				key: `setup ${member.name}`,
+				project: member.name,
 				label: memberRows.length > 1 ? `setup: ${member.name}` : 'setup runner',
 				command: (count) => ({
 					type: 'setup_logs',
@@ -56,7 +61,8 @@ export const LogsPage = ({ ctx, worktreeRef }: LogsPageProps) => {
 			}),
 		),
 	];
-	const tab = tabs.find((candidate) => candidate.key === chosen) ?? tabs[0];
+	const wanted = chosen ?? initialTabKey(linkSearch, tabs);
+	const tab = tabs.find((candidate) => candidate.key === wanted) ?? tabs[0];
 	const log = useCrew<unknown>(
 		ctx.machine,
 		tab ? tab.command(lines) : null,

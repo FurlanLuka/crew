@@ -315,11 +315,22 @@ func isShell(command string) bool {
 // other than its shell — the process crew started is alive.
 func TmuxPaneBusy(session, window string) bool {
 	target := session + ":" + window
-	out, err := exec.Command("tmux", "display-message", "-p", "-t", target, "#{pane_current_command}").Output()
+	out, err := exec.Command("tmux", "display-message", "-p", "-t", target, "#{window_name}\t#{pane_current_command}").Output()
 	if err != nil {
 		return false
 	}
-	return !isShell(strings.TrimSpace(string(out)))
+	return paneBusy(window, string(out))
+}
+
+// paneBusy reads display-message's answer. A window that no longer exists
+// is not an error to tmux: it answers for the session's current window
+// instead, so the name it reports must be the one asked for. Pure.
+func paneBusy(window, answer string) bool {
+	name, command, ok := strings.Cut(strings.TrimSpace(answer), "\t")
+	if !ok || name != window {
+		return false
+	}
+	return !isShell(command)
 }
 
 // RedactExports replaces the value of every `export NAME=<word>` in a

@@ -17,6 +17,8 @@ export interface ConfigShow {
 	domain?: string;
 	proxy_port?: number;
 	proxy_https_port?: number;
+	// Claude Desktop is installed here: crew claude --desktop can open a worktree in it.
+	desktop_available?: boolean;
 }
 
 export interface TrashInfo {
@@ -24,8 +26,11 @@ export interface TrashInfo {
 	entries?: number;
 }
 
+// What crew config set takes; desktop_available is read, never set.
+type ConfigKey = Exclude<keyof ConfigShow, 'desktop_available'>;
+
 export interface ConfigField {
-	key: keyof ConfigShow;
+	key: ConfigKey;
 	label: string;
 	hint: string;
 	placeholder: string;
@@ -100,7 +105,7 @@ export const describeUpdate = (check: UpdateCheck): UpdateState | null => {
 // The config set commands a save runs: only the fields edited away from what crew has.
 export const planConfigSave = (
 	config: ConfigShow | null,
-	edits: Partial<Record<keyof ConfigShow, string>>,
+	edits: Partial<Record<ConfigKey, string>>,
 ): SetupCommand[] =>
 	CONFIG_FIELDS.flatMap((field): SetupCommand[] => {
 		const value = edits[field.key]?.trim();

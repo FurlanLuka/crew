@@ -150,6 +150,7 @@ export const SetupCommandSchema = z.discriminatedUnion('type', [
 	variant('dev_start', { ref: word, proxy: z.boolean().optional() }),
 	variant('dev_stop', { ref: word.optional() }),
 	variant('dev_restart', { ref: word, proxy: z.boolean().optional() }),
+	variant('claude_desktop', { ref: word }),
 
 	// Moving between machines.
 	variant('import_project', {
@@ -320,6 +321,9 @@ export const COMMAND_TRAITS: Record<SetupCommandType, CommandTraits> = {
 	dev_start: write,
 	dev_stop: said,
 	dev_restart: write,
+	// Opens a window on the machine that runs it: on a remote that is a headless box, never the
+	// developer's screen.
+	claude_desktop: { ...said, localOnly: true },
 	import_project: long,
 	import_workspace: long,
 	import_all: long,
@@ -551,6 +555,8 @@ const baseArgv = (command: SetupCommand): string[] => {
 			return ['dev', 'stop', ...(command.ref ? [command.ref] : [])];
 		case 'dev_restart':
 			return ['dev', 'restart', command.ref, ...when(command.proxy, '--proxy')];
+		case 'claude_desktop':
+			return ['claude', command.ref, '--desktop'];
 		case 'import_project':
 			return [
 				'import',

@@ -335,7 +335,7 @@ func TestVerify_RecordsADeathAndRefusesWhileRunning(t *testing.T) {
 		t.Fatalf("Health after a death = %+v", res.Health)
 	}
 	// The smoke's output is the runner's evidence, not the dev log.
-	if _, err := os.Stat(dev.LogFile(ref.Slug(), "api")); !os.IsNotExist(err) {
+	if _, err := os.Stat(dev.LogFile(ref.Slug(), "api", "api")); !os.IsNotExist(err) {
 		t.Error("a smoke must not write the dev log")
 	}
 

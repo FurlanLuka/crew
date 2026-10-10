@@ -115,7 +115,9 @@ crew dev start store-front/wrk1                       # its servers, on its own 
 ```
 
 Claude Code also gets a plugin with a reference skill, a `crew` agent and guided setup:
-`/plugin marketplace add FurlanLuka/crew`, then `/plugin install crew@crew`.
+`/plugin marketplace add FurlanLuka/crew`, then `/plugin install crew@crew`. It also draws the
+[crew pane](docs/guides/crew-pane.md) in every session that sits in a worktree, terminal or Claude
+Desktop: the servers, their logs, a restart per server and the failures, a click away.
 
 ## Where it stands
 

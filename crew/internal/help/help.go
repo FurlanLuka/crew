@@ -307,9 +307,12 @@ var Root = CommandInfo{
 		},
 		{
 			Name:        "claude",
-			Description: "Run Claude Code in the worktree, in this terminal — the worktree page's 'Claude in terminal'. Permissions skipped, every project passed with --add-dir, the orientation prompt injected (the projects, their paths, and a crew section on driving the servers). Replaces the crew process.",
-			Usage:       "crew claude <workspace>[/<worktree>]",
-			Examples:    []string{"crew claude store-front/wrk1"},
+			Description: "Run Claude Code in the worktree, in this terminal — the worktree page's 'Claude in terminal'. Permissions skipped, every project passed with --add-dir, the orientation prompt injected (the projects, their paths, and a crew section on driving the servers). Replaces the crew process. --desktop is a different launch: it opens the worktree in Claude Desktop on this machine instead — detached, no terminal needed (the page calls it), Desktop's own permission mode, one folder (a single project's checkout, else the worktree root, since Desktop takes no --add-dir) and no first-message prompt: crew's Claude Code plugin carries the orientation and draws the crew pane. It writes .claude/launch.json there (url-only entries, kept out of git) so Desktop's preview attaches to crew's servers instead of starting its own, warns when the plugin is missing, disabled or too old, and refuses on a machine without Claude Desktop.",
+			Usage:       "crew claude <workspace>[/<worktree>] [--desktop]",
+			Flags: []FlagInfo{
+				{Name: "--desktop", Description: "Open the worktree in Claude Desktop on this machine instead of this terminal. --json: {ref, folder}"},
+			},
+			Examples: []string{"crew claude store-front/wrk1", "crew claude store-front/wrk1 --desktop"},
 		},
 		{
 			Name:        "edit",
@@ -337,6 +340,13 @@ var Root = CommandInfo{
 			Description: "Generate and print the orientation prompt for a workspace — the project list, working directories, and worktree/direct framing. Ends with a crew section: the ref, and the commands that session should drive the servers with. Every launch (crew claude, crew edit, the page) injects it; paste it into a Claude opened some other way.",
 			Usage:       "crew start <workspace>[/<worktree>]",
 			Examples:    []string{"crew start feature-auth"},
+		},
+		{
+			Name:         "which",
+			Description:  "The worktree a folder belongs to: its ref and, inside a checkout, the project. Reads the workspace files, the pool and the checks — worktree roots, checkouts, direct projects' own paths — with symlinks resolved, and touches nothing. Exit 1 when the folder is in no worktree. How the crew pane in a Claude session finds its worktree when nothing set CREW_REF. --json: {ref, root, project}.",
+			Usage:        "crew which <path>",
+			OutputFormat: "<workspace>/<worktree>\\t<project or ->",
+			Examples:     []string{"crew which .", "crew which ~/.crew/workspaces/store-front/wrk2/store-api --json"},
 		},
 		{
 			Name:        "launch",
@@ -423,12 +433,13 @@ var Root = CommandInfo{
 				},
 				{
 					Name:        "restart",
-					Description: "Stop and restart dev servers for a worktree",
-					Usage:       "crew dev restart <workspace>[/<worktree>] [--proxy]",
+					Description: "Stop and restart a worktree's dev servers. With no flag the worktree keeps the proxy mode it was started with. Given one server — its name, or <project>/<server> when two projects share it — only that server's window is replaced, on its own port with the env Start gave it; the others keep running. One server needs the worktree running, and refuses when its port is still held after the stop. A worktree started before crew 6.6 restarts whole once first. --json for one server: {ref, project, server, port}.",
+					Usage:       "crew dev restart <workspace>[/<worktree>] [<server>|<project>/<server>] [--proxy|--no-proxy]",
 					Flags: []FlagInfo{
-						{Name: "--proxy", Description: "Also run the shared reverse proxy and address servers by hostname"},
+						{Name: "--proxy", Description: "Run the shared reverse proxy and address servers by hostname (the whole worktree)"},
+						{Name: "--no-proxy", Description: "Serve on localhost without the proxy (the whole worktree)"},
 					},
-					Examples: []string{"crew dev restart feature-auth", "crew dev restart store-front/wrk2 --proxy"},
+					Examples: []string{"crew dev restart feature-auth", "crew dev restart store-front/wrk2 --proxy", "crew dev restart store-front/wrk2 store-api/api", "crew dev restart store-front/wrk2 web --json"},
 				},
 				{
 					Name:         "status",
@@ -448,6 +459,16 @@ var Root = CommandInfo{
 					Examples: []string{"crew dev check store-front/wrk2 --wait", "crew dev check store-front/wrk2 --json"},
 				},
 				{
+					Name:         "watch",
+					Description:  "Stream a worktree's live state until interrupted: every declared server — up, starting (inside the smoke's minute), unreached, quiet, died or stopped, with its port and URL and the log tail of one that failed — the setup runners and the recorded health. It looks every half second and prints a new snapshot only when something changed, the first one at once — and an empty line every 15 seconds while nothing does, so a reader that went away ends it. --json: one {ref, running, proxied, servers: [{project, server, port, url, state, tail?}], setup: {running, failed, projects}, health} per line — what the crew pane in a Claude session draws from. --once prints one snapshot and exits.",
+					Usage:        "crew dev watch <workspace>[/<worktree>] [--once]",
+					OutputFormat: "<project>/<server>\\t<up|starting|unreached|quiet|died|stopped>\\t<url>, a blank line after each snapshot",
+					Flags: []FlagInfo{
+						{Name: "--once", Description: "One snapshot, then exit"},
+					},
+					Examples: []string{"crew dev watch store-front/wrk2", "crew dev watch store-front/wrk2 --json", "crew dev watch store-front/wrk2 --once --json"},
+				},
+				{
 					Name:         "proxy",
 					Description:  "The shared reverse proxy: whether its session is up and answering, what domain and port it was launched with, its status page URL, and whether HTTPS answers. The proxy also serves every hostname over HTTPS (default port 443) with a certificate from crew's own CA, one CA per domain, which can only vouch for that domain. trust prints the CA, its SHA-256 and the steps to trust it on a Mac, iPhone or Android — needed once per device, for example for the microphone in Voice OS; --install trusts it on this Mac. stop kills the proxy alone — worktrees keep running on their ports; crew dev restart <ref> --proxy brings the hostnames back.",
 					Usage:        "crew dev proxy [status|trust [--install]|stop]",
@@ -459,8 +480,8 @@ var Root = CommandInfo{
 				},
 				{
 					Name:        "logs",
-					Description: "Print the log for a dev server. Logs are truncated each time the server starts, so they only cover the current run. Use -f to follow live output, --lines for just the end. --json: {ref, server, lines: []} — the lines as clean text (terminal escape sequences, carriage-return redraws and pure-control lines removed); not with -f.",
-					Usage:       "crew dev logs <workspace>[/<worktree>] <server> [-f|--follow] [--lines=<n>]",
+					Description: "Print the log for a dev server, named as itself or as <project>/<server> when two projects share the name. Logs are truncated each time the server starts, so they only cover the current run. Use -f to follow live output, --lines for just the end. --json: {ref, server, lines: []} — the lines as clean text (terminal escape sequences, carriage-return redraws and pure-control lines removed); not with -f.",
+					Usage:       "crew dev logs <workspace>[/<worktree>] <server>|<project>/<server> [-f|--follow] [--lines=<n>]",
 					Flags: []FlagInfo{
 						{Name: "-f, --follow", Description: "Stream new output as it arrives (tail -f)"},
 						{Name: "--lines=<n>", Description: "Only the last n lines"},

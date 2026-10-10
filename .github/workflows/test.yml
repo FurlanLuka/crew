@@ -33,3 +33,20 @@ jobs:
       - name: Test
         working-directory: crew
         run: go test ./...
+
+  mod:
+    # The crew pane: crew's Claude Code plugin mod, tested with Claude Code's
+    # own kit. Pinned — the mods API still moves between releases.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code@2.1.295
+
+      - name: Test the pane
+        run: tests/run.sh

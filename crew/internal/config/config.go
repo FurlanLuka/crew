@@ -85,3 +85,12 @@ func Under(path, root string) bool {
 	}
 	return strings.HasPrefix(abs, rootAbs+string(filepath.Separator))
 }
+
+// ClaudeConfigOverride is the CLAUDE_CONFIG_DIR to hand a claude crew
+// starts: the user's own, or "" when they set none.
+func ClaudeConfigOverride() string {
+	if UserSetClaudeConfig {
+		return ClaudeConfigDir
+	}
+	return ""
+}

@@ -50,7 +50,7 @@ func TestDevSubcommands(t *testing.T) {
 		t.Fatal("dev command not found")
 	}
 
-	expected := []string{"setup", "add", "rm", "show", "start", "stop", "restart", "status", "check", "proxy", "logs", "tui"}
+	expected := []string{"setup", "add", "rm", "show", "start", "stop", "restart", "status", "check", "watch", "proxy", "logs", "tui"}
 	if len(dev.Subcommands) != len(expected) {
 		t.Fatalf("dev has %d subcommands, want %d", len(dev.Subcommands), len(expected))
 	}

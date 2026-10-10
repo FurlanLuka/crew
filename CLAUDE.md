@@ -182,11 +182,38 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   differently. `CheckServers` = one look; `WaitServers` = the loop over what runs (`dev
   check --wait`). `exec.TmuxPaneBusy` reads `pane_current_command`, so a server whose
   command is `sh -c …` reads as an idle shell.
-  `portOpen` dials 127.0.0.1 then [::1].
+  `dev.PortAnswers` (behind `portOpen` and the restart's `portHeld`) dials 127.0.0.1 then [::1].
 - **Orientation prompt** — `RenderPrompt` is injected on every launch (`crew claude`, `crew
   edit`, the page, `FixCommandFor`), single project or not; it ends with `renderCrewSection`
   (the ref, the `crew dev/env/run/fix` lines). `CREW_REF=<ws>/<wt>` is exported in both launch
   paths (`buildClaudeParts`, `exec.ClaudeTask.Ref`).
+- **Dev windows and logs** are keyed by project and server: window `dev.DevWindow(slug, project,
+  server)` = `<slug>/<project>/<server>`, log `dev.LogFile(slug, project, server)` =
+  `<project>-<server>.log`; `Start` records each route's `Window`. A pre-6.6 routes file has no
+  `Window` — `dev.RouteWindow`/`RouteLogFile` read the old server-only names, `ExistingLogFile`
+  falls back to the old file. `dev.ResolveServerName` is the one reading of a server argument
+  (`<server>` when unique, else `<project>/<server>`), shared by `dev logs` and `dev restart`.
+  `dev.startPlanned` is the one window loop (`Start`, `StartProjectServers`, `RestartServer`).
+  `crew dev restart <ref> <server>` = `workspace.RestartDevServer` → `dev.RestartServer`: the
+  route's port and the env `Start` built (`restartTarget` over the routes), `KillTmuxWindow`
+  (never `StopWindows`), refuse a port still held; a full restart with no flag keeps the routes'
+  proxy mode (`RoutesProxied`). `devPreflight` is the shared refusal set.
+- **The crew pane** — crew's Claude Code plugin ships a mod (`hooks/pane.ts`, pure
+  `hooks/model.ts`, `types/index.d.ts`, tests in `tests/` run by `tests/run.sh`, which copies the
+  mod out because `claude plugin test` would pick up voiceos's bun tests). It finds the worktree
+  with `crew which <path> --json` (`workspace.RefForPath` over `pathOwners`: roots, checkouts,
+  direct pool paths, checks; symlinks resolved, no tmux), follows `crew dev watch <ref> --json`
+  (`watchDoc`: every declared server from `workspace.ServerLines` — `up|starting|unreached|
+  quiet|died|stopped` — setup and health, printed on change every 500 ms), draws one pane (logs
+  inline: Desktop drops the first click on an unfocused pane), and runs only the argvs in
+  `tests/crew-argv.json` (walked against `help.Root`). State lives in `$.state` atoms so a write
+  redraws only its readers; every text is `cleanLine`d (Desktop refuses control characters).
+  `tests/goldens.ts` is written from `voiceos/testdata` by the Go golden test.
+  `crew claude <ref> --desktop` (`cmdClaudeDesktop`): `pluginStatus` against `MinPluginVersion`
+  / `MinClaudeVersion` (warn only), `workspace.OpenInDesktop` — `DesktopFolder` (one project's
+  checkout, else the root), `WriteLaunchConfig` (url-only `.claude/launch.json`, marker line,
+  git info/exclude; `StartDev` refreshes crew's own copy), then `claude --desktop` in tmux
+  session `crew-desktop` (it needs a tty). `config show --json` carries `desktop_available`.
 - **Proxy** — one tmux session `dev.ProxySessionName` (a var: tests use their own name), its
   launch settings in `~/.crew/dev-proxy.json` (`proxyState{domain, port, error}`);
   `EnsureProxy` relaunches on a settings mismatch, a recorded exit error, or no record, and

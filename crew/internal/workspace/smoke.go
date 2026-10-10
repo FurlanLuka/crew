@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"strings"
 	"time"
@@ -113,8 +112,8 @@ func WaitServers(res *Resolved) []SmokeResult {
 
 // waitDevRoutes is waitRoutes over the dev session's windows and logs.
 func waitDevRoutes(slug dev.Slug, routes []dev.Route, ceiling time.Duration) []SmokeResult {
-	window := func(r dev.Route) string { return string(slug) + "/" + r.ServerName }
-	logFor := func(r dev.Route) string { return dev.LogFile(slug, r.ServerName) }
+	window := func(r dev.Route) string { return dev.RouteWindow(slug, r) }
+	logFor := func(r dev.Route) string { return dev.RouteLogFile(slug, r) }
 	return waitRoutes(dev.SessionName(slug), routes, window, logFor, ceiling)
 }
 
@@ -407,16 +406,7 @@ func SmokeNotes(results []SmokeResult) []string {
 // dev server may talk ws or grpc. Both loopbacks: Node 17+ resolves
 // localhost to ::1 first, so a server told to bind "localhost" may only be
 // on v6.
-func portOpen(port int) bool {
-	for _, host := range []string{"127.0.0.1", "[::1]"} {
-		conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, port), 200*time.Millisecond)
-		if err == nil {
-			conn.Close()
-			return true
-		}
-	}
-	return false
-}
+func portOpen(port int) bool { return dev.PortAnswers(port) }
 
 // referencedServers is every "project/server" some binding in the pool
 // points at. A bare {{project}} names its only server. Pure over the pool.

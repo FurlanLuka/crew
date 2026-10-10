@@ -499,3 +499,22 @@ func TestTmuxSendKeys_LogsRedacted(t *testing.T) {
 		t.Errorf("debug.log =\n%s", data)
 	}
 }
+
+// tmux answers for the current window when the one asked for is gone; a
+// killed server's window must not borrow a sibling's busy pane.
+func TestPaneBusy(t *testing.T) {
+	cases := []struct {
+		window, answer string
+		want           bool
+	}{
+		{"s/api/web", "s/api/web\tnode\n", true},
+		{"s/api/web", "s/api/web\tzsh\n", false},
+		{"s/front/web", "s/api/web\tnc\n", false},
+		{"s/api/web", "", false},
+	}
+	for _, c := range cases {
+		if got := paneBusy(c.window, c.answer); got != c.want {
+			t.Errorf("paneBusy(%q, %q) = %v", c.window, c.answer, got)
+		}
+	}
+}

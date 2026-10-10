@@ -66,6 +66,7 @@ export const JSON_EVIDENCE: Record<SetupCommandType, JsonEvidence> = {
 	dev_start: 'live',
 	dev_stop: null,
 	dev_restart: 'live',
+	claude_desktop: null,
 	import_project: 'live',
 	import_workspace: 'live',
 	import_all: 'live',

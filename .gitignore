@@ -7,3 +7,8 @@ debug.log
 
 # Local QA screenshots
 .qa/
+
+# Written by Claude Code when the plugin is loaded with --plugin-dir: the
+# mods API's types for that build, and a tsconfig pointing at them.
+.claude-plugin/types/
+/tsconfig.json

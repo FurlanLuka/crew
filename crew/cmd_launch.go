@@ -65,8 +65,20 @@ func openWorktreePage(ref workspace.Ref) {
 // same claude invocation, replacing this process.
 func cmdClaude() {
 	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "Usage: crew claude <workspace>[/<worktree>]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew claude <workspace>[/<worktree>] [--desktop]\n")
 		os.Exit(1)
+	}
+	for _, arg := range os.Args[3:] {
+		if arg != "--desktop" {
+			fmt.Fprintf(os.Stderr, "Unknown flag '%s'\n", arg)
+			os.Exit(1)
+		}
+	}
+	// Desktop is a different launch altogether: detached, no terminal, no
+	// first-message prompt — so it branches before both.
+	if len(os.Args) > 3 {
+		cmdClaudeDesktop(os.Args[2])
+		return
 	}
 	requireTerminal("claude", "crew start <ref> prints the prompt it would open with")
 	res := mustResolve(os.Args[2])

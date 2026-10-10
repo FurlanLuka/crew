@@ -159,7 +159,7 @@ func TestLoggedItems_IncludeStoppedServersWithALog(t *testing.T) {
 		{ProjectName: "run", Server: project.DevServer{Name: "run"}, Running: true},
 	}
 	os.MkdirAll(dev.LogDir(ref.Slug()), 0o755)
-	os.WriteFile(dev.LogFile(ref.Slug(), "api"), []byte("Error: x\n"), 0o644)
+	os.WriteFile(dev.LogFile(ref.Slug(), "api", "api"), []byte("Error: x\n"), 0o644)
 
 	names := []string{}
 	for _, item := range v.loggedItems() {

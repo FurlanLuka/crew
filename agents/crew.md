@@ -39,6 +39,9 @@ reference; `crew help <cmd> [<sub>]` is authoritative when it is not enough.
   URL is caught before runtime. Then `sleep 6; crew dev check <ref>`: a `died` or `not
   listening` row is the failure; `crew dev logs <ref> <server> --lines=50` or `crew fix <ref>
   --print` has the evidence.
+- One server misbehaving: `crew dev restart <ref> <server>` (or `<project>/<server>`) restarts
+  just it, on its port. To follow state, `crew dev watch <ref> --json` streams a snapshot on every
+  change; `crew which <path>` says which worktree a folder is in.
 - A server that shows `not listening` while something points at it almost always ignores
   `$PORT` — the project's dev command must bind it. Say which command to change; do not paper
   over it with an override.

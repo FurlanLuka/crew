@@ -186,6 +186,10 @@ func main() {
 		cmdStart()
 		return
 
+	case "which":
+		cmdWhich()
+		return
+
 	case "env":
 		cmdEnv()
 		return
@@ -1064,10 +1068,13 @@ type configOut struct {
 	ProxyPort      int    `json:"proxy_port"`
 	ProxyHTTPSPort int    `json:"proxy_https_port"`
 	Domain         string `json:"domain"`
+	// DesktopAvailable: Claude Desktop is installed here, so the page can
+	// offer to open a worktree on this machine.
+	DesktopAvailable bool `json:"desktop_available"`
 }
 
-func configDoc(s config.Settings) configOut {
-	return configOut{s.ServerIP, s.SSHHost, s.ProxyPort, s.ProxyHTTPSPort, s.Domain}
+func configDoc(s config.Settings, desktop bool) configOut {
+	return configOut{s.ServerIP, s.SSHHost, s.ProxyPort, s.ProxyHTTPSPort, s.Domain, desktop}
 }
 
 func cmdConfig() {
@@ -1075,7 +1082,7 @@ func cmdConfig() {
 	case "show":
 		s := config.LoadSettings()
 		if jsonOutput {
-			printJSON(configDoc(s))
+			printJSON(configDoc(s, workspace.DesktopAvailable()))
 			return
 		}
 		fmt.Printf("server_ip\t%s\n", s.ServerIP)

@@ -17,9 +17,7 @@ func ClaudeTaskFor(res *Resolved) *exec.ClaudeTask {
 		SkipPermissions: true,
 		Ref:             res.Ref.String(),
 	}
-	if config.UserSetClaudeConfig {
-		claude.ClaudeConfigDir = config.ClaudeConfigDir
-	}
+	claude.ClaudeConfigDir = config.ClaudeConfigOverride()
 
 	if res.MultiProject() {
 		claude.LeadPath = res.Dir

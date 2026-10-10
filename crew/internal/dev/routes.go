@@ -42,10 +42,25 @@ type Route struct {
 	// true this is also the user-facing port on localhost.
 	InternalPort int  `json:"internal_port"`
 	NoProxy      bool `json:"no_proxy,omitempty"`
+	// Window is the tmux window the server runs in. Empty in a route file
+	// written before 6.6, whose session named windows by server alone —
+	// RouteWindow and RouteLogFile read that case.
+	Window string `json:"window,omitempty"`
 }
 
 // Proxied reports whether the route should be served through the reverse proxy.
 func (r Route) Proxied() bool { return !r.NoProxy && r.Listens() }
+
+// RoutesProxied reports whether a running worktree was started through the
+// proxy, so a restart with no flag keeps the mode it had.
+func RoutesProxied(routes []Route) bool {
+	for _, r := range routes {
+		if r.Proxied() {
+			return true
+		}
+	}
+	return false
+}
 
 // Listens: the server was given a port; one without has no URL and
 // nothing to proxy.

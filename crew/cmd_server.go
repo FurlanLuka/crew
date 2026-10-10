@@ -87,6 +87,8 @@ func serverDispatch(args []string, bare string) {
 		voicePrint(voice.Inspect())
 	case "logs", "debug-notes", "notes":
 		voiceQuery(append([]string{sub}, args...))
+	case "link":
+		voiceLink(args)
 	case "keys":
 		voiceKeys(args)
 	case "remote":

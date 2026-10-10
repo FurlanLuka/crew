@@ -20,8 +20,8 @@ func buildClaudeParts(res *Resolved, withPrompt bool) ([]string, string) {
 
 	// CREW_REF lets anything Claude runs know which worktree it is in.
 	parts := []string{"IS_SANDBOX=1", "CREW_REF=" + crewExec.ShellQuote(res.Ref.String())}
-	if config.UserSetClaudeConfig {
-		parts = append(parts, "CLAUDE_CONFIG_DIR="+crewExec.ShellQuote(config.ClaudeConfigDir))
+	if dir := config.ClaudeConfigOverride(); dir != "" {
+		parts = append(parts, "CLAUDE_CONFIG_DIR="+crewExec.ShellQuote(dir))
 	}
 
 	// A project whose checkout failed has no directory: start in the

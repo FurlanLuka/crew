@@ -285,7 +285,7 @@ func (v WorktreeView) openLogs() (tea.Model, tea.Cmd) {
 func (v WorktreeView) loggedItems() []devItem {
 	var out []devItem
 	for _, item := range v.page.Items {
-		if item.Running || fileExists(dev.LogFile(v.ref.Slug(), item.Server.Name)) || fileExists(smokeLogFile(v.ref.Slug(), item.ProjectName, item.Server.Name)) {
+		if item.Running || fileExists(dev.ExistingLogFile(v.ref.Slug(), item.ProjectName, item.Server.Name)) || fileExists(smokeLogFile(v.ref.Slug(), item.ProjectName, item.Server.Name)) {
 			out = append(out, item)
 		}
 	}

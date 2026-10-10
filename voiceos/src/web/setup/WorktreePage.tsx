@@ -1,10 +1,11 @@
 // A worktree: its name with rename and duplicate beside it, Open in Voice OS, a recorded failure with
-// its ways out, its servers with their actions (start, stop, restart, verify, logs), its Environment
+// its ways out, its servers with their actions (start, stop, restart, verify, logs), Claude Desktop
+// (open it on this Mac, or the link that opens it over SSH from another computer), its Environment
 // (values set for this worktree, what each server gets), and its removal. Rename and duplicate are
 // their own small forms (WorktreeForms.tsx); what it reads is derived in worktree.ts.
 import { useState } from 'react';
 import type { SetupCommand } from '../../crew/commands.js';
-import { refOn } from '../../shared/machine-ref.js';
+import { LOCAL_MACHINE, refOn } from '../../shared/machine-ref.js';
 import { isOk, useCrew, useCrewAction } from './api.js';
 import {
 	Confirm,
@@ -15,6 +16,7 @@ import {
 	describeSize,
 } from './common.js';
 import { describeIssue, describeStages } from './derive.js';
+import type { ConfigShow } from './settings/settings.js';
 import type {
 	CrewDryRun,
 	CrewMember,
@@ -23,7 +25,13 @@ import type {
 	CrewSmoke,
 	CrewWorktree,
 } from './types.js';
-import { type ServerLine, describeIssueWhy, listServerLines } from './worktree.js';
+import {
+	type ServerLine,
+	describeIssueWhy,
+	desktopFolder,
+	desktopLink,
+	listServerLines,
+} from './worktree.js';
 import { WorktreeEnvironment, WorktreeOverrides } from './WorktreeValues.js';
 
 interface WorktreePageProps {
@@ -60,6 +68,10 @@ export const WorktreePage = ({ ctx, worktreeRef }: WorktreePageProps) => {
 		row?.dev_running ? { type: 'dev_status', ref: worktreeRef } : null,
 	);
 	const action = useCrewAction(ctx.machine);
+	// Only this Mac opens Desktop itself: on another machine crew would open it on a headless box.
+	const isLocal = ctx.machine === LOCAL_MACHINE;
+	const config = useCrew<ConfigShow>(ctx.machine, isLocal ? { type: 'config_show' } : null);
+	const desktop = useCrewAction(ctx.machine);
 	const [isRemoving, setIsRemoving] = useState(false);
 	// The workspace's last worktree: removing it is removing the workspace (crew says which).
 	const removal = useCrew<CrewDryRun>(
@@ -79,6 +91,15 @@ export const WorktreePage = ({ ctx, worktreeRef }: WorktreePageProps) => {
 	});
 	const issue = row?.issues?.[0];
 	const sessionRef = refOn(ctx.machine, worktreeRef);
+	const sshHost = isLocal
+		? (config.data?.ssh_host ?? '')
+		: (ctx.state.machines[ctx.machine]?.host ?? '');
+	const link =
+		row && members.data
+			? desktopLink({ sshHost, folder: desktopFolder(members.data, row.path) })
+			: null;
+	// No hint before crew has answered: an unread ssh_host is not an unset one.
+	const needsHost = isLocal && config.data !== null && !sshHost;
 
 	const run = async (command: SetupCommand) => {
 		const reply = await action.run(command);
@@ -298,6 +319,45 @@ export const WorktreePage = ({ ctx, worktreeRef }: WorktreePageProps) => {
 				</div>
 			</section>
 			<ResultLine reply={action.last} />
+			<section className="section" aria-label="Claude Desktop">
+				<div className="section-head">
+					<div className="label">Claude Desktop</div>
+					{isLocal && config.data?.desktop_available && (
+						<div className="row-actions">
+							<button
+								type="button"
+								className="btn sm"
+								disabled={desktop.isBusy}
+								onClick={() => void desktop.run({ type: 'claude_desktop', ref: worktreeRef })}
+							>
+								Open on this Mac
+							</button>
+						</div>
+					)}
+				</div>
+				<dl className="facts">
+					<dt>Over SSH</dt>
+					<dd className="desktop-ssh">
+						{link && (
+							<>
+								<a href={link}>{link}</a>
+								<small className="m">
+									{isLocal
+										? 'From another computer: open this link there; Desktop connects to this machine over SSH.'
+										: `Open it on your computer; Desktop connects to ${ctx.machineTitle} over SSH.`}
+								</small>
+							</>
+						)}
+						{needsHost && (
+							<>
+								<code>crew config set ssh_host &lt;host&gt;</code>
+								<small className="m">Set this machine's SSH host and the link shows here.</small>
+							</>
+						)}
+					</dd>
+				</dl>
+				<ResultLine reply={desktop.last} />
+			</section>
 			<WorktreeOverrides
 				ctx={ctx}
 				worktreeRef={worktreeRef}

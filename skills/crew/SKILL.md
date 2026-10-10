@@ -394,9 +394,10 @@ crew migrate [--dry-run] [--yes]
 ```
 crew dev start <workspace>[/<worktree>] [--proxy]
 crew dev stop [<workspace>[/<worktree>]]
-crew dev restart <workspace>[/<worktree>] [--proxy]
-crew dev logs <workspace>[/<worktree>] <server> [-f|--follow] [--lines=<n>]
+crew dev restart <workspace>[/<worktree>] [<server>|<project>/<server>] [--proxy|--no-proxy]
+crew dev logs <workspace>[/<worktree>] <server>|<project>/<server> [-f|--follow] [--lines=<n>]
 crew dev check <workspace>[/<worktree>] [--wait]                  <project>/<server>\t<running|died|not listening>\t<port>\t<took>\t<detail>
+crew dev watch <workspace>[/<worktree>] [--once]                  <project>/<server>\t<up|starting|unreached|quiet|died|stopped>\t<url>, a blank line after each snapshot
 crew dev proxy [status|trust [--install]|stop]
 crew dev tui <workspace>[/<worktree>]                              the launch page (TUI), as crew launch <ref>
 ```
@@ -405,6 +406,15 @@ crew dev tui <workspace>[/<worktree>]                              the launch pa
   the project's resolved bindings exported. URLs are `http://localhost:<port>`; `--proxy`
   adds `http://<server>--<ws>--<wt>.<domain>` for other devices.
 - Ports are reserved per worktree and reused on restart, so a URL from `crew env` stays valid.
+- **One server at a time.** `crew dev restart <ref> <server>` (or `<project>/<server>` when two
+  projects share the name, as `dev logs` takes it) replaces that server's window on its own
+  port with the env it had; the rest keep running. It needs the worktree running and refuses
+  when the port is still held after the stop. A full restart with no flag keeps the proxy mode
+  the worktree was started with. A worktree started before crew 6.6 restarts whole once first.
+- **`crew dev watch <ref> --json`** streams the worktree's state — every declared server
+  (`up|starting|unreached|quiet|died|stopped`, port, URL, failed tail), the setup runners, the
+  recorded health — one JSON line whenever something changes; `--once` is one snapshot. It is
+  what the crew pane in a Claude session reads; read it yourself instead of polling `dev check`.
 - **After a start, check.** `crew dev start` returns as soon as the panes are up; then
   `crew dev check <ref> --wait` watches each server until it listens, dies, or a minute
   passes and says which `died` (log tail in the detail) or is `not listening` on its port —
@@ -451,7 +461,8 @@ detected, the domain can flip between LAN and Tailscale IPs, and each domain has
 ## 7. Launching
 
 ```
-crew claude <workspace>[/<worktree>]                     Claude Code in this terminal, in the worktree
+crew claude <workspace>[/<worktree>] [--desktop]         Claude Code in this terminal, in the worktree (--desktop: in Claude Desktop)
+crew which <path>                                        <workspace>/<worktree>\t<project or ->
 crew edit <workspace>[/<worktree>] [--editor=cursor|code]   local editor on the worktree, prompt + Claude wired
 crew open <workspace>[/<worktree>]                       a shell in the worktree directory
 crew code <workspace>[/<worktree>]                       remote-SSH URL for Cursor/VS Code (needs ssh_host)
@@ -464,6 +475,18 @@ crew launch [<workspace>[/<worktree>]]                   TUI: with a ref, the la
   with `--add-dir`, sets `CREW_REF`, and injects the orientation prompt (`crew start` prints
   it): the projects, their paths, and a `## crew` section telling that session to drive the
   servers through crew.
+- `claude --desktop` is the one launch you may run without a terminal: it opens the worktree
+  in Claude Desktop on this machine (refused where Desktop isn't installed) — a single
+  project's checkout, else the worktree root — writes `.claude/launch.json` there (url-only,
+  kept out of git) so Desktop's preview attaches to crew's servers, and warns when crew's
+  Claude Code plugin is missing or older than the pane needs. No `--add-dir`, no first prompt:
+  the plugin carries the orientation. From another machine, Desktop opens a worktree over SSH
+  (`claude://code/new?ssh_host=<ssh_host>&ssh_folder=<folder>`; crew's page shows that link).
+- **The crew pane.** crew's Claude Code plugin draws a pane in every session whose folder is a
+  crew worktree (terminal ≥144 columns and Claude Desktop): each server's state with Logs and
+  Restart, setup progress, recorded failures with Fix in Claude (a draft in the prompt box,
+  never sent). It finds the worktree with `crew which <path>` and follows `crew dev watch`.
+  `/crew-pane` opens it in a narrow terminal.
 - `edit` opens Cursor (else VS Code) locally; `code` prints a URL for another machine. Both
   say which they are in `crew help`.
 - The launch page (`crew launch <ref>`, `crew <ref>`) launches only: Editor + Claude, Claude

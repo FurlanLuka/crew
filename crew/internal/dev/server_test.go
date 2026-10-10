@@ -543,7 +543,7 @@ func TestStart_PerServerEnv(t *testing.T) {
 	read := func(server string) string {
 		deadline := time.Now().Add(3 * time.Second)
 		for time.Now().Before(deadline) {
-			data, _ := os.ReadFile(LogFile(slug, server))
+			data, _ := os.ReadFile(LogFile(slug, "mono", server))
 			if strings.Contains(string(data), "PORT=") {
 				return string(data)
 			}

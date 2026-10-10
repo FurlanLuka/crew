@@ -50,11 +50,6 @@ func LogDir(slug Slug) string {
 	return filepath.Join(config.ConfigDir, "logs", string(slug))
 }
 
-// LogFile returns the log file path for a specific dev server.
-func LogFile(slug Slug, serverName string) string {
-	return filepath.Join(LogDir(slug), serverName+".log")
-}
-
 // PlannedServer is one dev server with its port already allocated and its
 // working directory already joined — the pairing of project, server and route
 // that Start's two passes would otherwise have to rebuild positionally.
@@ -245,6 +240,9 @@ func Start(p StartParams) (StartResult, error) {
 	}
 
 	planned := PlanServers(p.Projects, ports, p.NoProxy)
+	for i := range planned {
+		planned[i].Route.Window = DevWindow(p.Slug, planned[i].Project, planned[i].Server.Name)
+	}
 	bound := make(map[string]int, len(planned))
 	for _, ps := range planned {
 		bound[PortKey(ps.Project, ps.Server.Name)] = ps.Route.InternalPort
@@ -283,10 +281,8 @@ func Start(p StartParams) (StartResult, error) {
 		}
 	}
 
-	for _, ps := range planned {
-		if err := startServerWindow(session, fmt.Sprintf("%s/%s", p.Slug, ps.Server.Name), LogFile(p.Slug, ps.Server.Name), ps, EnvFor(resolutions, ProjectServer{Project: ps.Project, Server: ps.Server.Name})); err != nil {
-			return StartResult{}, err
-		}
+	if _, err := startPlanned(devLayout(p.Slug, session, planned, resolutions)); err != nil {
+		return StartResult{}, err
 	}
 
 	var warnings []string
@@ -424,17 +420,56 @@ func StartProjectServers(p ProjectServersParams) ([]Route, []string, error) {
 			return nil, nil, fmt.Errorf("failed to create session: %w", err)
 		}
 	}
-	var routes []Route
-	var windows []string
-	for _, ps := range planned {
-		window := fmt.Sprintf("%s/%s", ps.Project, ps.Server.Name)
-		if err := startServerWindow(p.Session, window, p.LogFile(ps.Server.Name), ps, EnvFor(resolutions, ProjectServer{Project: ps.Project, Server: ps.Server.Name})); err != nil {
-			return routes, windows, err
-		}
+	windows, err := startPlanned(plannedStart{
+		Session:     p.Session,
+		Planned:     planned,
+		Resolutions: resolutions,
+		Window:      func(ps PlannedServer) string { return ps.Project + "/" + ps.Server.Name },
+		LogFile:     func(ps PlannedServer) string { return p.LogFile(ps.Server.Name) },
+	})
+	routes := make([]Route, 0, len(windows))
+	for _, ps := range planned[:len(windows)] {
 		routes = append(routes, ps.Route)
+	}
+	return routes, windows, err
+}
+
+// plannedStart is one batch of servers to bring up in a session: the dev
+// start, a setup runner's smoke and a one-server restart lay windows and
+// logs out differently, and share everything else.
+type plannedStart struct {
+	Session     string
+	Planned     []PlannedServer
+	Resolutions []Resolution
+	Window      func(PlannedServer) string
+	LogFile     func(PlannedServer) string
+}
+
+// devLayout is a worktree's dev session: each server in the window its route
+// names, logging to its own file.
+func devLayout(slug Slug, session string, planned []PlannedServer, resolutions []Resolution) plannedStart {
+	return plannedStart{
+		Session:     session,
+		Planned:     planned,
+		Resolutions: resolutions,
+		Window:      func(ps PlannedServer) string { return ps.Route.Window },
+		LogFile:     func(ps PlannedServer) string { return LogFile(slug, ps.Project, ps.Server.Name) },
+	}
+}
+
+// startPlanned starts each server in its own window with its own env, and
+// returns the windows it started, in order, up to the first failure.
+func startPlanned(p plannedStart) ([]string, error) {
+	windows := make([]string, 0, len(p.Planned))
+	for _, ps := range p.Planned {
+		window := p.Window(ps)
+		env := EnvFor(p.Resolutions, ProjectServer{Project: ps.Project, Server: ps.Server.Name})
+		if err := startServerWindow(p.Session, window, p.LogFile(ps), ps, env); err != nil {
+			return windows, err
+		}
 		windows = append(windows, window)
 	}
-	return routes, windows, nil
+	return windows, nil
 }
 
 // startServerWindow is one dev server as a window: its log truncated and

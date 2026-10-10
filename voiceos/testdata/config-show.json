@@ -3,5 +3,6 @@
   "ssh_host": "build-box",
   "proxy_port": 80,
   "proxy_https_port": 0,
-  "domain": "dev.example.com"
+  "domain": "dev.example.com",
+  "desktop_available": true
 }

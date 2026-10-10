@@ -79,6 +79,8 @@ export interface FakeMachine {
 	chats: FakeChat[];
 	// Workspaces from before crew 2.0, which crew migrate moves.
 	flatWorkspaces: string[];
+	// What crew config show --json answers: the golden unless a test sets its own.
+	config: Record<string, unknown>;
 }
 
 interface MachineFailure {
@@ -131,6 +133,7 @@ const seedMachine = (seed: 'golden' | 'empty'): FakeMachine => {
 			isDiscordSetUp: readGolden<{ set_up: boolean }>('server-discord-off.json').set_up,
 			chats: [],
 			flatWorkspaces: [],
+			config: readGolden<Record<string, unknown>>('config-show.json'),
 		};
 	}
 
@@ -169,6 +172,7 @@ const seedMachine = (seed: 'golden' | 'empty'): FakeMachine => {
 		isDiscordSetUp: readGolden<{ set_up: boolean }>('server-discord-status.json').set_up,
 		chats: readGolden<FakeChat[]>('ls-chats.json'),
 		flatWorkspaces: [],
+		config: readGolden<Record<string, unknown>>('config-show.json'),
 	};
 };
 
@@ -822,7 +826,7 @@ export const createFakeCrew = ({
 					entries: machine.trashBytes ? 3 : 0,
 				});
 			case 'config_show':
-				return json(readGolden('config-show.json'));
+				return json(machine.config);
 			case 'proxy_status':
 				return json(readGolden('proxy-status.json'));
 			case 'update_check':
@@ -1206,6 +1210,8 @@ export const createFakeCrew = ({
 
 				return said(`Started ${command.ref}`);
 			}
+			case 'claude_desktop':
+				return said(`Opened ${command.ref} in Claude Desktop (/w/${command.ref})`);
 			case 'dev_stop':
 				for (const worktree of machine.worktrees) {
 					if (!command.ref || worktree.ref === command.ref) {

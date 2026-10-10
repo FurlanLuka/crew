@@ -298,6 +298,30 @@ func RunGitCommand(dir string, args ...string) (string, error) {
 	return string(out), nil
 }
 
+// GitExcludeFile is the info/exclude file of the repo whose top is dir —
+// a linked worktree's common one — and false when dir is not a repo's top.
+func GitExcludeFile(dir string) (string, bool) {
+	top, err := RunGitCommand(dir, "rev-parse", "--show-toplevel")
+	if err != nil || !samePath(strings.TrimSpace(top), dir) {
+		return "", false
+	}
+	out, err := RunGitCommand(dir, "rev-parse", "--git-path", "info/exclude")
+	if err != nil {
+		return "", false
+	}
+	path := strings.TrimSpace(out)
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(dir, path)
+	}
+	return path, true
+}
+
+func samePath(a, b string) bool {
+	ra, errA := filepath.EvalSymlinks(a)
+	rb, errB := filepath.EvalSymlinks(b)
+	return errA == nil && errB == nil && ra == rb
+}
+
 // PruneWorktrees runs git worktree prune in the given directory.
 func PruneWorktrees(dir string) {
 	debug.Log("git", "worktree prune in %s", dir)

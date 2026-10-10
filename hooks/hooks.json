@@ -1,0 +1,4 @@
+{
+  "description": "The crew pane: a worktree's dev servers, setup and failures in the session",
+  "modules": ["./pane.ts"]
+}

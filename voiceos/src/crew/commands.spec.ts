@@ -119,6 +119,7 @@ const SAMPLES: { [T in SetupCommandType]: Extract<SetupCommand, { type: T }> } =
 	dev_start: { type: 'dev_start', ref: 'store-front/main', proxy: true },
 	dev_stop: { type: 'dev_stop', ref: 'store-front/main' },
 	dev_restart: { type: 'dev_restart', ref: 'store-front/main' },
+	claude_desktop: { type: 'claude_desktop', ref: 'store-front/main' },
 	import_project: {
 		type: 'import_project',
 		bundle: BUNDLE,
@@ -289,7 +290,7 @@ describe('parseSetupCommand', () => {
 		expect(error).toContain('value');
 	});
 
-	it('local-only: whatever stops, replaces or re-keys the machine answering', () => {
+	it('local-only: whatever stops, replaces or re-keys the machine answering, or opens a window on it', () => {
 		const localOnly = Object.entries(COMMAND_TRAITS)
 			.filter(([, traits]) => traits.localOnly)
 			.map(([type]) => type)
@@ -297,6 +298,7 @@ describe('parseSetupCommand', () => {
 
 		expect(localOnly).toEqual(
 			[
+				'claude_desktop',
 				'discord_channels',
 				'discord_off',
 				'discord_status',

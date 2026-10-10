@@ -256,6 +256,10 @@
 		"argv": ["dev", "restart", "store-front/main", "--json"]
 	},
 	{
+		"type": "claude_desktop",
+		"argv": ["claude", "store-front/main", "--desktop"]
+	},
+	{
 		"type": "import_project",
 		"argv": [
 			"import",

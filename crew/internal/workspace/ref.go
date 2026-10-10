@@ -81,6 +81,9 @@ const VoiceSlug = "os"
 // could never be named where the verb takes a ref.
 var reservedNames = map[string]bool{
 	"status": true, "logs": true,
+	// `crew which` is a command, so the crew <ref> shortcut could never open a
+	// workspace named that.
+	"which":   true,
 	"project": true, "workspace": true, "worktree": true, "binding": true, "override": true,
 	// chat/<id> is a plain Claude session's ref (internal/chat): no workspace may look like one.
 	"chat": true,

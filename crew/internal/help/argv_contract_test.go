@@ -208,3 +208,22 @@ func takesPositional(c *CommandInfo, word string) bool {
 	}
 	return false
 }
+
+// The crew pane (hooks/pane.ts in the plugin) runs these; its tests assert
+// it calls exactly them, so a command or flag the pane relies on cannot
+// disappear from the CLI unnoticed.
+func TestPaneArgvWalkTheTree(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "tests", "crew-argv.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var argvs [][]string
+	if err := json.Unmarshal(data, &argvs); err != nil {
+		t.Fatal(err)
+	}
+	for _, argv := range argvs {
+		if err := walkArgv(argv); err != "" {
+			t.Errorf("%s: %s", strings.Join(argv, " "), err)
+		}
+	}
+}

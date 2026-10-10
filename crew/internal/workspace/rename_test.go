@@ -46,7 +46,7 @@ func TestRenameWorktree(t *testing.T) {
 		t.Fatalf("fixture runner log: %q, %v", runnerLog, err)
 	}
 	os.MkdirAll(dev.LogDir(from.Slug()), 0o755)
-	os.WriteFile(dev.LogFile(from.Slug(), "api"), []byte("hello\n"), 0o644)
+	os.WriteFile(dev.LogFile(from.Slug(), "api", "api"), []byte("hello\n"), 0o644)
 	os.WriteFile(CodeWorkspaceFilePath(from), []byte("{}"), 0o644)
 	if _, err := GeneratePrompt(mustResolveT(t, from)); err != nil {
 		t.Fatal(err)
@@ -92,7 +92,7 @@ func TestRenameWorktree(t *testing.T) {
 	if _, err := os.Stat(SetupDir(from.Slug())); !os.IsNotExist(err) {
 		t.Error("the old setup dir should be gone")
 	}
-	if data, _ := os.ReadFile(dev.LogFile(to.Slug(), "api")); string(data) != "hello\n" {
+	if data, _ := os.ReadFile(dev.LogFile(to.Slug(), "api", "api")); string(data) != "hello\n" {
 		t.Errorf("dev log at the new slug = %q", data)
 	}
 	if _, err := os.Stat(dev.LogDir(from.Slug())); !os.IsNotExist(err) {
@@ -230,7 +230,7 @@ func TestRenameWorktree_Edges(t *testing.T) {
 	os.MkdirAll(dev.LogDir(to.Slug()), 0o755)
 	os.WriteFile(filepath.Join(dev.LogDir(to.Slug()), "stale.log"), []byte("old"), 0o644)
 	os.MkdirAll(dev.LogDir(from.Slug()), 0o755)
-	os.WriteFile(dev.LogFile(from.Slug(), "api"), []byte("mine\n"), 0o644)
+	os.WriteFile(dev.LogFile(from.Slug(), "api", "api"), []byte("mine\n"), 0o644)
 	opsHead := gitOut(t, project.Get("ops").Path, "rev-parse", "HEAD")
 	os.WriteFile(dev.RoutesFilePath(to.Slug()), []byte(`[{"project":"x","server_name":"x","internal_port":1}]`), 0o644)
 
@@ -262,7 +262,7 @@ func TestRenameWorktree_Edges(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dev.LogDir(to.Slug()), "stale.log")); !os.IsNotExist(err) {
 		t.Error("a leftover log dir under the new slug is replaced, not merged")
 	}
-	if data, _ := os.ReadFile(dev.LogFile(to.Slug(), "api")); string(data) != "mine\n" {
+	if data, _ := os.ReadFile(dev.LogFile(to.Slug(), "api", "api")); string(data) != "mine\n" {
 		t.Errorf("the moved log should be there: %q", data)
 	}
 	res := mustResolveT(t, to)

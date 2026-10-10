@@ -502,6 +502,14 @@ body:has(.setup) {
 	display: grid;
 	gap: 4px;
 }
+/* Claude Desktop's SSH link (or the command that makes it), its one line of help beneath. */
+.desktop-ssh {
+	display: grid;
+	gap: 4px;
+}
+.desktop-ssh a {
+	font: 13px var(--mono);
+}
 .fail {
 	display: grid;
 	gap: 10px;

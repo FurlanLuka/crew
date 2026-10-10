@@ -48,13 +48,15 @@ type LogsView struct {
 
 func NewLogsView(ref Ref, items []devItem, initialIdx int) LogsView {
 	session := dev.SessionName(ref.Slug())
+	routes, _ := dev.LoadRoutes(ref.Slug())
 
 	var tabs []logTab
 	for _, item := range items {
+		target := dev.ProjectServer{Project: item.ProjectName, Server: item.Server.Name}
 		tabs = append(tabs, logTab{
 			label:   item.Server.Name,
-			window:  fmt.Sprintf("%s/%s", ref.Slug(), item.Server.Name),
-			stopped: []string{dev.LogFile(ref.Slug(), item.Server.Name), smokeLogFile(ref.Slug(), item.ProjectName, item.Server.Name)},
+			window:  dev.WindowFor(ref.Slug(), routes, target),
+			stopped: []string{dev.LogFileFor(ref.Slug(), routes, target), smokeLogFile(ref.Slug(), item.ProjectName, item.Server.Name)},
 		})
 	}
 	tabs = append(tabs, logTab{label: "proxy", isProxy: true})

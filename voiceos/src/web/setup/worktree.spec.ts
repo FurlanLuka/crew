@@ -4,6 +4,8 @@ import type { CrewMember, CrewProject, CrewRoute, CrewSmoke } from './types.js';
 import {
 	describeIssueWhy,
 	describeOverride,
+	desktopFolder,
+	desktopLink,
 	listServerLines,
 	readOverrides,
 	toOverrideCommand,
@@ -223,5 +225,35 @@ describe('describeIssueWhy', () => {
 		[{ stage: 'smoke', project: 'store-api', reason: 'died', detail: '' }, 'store-api stopped'],
 	])('%j → %p', (issue, text) => {
 		expect(describeIssueWhy(issue)).toContain(text);
+	});
+});
+
+describe('desktopLink', () => {
+	it('a host → the link, the folder encoded whole', () => {
+		expect(desktopLink({ sshHost: 'build-box', folder: '/w/store-front/main' })).toBe(
+			'claude://code/new?ssh_host=build-box&ssh_folder=%2Fw%2Fstore-front%2Fmain',
+		);
+		expect(desktopLink({ sshHost: 'build-box', folder: '/Users/dev/My Code/store-api' })).toBe(
+			'claude://code/new?ssh_host=build-box&ssh_folder=%2FUsers%2Fdev%2FMy%20Code%2Fstore-api',
+		);
+	});
+
+	it("another machine's SSH host, user included", () => {
+		expect(desktopLink({ sshHost: 'dev@vm1', folder: '/w/store-front/main' })).toBe(
+			'claude://code/new?ssh_host=dev%40vm1&ssh_folder=%2Fw%2Fstore-front%2Fmain',
+		);
+	});
+
+	it('no host → no link', () => {
+		expect(desktopLink({ sshHost: '', folder: '/w/store-front/main' })).toBeNull();
+	});
+});
+
+describe('desktopFolder', () => {
+	it("one project → its checkout; several → the worktree's root", () => {
+		expect(desktopFolder(MEMBERS.slice(0, 1), '/w/store-front/main')).toBe(
+			'/w/store-front/main/store-front',
+		);
+		expect(desktopFolder(MEMBERS, '/w/store-front/main')).toBe('/w/store-front/main');
 	});
 });

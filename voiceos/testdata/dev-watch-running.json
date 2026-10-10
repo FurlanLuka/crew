@@ -1,0 +1,53 @@
+{
+  "ref": "store-front/main",
+  "running": true,
+  "proxied": false,
+  "servers": [
+    {
+      "project": "store-front",
+      "server": "web",
+      "port": 54010,
+      "url": "http://localhost:54010",
+      "state": "up"
+    },
+    {
+      "project": "store-api",
+      "server": "api",
+      "port": 54012,
+      "url": "http://localhost:54012",
+      "state": "died",
+      "tail": "Error: Cannot find module 'express'"
+    },
+    {
+      "project": "store-api",
+      "server": "worker",
+      "port": 0,
+      "url": "",
+      "state": "quiet"
+    },
+    {
+      "project": "signals",
+      "server": "rtc",
+      "port": 54014,
+      "url": "",
+      "state": "stopped"
+    }
+  ],
+  "setup": {
+    "running": false,
+    "failed": false,
+    "projects": []
+  },
+  "health": {
+    "at": "2026-10-02T09:30:00Z",
+    "issues": [
+      {
+        "stage": "smoke",
+        "project": "store-api",
+        "server": "api",
+        "reason": "died",
+        "detail": "Error: Cannot find module 'express'"
+      }
+    ]
+  }
+}

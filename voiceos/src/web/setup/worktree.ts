@@ -170,3 +170,24 @@ export const describeIssueWhy = (issue: CrewIssue): string =>
 		: issue.stage === 'checkout'
 			? `git could not check ${issue.project} out here.`
 			: `${issue.server ?? issue.project} ${issue.reason === 'not listening' ? 'runs but never answered on its port' : 'stopped'}.`;
+
+export interface DesktopLinkParams {
+	// What Desktop runs ssh to: crew's ssh_host for this Mac, the machine's SSH host for another.
+	sshHost: string;
+	folder: string;
+}
+
+// Claude Desktop's own link for a session over SSH, opened on the computer the developer sits at.
+// null without a host: there is nothing for Desktop to connect to.
+export const desktopLink = ({ sshHost, folder }: DesktopLinkParams): string | null =>
+	sshHost
+		? `claude://code/new?ssh_host=${encodeURIComponent(sshHost)}&ssh_folder=${encodeURIComponent(folder)}`
+		: null;
+
+// The one folder Desktop opens, as crew claude --desktop picks it: Desktop takes no --add-dir, so a
+// worktree of several projects opens at its root.
+export const desktopFolder = (members: CrewMember[], worktreePath: string): string => {
+	const [only] = members;
+
+	return members.length === 1 && only ? only.path : worktreePath;
+};

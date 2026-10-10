@@ -47,12 +47,14 @@ func cmdDev() {
 		cmdDevTui()
 	case "check":
 		cmdDevCheck()
+	case "watch":
+		cmdDevWatch()
 	case "proxy":
 		cmdDevProxyCtl()
 	case "_proxy":
 		cmdDevProxy()
 	default:
-		fmt.Fprintf(os.Stderr, "Unknown dev command '%s'.\nUsage: crew dev [setup|add|rm|show|start|stop|restart|status|check|logs|proxy|tui]\n", os.Args[2])
+		fmt.Fprintf(os.Stderr, "Unknown dev command '%s'.\nUsage: crew dev [setup|add|rm|show|start|stop|restart|status|check|watch|logs|proxy|tui]\n", os.Args[2])
 		os.Exit(1)
 	}
 }
@@ -525,7 +527,10 @@ func cmdDevStart() {
 // startDev backs both `crew dev start` and `crew dev restart`; restart differs
 // only in tearing the existing session down first, and in the word it reports.
 func startDev(arg string, noProxy, restart bool) {
-	res := mustResolve(arg)
+	startDevResolved(mustResolve(arg), noProxy, restart)
+}
+
+func startDevResolved(res *workspace.Resolved, noProxy, restart bool) {
 	if res.Ref.Worktree == "" {
 		fmt.Fprintf(os.Stderr, "note: workspace '%s' predates worktrees — run `crew migrate` to get {{worktree}} and a second working copy\n\n", res.Ref.Workspace)
 	}
@@ -652,17 +657,9 @@ func slugsFor(arg string) []dev.Slug {
 	return slugs
 }
 
-func cmdDevRestart() {
-	if len(os.Args) < 4 {
-		fmt.Fprintf(os.Stderr, "Usage: crew dev restart <workspace>[/<worktree>] [--proxy]\n")
-		os.Exit(1)
-	}
-	startDev(os.Args[3], parseProxyFlag(os.Args[4:]), true)
-}
-
 func cmdDevLogs() {
 	if len(os.Args) < 5 {
-		fmt.Fprintf(os.Stderr, "Usage: crew dev logs <workspace>[/<worktree>] <server> [-f|--follow]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew dev logs <workspace>[/<worktree>] <server>|<project>/<server> [-f|--follow]\n")
 		os.Exit(1)
 	}
 
@@ -680,9 +677,15 @@ func cmdDevLogs() {
 	}
 
 	res := mustResolve(os.Args[3])
-	serverName := os.Args[4]
+	target, err := dev.ResolveServerName(res.DevProjects(), os.Args[4])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	serverName := target.Server
 
-	logFile := dev.LogFile(res.Slug, serverName)
+	routes, _ := dev.LoadRoutes(res.Slug)
+	logFile := dev.LogFileFor(res.Slug, routes, target)
 	if _, err := os.Stat(logFile); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: no log file for %s %s — has the server been started?\n", res.Ref, serverName)
 		os.Exit(1)
