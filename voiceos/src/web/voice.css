@@ -332,14 +332,20 @@
 	box-shadow: 0 0 0 2px #0f1215;
 }
 /* An open group: the bar holds only it, its tabs inside its tint. */
+/* The box is a tab's height, its tabs a little shorter inside it: opening a group never moves the bar. */
 .vo-gbox {
 	flex: none;
 	display: inline-flex;
 	align-items: center;
 	gap: 2px;
-	padding: 2px;
-	border-radius: 12px;
+	height: 32px;
+	padding: 0 2px;
+	border-radius: 10px;
 	background: color-mix(in srgb, var(--g) 16%, transparent);
+}
+.vo-gbox .vo-tab {
+	height: 28px;
+	border-radius: 8px;
 }
 .vo-gname:hover {
 	background: color-mix(in srgb, var(--g) 18%, transparent);

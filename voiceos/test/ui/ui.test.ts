@@ -446,9 +446,14 @@ describe('voice os ui', () => {
 			await chip.waitFor({ timeout: 5000 });
 			expect(await page.locator('.vo-tabs .vo-tab[data-ref]').count()).toBe(0);
 
+			const barHeight = () =>
+				page.locator('.vo-top').evaluate((bar) => bar.getBoundingClientRect().height);
+			const closedHeight = await barHeight();
 			await chip.click();
 			await page.locator('.vo-gbox').waitFor({ timeout: 5000 });
 			expect(await page.locator('.vo-gbox .vo-tab[data-ref]').count()).toBe(2);
+			// Opening a group never moves the bar.
+			expect(await barHeight()).toBe(closedHeight);
 
 			// Esc closes the group, and only that; the next Esc goes up as ever.
 			await blur();
