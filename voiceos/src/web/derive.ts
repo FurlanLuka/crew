@@ -13,7 +13,7 @@ import { hasBackgroundWork } from '../state/subagents.js';
 import { describeWork, formatAge } from '../state/working.js';
 import { stripMarkdown } from './markdown.js';
 import { countOf } from './count.js';
-import { countMachineRefs } from '../shared/active.js';
+import { countMachineRefs, listActiveRefs } from '../shared/active.js';
 import { readWorkspace } from '../shared/notes.js';
 import { isSetupRef, machineOf, readMachine } from '../shared/machine-ref.js';
 import {
@@ -313,3 +313,52 @@ export const isWaiting = (state: State, ref: string): boolean => {
 
 	return session ? describeSessionBadge(session, state.asks).isAlarm : false;
 };
+
+export interface GroupLook {
+	// Its members' dots, the one that most needs the developer first; at most four.
+	dots: string[];
+	// A member needs the developer: the count turns red.
+	isAlarm: boolean;
+	// The session on screen is one of its members: the chip's tint is stronger.
+	holdsScreen: boolean;
+}
+
+const GROUP_DOTS_SHOWN = 4;
+
+const rankBadge = (badge: Badge): number => {
+	if (badge.isAlarm) {
+		return 0;
+	}
+
+	if (badge.dot === 'running' || badge.dot === 'starting') {
+		return 1;
+	}
+
+	return badge.dot === 'idle' ? 2 : 3;
+};
+
+const readBadges = (state: State, refs: string[]): Badge[] =>
+	refs.flatMap((ref) => {
+		const session = state.sessions[ref];
+
+		return session ? [describeSessionBadge(session, state.asks)] : [];
+	});
+
+// refs: the members present now (shared/groups.ts listPresentMembers).
+export const describeGroup = (state: State, refs: string[]): GroupLook => {
+	const badges = readBadges(state, refs).sort((left, right) => rankBadge(left) - rankBadge(right));
+
+	return {
+		dots: badges.slice(0, GROUP_DOTS_SHOWN).map((badge) => badge.dot),
+		isAlarm: badges.some((badge) => badge.isAlarm),
+		holdsScreen: state.view.kind === 'session' && refs.includes(state.view.ref),
+	};
+};
+
+// While a group is open the bar hides every other session: one of them needing the developer puts a
+// red dot on the group's ‹.
+export const hasHiddenAlarm = (state: State, shown: string[]): boolean =>
+	readBadges(
+		state,
+		listActiveRefs(state).filter((ref) => !shown.includes(ref)),
+	).some((badge) => badge.isAlarm);

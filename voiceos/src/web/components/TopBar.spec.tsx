@@ -2,7 +2,8 @@ import { describe, expect, it } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { State } from '../../shared/protocol.js';
 import { createInitialState, createSession } from '../../state/reducer.js';
-import { readDropTarget, readKeyMove, TopBar } from './TopBar.js';
+import { readTabMenu } from './TabMenu.js';
+import { readShownItems, TopBar } from './TopBar.js';
 
 const withSessions = (refs: string[], active: string[] = refs): State => ({
 	...createInitialState(),
@@ -118,23 +119,6 @@ describe('TopBar', () => {
 });
 
 describe('moving a tab', () => {
-	const refs = ['a/main', 'b/main', 'c/main'];
-
-	it('dropped before a tab → before it; after it → before the next, never before itself; last → the end', () => {
-		expect(readDropTarget(refs, 'c/main', 'a/main', 'before')).toBe('a/main');
-		expect(readDropTarget(refs, 'a/main', 'b/main', 'after')).toBe('c/main');
-		expect(readDropTarget(refs, 'b/main', 'a/main', 'after')).toBe('c/main');
-		expect(readDropTarget(refs, 'a/main', 'c/main', 'after')).toBeNull();
-	});
-
-	it('Alt+← and Alt+→ → one place along; at an end, no move', () => {
-		expect(readKeyMove(refs, 'b/main', -1)).toEqual({ before: 'a/main' });
-		expect(readKeyMove(refs, 'a/main', 1)).toEqual({ before: 'c/main' });
-		expect(readKeyMove(refs, 'b/main', 1)).toEqual({ before: null });
-		expect(readKeyMove(refs, 'a/main', -1)).toBeNull();
-		expect(readKeyMove(refs, 'c/main', 1)).toBeNull();
-	});
-
 	it('every session tab can be dragged and says its keys; Home cannot', () => {
 		const html = render(withSessions(['store-front/main']));
 
@@ -143,5 +127,91 @@ describe('moving a tab', () => {
 			/data-ref="store-front\/main"[^>]*aria-keyshortcuts="Alt\+ArrowLeft Alt\+ArrowRight"/,
 		);
 		expect(html.split('draggable="true"').length - 1).toBe(1);
+	});
+});
+
+describe('groups', () => {
+	const refs = ['a/main', 'b/main', 'c/main', 'd/main'];
+	const STORE = { id: 'g1', name: 'store', color: 'teal' as const, refs: ['b/main', 'c/main'] };
+	const grouped = (patch: Partial<State> = {}): State => ({
+		...withSessions(refs),
+		groups: [STORE],
+		...patch,
+	});
+
+	it('closed → one chip in its colour where its first member sits: dots, name, count; its tabs not drawn', () => {
+		const html = render(grouped());
+
+		expect(html).toMatch(/class="vo-tab vo-gchip [^"]*"[^>]*data-group="g1"[^>]*data-color="teal"/);
+		expect(html).toContain('<b>store</b><span class="vo-count ">2</span>');
+		expect(html).not.toContain('data-ref="b/main"');
+		expect(html.indexOf('data-ref="a/main"')).toBeLessThan(html.indexOf('data-group="g1"'));
+		expect(html.indexOf('data-group="g1"')).toBeLessThan(html.indexOf('data-ref="d/main"'));
+	});
+
+	it('a member needs the developer → the count is red; the session on screen in it → a stronger tint', () => {
+		const html = render(
+			grouped({
+				asks: [{ id: 'q', ref: 'c/main', at: 1, kind: 'question', input: {}, questions: [] }],
+				view: { kind: 'session', ref: 'b/main' },
+			}),
+		);
+
+		expect(html).toContain('<span class="vo-count alarm">2</span>');
+		expect(html).toMatch(/class="vo-tab vo-gchip holds /);
+	});
+
+	it('open → only its tabs, inside its box, with ‹; Home and New stay; nothing else', () => {
+		const html = render(grouped({ openGroup: 'g1' }));
+
+		expect(html).toMatch(/class="vo-gbox" data-group="g1" data-color="teal"/);
+		expect(html).toContain('data-ref="b/main"');
+		expect(html).toContain('data-ref="c/main"');
+		expect(html).not.toContain('data-ref="a/main"');
+		expect(html).not.toContain('data-ref="d/main"');
+		expect(html).toContain('<b>Home</b>');
+		expect(html).toMatch(/class="vo-new /);
+		expect(html).toMatch(/class="vo-tab vo-fold "[^>]*aria-label="Close store"/);
+	});
+
+	it('open, and a hidden session needs the developer → a red dot on ‹', () => {
+		const html = render(
+			grouped({
+				openGroup: 'g1',
+				asks: [{ id: 'q', ref: 'd/main', at: 1, kind: 'question', input: {}, questions: [] }],
+			}),
+		);
+
+		expect(html).toMatch(/class="vo-tab vo-fold alarm"[^>]*>‹<span class="dot blocked">/);
+	});
+
+	it('open, but a member away (drawn as a plain tab) → the whole bar, nothing open', () => {
+		const away = { ...grouped({ openGroup: 'g1' }), active: [...refs, 'vm1:x/main'] };
+		const lone = {
+			...away,
+			groups: [{ ...STORE, refs: ['b/main', 'vm1:x/main'] }],
+		};
+
+		expect(readShownItems(lone).open).toBeNull();
+		expect(
+			readShownItems(lone).items.map((item) =>
+				item.kind === 'session' ? item.ref : item.group.id,
+			),
+		).toEqual(refs);
+		expect(readTabMenu(lone, 'a/main').others).toEqual([]);
+	});
+
+	it("a tab's menu: its groups to join, loose tabs to start one with (never itself), whether it is in one", () => {
+		const loose = readTabMenu(grouped(), 'a/main');
+
+		expect(loose.group).toBeNull();
+		expect(loose.others.map((group) => group.id)).toEqual(['g1']);
+		expect(loose.partners).toEqual(['d/main']);
+
+		const member = readTabMenu(grouped(), 'b/main');
+
+		expect(member.group?.id).toBe('g1');
+		expect(member.others).toEqual([]);
+		expect(member.partners).toEqual(['a/main', 'd/main']);
 	});
 });

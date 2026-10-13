@@ -30,6 +30,7 @@ import { createAsideNarrator, createTurnNarrator, readGitHead } from './narrator
 import { persistView, shouldAnnounceRestart } from './memory/view.js';
 import { persistActive } from './memory/active.js';
 import { persistNames } from './memory/names.js';
+import { persistGroups } from './memory/groups.js';
 import { persistModes } from './memory/modes.js';
 import { persistVoiceOff } from './memory/voice-off.js';
 import { followVoiceOff } from './speech/voice-off.js';
@@ -418,6 +419,9 @@ persistModes({ store, file: paths.modesFile });
 // the active sessions of this Mac; a remote's start when its link is up.
 persistActive({ store, file: paths.activeFile, legacyFile: paths.pinnedFile });
 persistNames({ store, file: paths.namesFile });
+// After the active set (groups keep only active members), before the view: a saved session view
+// outside the open group then closes it once.
+persistGroups({ store, file: paths.groupsFile });
 const hadSavedView = persistView({ store, file: paths.viewFile });
 
 const pollTimer = setInterval(async () => {

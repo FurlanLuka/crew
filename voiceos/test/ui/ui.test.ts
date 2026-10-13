@@ -397,6 +397,228 @@ describe('voice os ui', () => {
 		}
 	}, 20_000);
 
+	// Groups are server state shared by every test: each test takes its own back off in finally.
+	const clearGroups = () => {
+		for (const group of store.state.groups) {
+			store.dispatch({ type: 'ungroup', id: group.id });
+		}
+	};
+
+	it('a tab dropped on the middle of another → named, coloured → a group chip; opened it is the whole bar; Esc closes it, the next goes up; its menu ungroups', async () => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
+		const view = store.state.view;
+		const { context, page } = await signIn();
+		const tab = (ref: string) => page.locator(`.vo-tab[data-ref="${ref}"]`);
+		const sentSince = (from: number, type: string) =>
+			received
+				.slice(from)
+				.filter((entry) => entry.message.type === 'action' && entry.message.action.type === type)
+				.length;
+		const blur = () => page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+
+		try {
+			// Cancelled with Esc → nothing is made, and the screen stays where it is.
+			const before = received.length;
+			await tab('checkout-api/main').dragTo(tab('store-front/main'));
+			await page.getByRole('form', { name: 'Name this group' }).waitFor({ timeout: 5000 });
+			await page.getByRole('button', { name: 'pink' }).focus();
+			await page.keyboard.press('Escape');
+			await page.getByRole('form', { name: 'Name this group' }).waitFor({ state: 'detached' });
+			expect(sentSince(before, 'create_group')).toBe(0);
+			expect(sentSince(before, 'switch_view')).toBe(0);
+			expect(store.state.view).toEqual(view);
+
+			await tab('checkout-api/main').dragTo(tab('store-front/main'));
+			const name = page.getByRole('textbox', { name: 'Name this group' });
+			await name.fill('  ');
+			expect(await page.getByRole('button', { name: 'Create group' }).isDisabled()).toBe(true);
+			await name.fill('shop');
+			await page.getByRole('button', { name: 'pink' }).click();
+			await name.press('Enter');
+			await waitUntil(() => store.state.groups.length === 1);
+			expect(store.state.groups[0]).toMatchObject({
+				name: 'shop',
+				color: 'pink',
+				refs: ['store-front/main', 'checkout-api/main'],
+			});
+
+			const chip = page.locator('.vo-gchip');
+			await chip.waitFor({ timeout: 5000 });
+			expect(await page.locator('.vo-tabs .vo-tab[data-ref]').count()).toBe(0);
+
+			await chip.click();
+			await page.locator('.vo-gbox').waitFor({ timeout: 5000 });
+			expect(await page.locator('.vo-gbox .vo-tab[data-ref]').count()).toBe(2);
+
+			// Esc closes the group, and only that; the next Esc goes up as ever.
+			await blur();
+			await page.keyboard.press('Escape');
+			await waitUntil(() => store.state.openGroup === null);
+			expect(store.state.view).toEqual(view);
+			// The page has the closed bar before the next Esc reads it.
+			await page.locator('.vo-gchip').waitFor({ timeout: 5000 });
+			await page.keyboard.press('Escape');
+			await waitUntil(() => store.state.view.kind === 'active');
+
+			await page.locator('.vo-gchip').click({ button: 'right' });
+			await page.getByRole('menu', { name: 'shop' }).waitFor({ timeout: 5000 });
+			await page.getByRole('menuitem', { name: 'Ungroup' }).click();
+			await waitUntil(() => store.state.groups.length === 0);
+			await tab('store-front/main').waitFor({ timeout: 5000 });
+		} finally {
+			clearGroups();
+			store.dispatch({ type: 'open_group', id: null });
+			await context.close();
+		}
+	}, 30_000);
+
+	it("menus: a tab's starts a group with another, a group's renames and recolours it, a tab dropped on a chip joins; Esc closes only the menu; a group open in one tab is open in the other", async () => {
+		const worktrees = Object.values(store.state.sessions).map(
+			({ ref, label, branch, cwd, dirs, isPinned }) => ({
+				ref,
+				label,
+				branch,
+				cwd,
+				dirs,
+				isPinned,
+			}),
+		);
+		store.dispatch({ type: 'worktrees', worktrees: [...worktrees, createWorktree('admin/main')] });
+		store.dispatch({ type: 'activate', ref: 'admin/main' });
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
+		const view = store.state.view;
+		const first = await signIn();
+		const second = await signIn();
+		const { page } = first;
+
+		try {
+			await page.locator('.vo-tab[data-ref="store-front/main"]').click({ button: 'right' });
+			await page.getByRole('menu').waitFor({ timeout: 5000 });
+			await page.keyboard.press('Escape');
+			await page.getByRole('menu').waitFor({ state: 'detached' });
+			expect(store.state.view).toEqual(view);
+
+			// Esc from the partner list gives the focus back to the tab.
+			const storeTab = page.locator('.vo-tab[data-ref="store-front/main"]');
+			await storeTab.focus();
+			// What the Menu key sends: a contextmenu at 0,0 on the focused tab.
+			await storeTab.dispatchEvent('contextmenu', { clientX: 0, clientY: 0, bubbles: true });
+			await page.getByRole('menuitem', { name: 'New group with…' }).press('Enter');
+			await page.getByRole('menu', { name: 'New group with' }).waitFor({ timeout: 5000 });
+			await page.keyboard.press('Escape');
+			await page.getByRole('menu').waitFor({ state: 'detached' });
+			expect(await storeTab.evaluate((element) => element === document.activeElement)).toBe(true);
+
+			await storeTab.click({ button: 'right' });
+			await page.getByRole('menuitem', { name: 'New group with…' }).click();
+			await page.getByRole('menuitem', { name: 'checkout-api/main' }).click();
+			await page.getByRole('textbox', { name: 'Name this group' }).fill('both');
+			await page.getByRole('button', { name: 'Create group' }).click();
+			await waitUntil(() => store.state.groups.length === 1);
+
+			// The third tab dropped on the chip's middle joins it.
+			await page.locator('.vo-tab[data-ref="admin/main"]').dragTo(page.locator('.vo-gchip'));
+			await waitUntil(() => store.state.groups[0]?.refs.length === 3);
+
+			await page.locator('.vo-gchip').click({ button: 'right' });
+			await page.getByRole('button', { name: 'sand' }).click();
+			await waitUntil(() => store.state.groups[0]?.color === 'sand');
+			await page.getByRole('menuitem', { name: 'Rename…' }).click();
+			await page.getByRole('textbox', { name: 'Rename group' }).fill('all three');
+			await page
+				.getByRole('form', { name: 'Rename group' })
+				.getByRole('button', { name: 'Rename' })
+				.click();
+			await waitUntil(() => store.state.groups[0]?.name === 'all three');
+
+			await page.locator('.vo-gchip').click();
+			await second.page.locator('.vo-gbox').waitFor({ timeout: 5000 });
+			await second.page.getByRole('button', { name: 'Close all three' }).last().click();
+			await page.locator('.vo-gchip').waitFor({ timeout: 5000 });
+		} finally {
+			clearGroups();
+			store.dispatch({ type: 'open_group', id: null });
+			store.dispatch({ type: 'deactivate', ref: 'admin/main' });
+			store.dispatch({ type: 'worktrees', worktrees });
+			await first.context.close();
+			await second.context.close();
+		}
+	}, 30_000);
+
+	it('on a phone: a long press opens the menu and its tap does nothing else; a press that moves does not; a tap opens; an open group fits the width', async () => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
+		store.dispatch({
+			type: 'create_group',
+			refs: ['store-front/main', 'checkout-api/main'],
+			name: 'store and checkout together',
+			color: 'violet',
+		});
+		const context = await browser.newContext({
+			permissions: ['microphone'],
+			viewport: { width: 390, height: 844 },
+			hasTouch: true,
+			isMobile: true,
+		});
+		const page = await context.newPage();
+		watchErrors(page);
+
+		try {
+			await page.goto(`http://localhost:${gateway.port}/login?token=${TOKEN}`);
+			await page.goto(`http://localhost:${gateway.port}/voice`);
+			const chip = page.locator('.vo-gchip');
+			await chip.waitFor({ timeout: 5000 });
+			const box = await chip.boundingBox();
+			const x = (box?.x ?? 0) + 10;
+			const y = (box?.y ?? 0) + 10;
+			const touch = (type: string, dx = 0) =>
+				chip.dispatchEvent(type, {
+					pointerType: 'touch',
+					isPrimary: true,
+					clientX: x + dx,
+					clientY: y,
+				});
+
+			// A press that moves is a scroll or a drag: no menu.
+			await touch('pointerdown');
+			await touch('pointermove', 30);
+			await page.waitForTimeout(650);
+			await touch('pointerup', 30);
+			expect(await page.getByRole('menu').count()).toBe(0);
+
+			await touch('pointerdown');
+			await page.waitForTimeout(650);
+			await touch('pointerup');
+			await page.getByRole('menu').waitFor({ timeout: 5000 });
+			// Pressed near the right edge, the menu opens leftwards enough to stay on screen.
+			const menuBox = await page.getByRole('menu').boundingBox();
+			expect(x + 260).toBeGreaterThan(390);
+			expect((menuBox?.x ?? 0) + (menuBox?.width ?? 0)).toBeLessThanOrEqual(390 - 8);
+			const beforeClick = received.length;
+			await chip.dispatchEvent('click');
+			// The tap that ends a long press does nothing else: no open_group goes out.
+			await page.waitForTimeout(300);
+			expect(
+				received
+					.slice(beforeClick)
+					.some(
+						(entry) =>
+							entry.message.type === 'action' && entry.message.action.type === 'open_group',
+					),
+			).toBe(false);
+			expect(store.state.openGroup).toBeNull();
+			await page.keyboard.press('Escape');
+
+			await chip.tap();
+			await page.locator('.vo-gbox').waitFor({ timeout: 5000 });
+			expect(await page.getByRole('menu').count()).toBe(0);
+			expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+		} finally {
+			clearGroups();
+			store.dispatch({ type: 'open_group', id: null });
+			await context.close();
+		}
+	}, 30_000);
+
 	it("a dev server's logs from its row: crew's lines, a tab per server, Copy, crew's refusal; following stops when it closes", async () => {
 		store.dispatch({
 			type: 'dev_servers',

@@ -357,7 +357,12 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   `activate`, `deactivate`, `list_sessions` (counts first) are Voice OS commands even on a
   session's screen; "Voice OS, …" always reaches the kernel. `state.names` (full ref → name,
   unique; an empty name clears). Persisted in `~/.crew/voiceos/active.json` (`pinned.json` read
-  only when it is missing, then migrated) / `names.json`, the screen in `view.json`. An active
+  only when it is missing, then migrated) / `names.json`, the screen in `view.json`. **Groups**
+  (`state.groups`, `state.openGroup`, `groups.json`; `shared/groups.ts` pure, `state/groups.ts`) are
+  the page's alone, never voice's: a membership over the active set, each group one block in
+  `state.active` (bar position = its first member), kept so by `reconcileGroups`, which `reduce()`
+  runs after every input (members no longer active leave, one left dissolves, the open group closes
+  when a session outside it comes on screen or is activated); ids are the lowest free `g<n>`. An active
   session opens as `{kind:'session', from:'active'}` (`toShownView`), so its tabs are the active
   set and Esc goes back to Active (`parentView`); `readSessionLabel` (`shared/machines.ts`) is the
   one label rule — a name, else the crew label — and a named session is never prefixed with its

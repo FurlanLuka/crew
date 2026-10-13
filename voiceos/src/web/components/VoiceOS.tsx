@@ -2,6 +2,7 @@
 // Settings), the docked voice bar and the New session dialog. The view is the server's (every tab
 // shows the same); the URL follows it.
 import { useEffect, useRef, useState } from 'react';
+import { readOpenGroup } from '../../shared/groups.js';
 import { LOCAL_MACHINE } from '../../shared/machine-ref.js';
 import { parentView } from '../../shared/machines.js';
 import type { ClientMessage, State } from '../../shared/protocol.js';
@@ -138,10 +139,13 @@ export const VoiceOS = ({
 
 			// A dialog's own Esc closes the dialog only, and a menu's closes the menu.
 			if (event.key === 'Escape' && !isInField && !isInDialog(event) && !event.defaultPrevented) {
-				// Up one level: a session → Home (or the machine's page it came from).
+				// An open group the bar shows closes first: it is the level the bar is on.
+				// Then up one level: a session → Home (or the machine's page it came from).
 				send({
 					type: 'action',
-					action: { type: 'switch_view', view: parentView(stateRef.current) },
+					action: readOpenGroup(stateRef.current)
+						? { type: 'open_group', id: null }
+						: { type: 'switch_view', view: parentView(stateRef.current) },
 				});
 			}
 		};

@@ -20,6 +20,7 @@ export interface Paths {
 	// Read once, to migrate the pins into the active set.
 	pinnedFile: string;
 	namesFile: string;
+	groupsFile: string;
 	modesFile: string;
 	voiceOffFile: string;
 	keysDir: string;
@@ -51,6 +52,7 @@ export const resolvePaths = (env: Record<string, string | undefined> = process.e
 		activeFile: join(voiceDir, 'active.json'),
 		pinnedFile: join(voiceDir, 'pinned.json'),
 		namesFile: join(voiceDir, 'names.json'),
+		groupsFile: join(voiceDir, 'groups.json'),
 		modesFile: join(voiceDir, 'modes.json'),
 		voiceOffFile: join(voiceDir, 'voice-off.json'),
 		keysDir: env.VOICEOS_KEYS_DIR || join(home, '.config', 'crew-voiceos'),
