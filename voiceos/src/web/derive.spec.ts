@@ -27,6 +27,8 @@ import {
 	listOtherSessions,
 	readLastLine,
 	describeSessionBadge,
+	describeGroup,
+	hasHiddenAlarm,
 	classifyDiffLine,
 	listDocs,
 } from './derive.js';
@@ -590,5 +592,54 @@ describe('sub-agent transcripts', () => {
 		} as const satisfies SubagentRun;
 
 		expect(splitRunReport(cut, false)).toEqual({ lines: cut.items, report: null });
+	});
+});
+
+describe('session groups', () => {
+	const sessionAt = (ref: string, patch: Partial<Session> = {}): Session =>
+		createTestSession({ ref, label: ref, ...patch });
+	const state = (patch: Partial<State> = {}): State => ({
+		...createInitialState(),
+		sessions: {
+			'a/main': sessionAt('a/main', { status: 'idle' }),
+			'b/main': sessionAt('b/main', { status: 'running' }),
+			'c/main': sessionAt('c/main', { status: 'idle' }),
+			'd/main': sessionAt('d/main', { status: 'stopped' }),
+			'e/main': sessionAt('e/main', { status: 'idle' }),
+		},
+		active: ['a/main', 'b/main', 'c/main', 'd/main', 'e/main'],
+		...patch,
+	});
+
+	it("its members' dots, the one needing the developer first, then working, idle, the rest; four at most", () => {
+		const look = describeGroup(state({ asks: [createTestAsk('q1', 'e/main', 'question')] }), [
+			'a/main',
+			'b/main',
+			'c/main',
+			'd/main',
+			'e/main',
+		]);
+
+		expect(look.dots).toEqual(['blocked', 'running', 'idle', 'idle']);
+		expect(look.isAlarm).toBe(true);
+	});
+
+	it('nobody needs the developer → no alarm; the session on screen a member → it holds the screen', () => {
+		const look = describeGroup(state({ view: { kind: 'session', ref: 'b/main' } }), [
+			'a/main',
+			'b/main',
+		]);
+
+		expect(look.isAlarm).toBe(false);
+		expect(look.holdsScreen).toBe(true);
+		expect(describeGroup(state(), ['a/main', 'b/main']).holdsScreen).toBe(false);
+	});
+
+	it('a hidden active session needs the developer → a hidden alarm; one shown does not count', () => {
+		const asking = state({ asks: [createTestAsk('p1', 'e/main')] });
+
+		expect(hasHiddenAlarm(asking, ['a/main', 'b/main'])).toBe(true);
+		expect(hasHiddenAlarm(asking, ['a/main', 'e/main'])).toBe(false);
+		expect(hasHiddenAlarm(state(), ['a/main'])).toBe(false);
 	});
 });

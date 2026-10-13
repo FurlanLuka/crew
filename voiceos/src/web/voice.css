@@ -273,6 +273,202 @@
 	gap: 8px;
 }
 
+/* Groups: each in its own colour, kept clear of the status dots' green, amber and red. */
+[data-color="blue"] {
+	--g: #6f9cff;
+}
+[data-color="violet"] {
+	--g: #a98bff;
+}
+[data-color="pink"] {
+	--g: #f07fb8;
+}
+[data-color="teal"] {
+	--g: #3fc6c6;
+}
+[data-color="sand"] {
+	--g: #c9b18a;
+}
+[data-color="slate"] {
+	--g: #94a3b8;
+}
+/* A tab held over the middle of another: an outline, so it reads as "into", not "beside". */
+.vo-tab.drop-into {
+	background: var(--fill-hover);
+	color: #fff;
+	box-shadow: inset 0 0 0 1.5px #fff;
+}
+.vo-gchip {
+	position: relative;
+	cursor: grab;
+	padding: 0 10px 0 11px;
+	background: color-mix(in srgb, var(--g) 18%, transparent);
+	color: #fff;
+}
+.vo-gchip:hover {
+	background: color-mix(in srgb, var(--g) 28%, transparent);
+}
+.vo-gchip b,
+.vo-gname b {
+	color: color-mix(in srgb, var(--g) 70%, #fff);
+}
+/* The session on screen is in this closed group: a stronger tint, no line. */
+.vo-gchip.holds {
+	background: color-mix(in srgb, var(--g) 34%, transparent);
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+.vo-gchip .vo-count {
+	background: color-mix(in srgb, var(--g) 26%, transparent);
+}
+.vo-gchip .vo-count.alarm {
+	background: var(--crit);
+}
+.vo-gdots {
+	display: inline-flex;
+	padding-left: 3px;
+}
+.vo-gdots .dot {
+	margin-left: -3px;
+	box-shadow: 0 0 0 2px #0f1215;
+}
+/* An open group: the bar holds only it, its tabs inside its tint. */
+/* The box is a tab's height, its tabs a little shorter inside it: opening a group never moves the bar. */
+.vo-gbox {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	height: 32px;
+	padding: 0 2px;
+	border-radius: 10px;
+	background: color-mix(in srgb, var(--g) 16%, transparent);
+}
+.vo-gbox .vo-tab {
+	height: 28px;
+	border-radius: 8px;
+}
+.vo-gname:hover {
+	background: color-mix(in srgb, var(--g) 18%, transparent);
+}
+.vo-gbox .vo-tab:not(.vo-gname, .vo-fold):hover {
+	background: color-mix(in srgb, var(--g) 16%, transparent);
+}
+.vo-gbox .vo-tab[aria-current="true"] {
+	background: color-mix(in srgb, var(--g) 30%, var(--elev-3));
+}
+.vo-fold {
+	justify-content: center;
+	min-width: 28px;
+	padding: 0 8px;
+	gap: 5px;
+	color: color-mix(in srgb, var(--g) 70%, #fff);
+	font-size: 17px;
+}
+.vo-fold:hover {
+	background: color-mix(in srgb, var(--g) 22%, transparent);
+}
+/* The bar's menus and the name popover sit under what was pressed, outside the scrolling tabs. */
+.vo-barmenu {
+	margin-top: 0;
+	width: 260px;
+}
+.vo-danger {
+	color: var(--crit-text);
+}
+.vo-swatches {
+	display: flex;
+	gap: 6px;
+	padding: 4px 10px 6px;
+}
+.vo-swatch {
+	width: 22px;
+	height: 22px;
+	flex: none;
+	border: 0;
+	border-radius: 7px;
+	background: var(--g);
+}
+.vo-swatch[aria-pressed="true"] {
+	box-shadow:
+		0 0 0 2px var(--menu),
+		0 0 0 4px #fff;
+}
+.vo-swatch:focus-visible {
+	outline: 2px solid var(--focus);
+	outline-offset: 3px;
+}
+.vo-swatch-dot {
+	width: 10px;
+	height: 10px;
+	flex: none;
+	margin: 0 4px;
+	border-radius: 3px;
+	background: var(--g);
+}
+.vo-namepop {
+	position: fixed;
+	z-index: 30;
+	width: 280px;
+	max-width: calc(100vw - 16px);
+	padding: 14px;
+	display: grid;
+	gap: 10px;
+	border-radius: 14px;
+	background: var(--menu);
+	box-shadow:
+		0 0 0 1px rgba(255, 255, 255, 0.1),
+		0 24px 60px rgba(0, 0, 0, 0.55);
+}
+.vo-namepop-cap {
+	font: 600 10.5px var(--mono);
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	color: var(--label-3);
+}
+.vo-namepop input {
+	height: 34px;
+	padding: 0 10px;
+	border: 0;
+	border-radius: 9px;
+	background: var(--fill);
+	color: #fff;
+	font: 14px var(--sys);
+	box-shadow: inset 0 0 0 1px var(--hair);
+}
+.vo-namepop input:focus {
+	outline: none;
+	box-shadow: inset 0 0 0 1.5px var(--label-2);
+}
+.vo-namepop .vo-swatches {
+	padding: 0;
+}
+.vo-namepop small {
+	color: var(--label-3);
+	font-size: 12.5px;
+}
+.vo-namepop-row {
+	display: flex;
+	justify-content: flex-end;
+	gap: 6px;
+}
+.vo-namepop-cancel,
+.vo-namepop-ok {
+	height: 30px;
+	padding: 0 12px;
+	border: 0;
+	border-radius: 8px;
+	background: var(--fill);
+	color: var(--label);
+	font: 600 13px var(--sys);
+}
+.vo-namepop-ok {
+	background: #fff;
+	color: #000;
+}
+.vo-namepop-ok:disabled {
+	opacity: 0.4;
+}
+
 .vo-main {
 	min-height: 0;
 	overflow-y: auto;

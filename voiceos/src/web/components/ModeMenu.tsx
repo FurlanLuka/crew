@@ -1,4 +1,12 @@
-import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from 'react';
+import {
+	type KeyboardEvent,
+	type ReactNode,
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+} from 'react';
+import { handleMenuKey, useClickOutside } from '../menu-keys.js';
 import { INPUT_MODES, type InputMode } from '../listen-mode.js';
 
 interface ModeCopy {
@@ -99,17 +107,11 @@ export const ModeMenu = ({
 
 		// Opens on the chosen mode, so Enter keeps it and arrows move from it.
 		itemRefs.current[modes.indexOf(mode)]?.focus();
-
-		const closeOutside = (event: PointerEvent) => {
-			if (event.target instanceof Node && !wrapRef.current?.contains(event.target)) {
-				setIsOpen(false);
-			}
-		};
-
-		document.addEventListener('pointerdown', closeOutside);
-
-		return () => document.removeEventListener('pointerdown', closeOutside);
 	}, [isOpen, mode, modes]);
+
+	const dismiss = useCallback(() => setIsOpen(false), []);
+
+	useClickOutside(isOpen, wrapRef, dismiss);
 
 	const close = () => {
 		setIsOpen(false);
@@ -121,35 +123,8 @@ export const ModeMenu = ({
 		close();
 	};
 
-	const handleMenuKey = (event: KeyboardEvent<HTMLDivElement>) => {
-		// Every item in the menu, in the order shown.
-		const items = [
-			...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role^="menuitem"]'),
-		];
-		const active = document.activeElement;
-		const focused = active instanceof HTMLButtonElement ? items.indexOf(active) : -1;
-
-		const move = (step: number) => {
-			event.preventDefault();
-			items[(focused + step + items.length) % items.length]?.focus();
-		};
-
-		switch (event.key) {
-			case 'ArrowDown':
-				move(1);
-				break;
-			case 'ArrowUp':
-				move(-1);
-				break;
-			case 'Escape':
-				event.preventDefault();
-				close();
-				break;
-			case 'Tab':
-				setIsOpen(false);
-				break;
-		}
-	};
+	const handleKey = (event: KeyboardEvent<HTMLDivElement>) =>
+		handleMenuKey(event, { onEscape: close, onTab: dismiss });
 
 	const stateClass = [isOn && 'on', isAwake && 'awake', isIgnored && 'ignored', isDenied && 'off']
 		.filter(Boolean)
@@ -172,12 +147,7 @@ export const ModeMenu = ({
 				{MODE_COPY[mode].name} <span aria-hidden="true">⌄</span>
 			</button>
 			{isOpen ? (
-				<div
-					className="mode-menu"
-					role="menu"
-					aria-label="Listening mode"
-					onKeyDown={handleMenuKey}
-				>
+				<div className="mode-menu" role="menu" aria-label="Listening mode" onKeyDown={handleKey}>
 					<div className="mode-menu-title" aria-hidden="true">
 						How Voice OS listens
 					</div>

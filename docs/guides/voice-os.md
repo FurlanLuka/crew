@@ -212,6 +212,18 @@ line shows where it will land. Home's list follows the same order, and it is kep
 
 ![store-front/wrk2's tab being dragged in the top bar, dimmed, with a white line between store-front/main and checkout where it will land](../images/voice-os/tab-drag.png)
 
+**Groups** keep a long bar short. Drop a tab on the middle of another tab (an outline shows it, where
+the edge shows a line) and name the group; it gets its own colour, which you can change. Drop a tab
+on the middle of a group to add it. A group is one chip: its sessions' dots, the one that needs you
+first, its name, and how many it holds, the count red when one of them needs you. Click it and the
+bar holds only that group, its tabs inside its colour, with **‹** at the end to bring the rest back;
+Esc closes it too, and a red dot on **‹** says a session outside it needs you. Opening a session
+outside the group, or activating one, closes it. Right-click a tab (a long press on a phone) to add
+it to a group, start one with another tab, or take it out; right-click a group to open, rename,
+recolour or ungroup it. A group left with one session turns back into a tab, a deactivated session
+leaves its group, and groups are the same in every browser and kept across restarts. Voice doesn't
+know about groups.
+
 **A machine's page** is where you go into a remote. A switcher on top moves between All machines and
 each machine. A machine's header says whether it is connected, its host, **Open in Set up** for a
 remote, and **New session on …**. Below a search field come its plain sessions, then its worktrees
@@ -898,7 +910,7 @@ downgraded; Settings tells you to update this machine instead.
 | `~/.crew/voiceos/sessions.json` | Which Claude Code conversation each session resumes. There is no time limit: a session keeps its conversation until you clear it or Claude Code no longer has it. |
 | `~/.crew/voiceos/view.json` | The screen you were on, restored after a restart (one saved by an earlier release opens as Active, or Activate for a machine's grid). |
 | `~/.crew/voiceos/voice-off.json` | Whether voice is off (the top bar's **voice**). |
-| `~/.crew/voiceos/active.json`, `names.json`, `modes.json` | Your active sessions, session names and each session's permission mode. An older `pinned.json` is read once, when `active.json` does not exist yet. |
+| `~/.crew/voiceos/active.json`, `names.json`, `modes.json`, `groups.json` | Your active sessions, session names, each session's permission mode and the top bar's groups (with the one open). An older `pinned.json` is read once, when `active.json` does not exist yet. |
 | `~/.crew/voiceos/journal/` | One file per session of what was asked and done in each turn, used for "what did checkout do yesterday". |
 | `~/.crew/voiceos/notes/` | Your notes, one Markdown file per workspace. |
 | `~/.crew/voiceos/media/` | Images sessions showed, kept for 30 days. |

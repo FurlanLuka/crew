@@ -476,6 +476,19 @@ export type SessionMode = (typeof SESSION_MODES)[number];
 // The mode Claude Code runs: what a SessionMode is on the wire to a worker.
 export type SdkMode = 'auto' | 'plan' | 'default' | 'bypassPermissions';
 
+// A group of active sessions in the top bar: one chip, in its own colour, until it is opened. The page's
+// alone: voice never hears of groups.
+export const GROUP_COLORS = ['blue', 'violet', 'pink', 'teal', 'sand', 'slate'] as const;
+export type GroupColor = (typeof GROUP_COLORS)[number];
+
+export interface SessionGroup {
+	id: string;
+	name: string;
+	color: GroupColor;
+	// In the active set's order, one block there (state/groups.ts keeps them together).
+	refs: string[];
+}
+
 export interface SessionModeEntry {
 	mode: SessionMode;
 	// The mode before Plan: what an approved plan returns to.
@@ -590,6 +603,9 @@ export interface State {
 	active: string[];
 	// The developer's own names for sessions, by full ref; Voice OS's alone, crew never sees them.
 	names: Record<string, string>;
+	// The top bar's groups, and the one open (the bar shows only it); kept across restarts (groups.json).
+	groups: SessionGroup[];
+	openGroup: string | null;
 	// Each session's permission mode the developer picked, by full ref; absent is Auto. Kept across
 	// restarts (modes.json).
 	modes: Record<string, SessionModeEntry>;
@@ -701,6 +717,16 @@ export type Action =
 	// A tab dragged (or moved with Alt+arrow) in the top bar: ref goes just before another active
 	// ref, or to the end with null.
 	| { type: 'move_active'; ref: string; before: string | null }
+	// The top bar's groups. create_group: a tab dropped on a loose tab (refs: [that tab, the dropped one]).
+	| { type: 'create_group'; refs: [string, string]; name: string; color: GroupColor }
+	| { type: 'join_group'; id: string; ref: string }
+	| { type: 'leave_group'; ref: string }
+	| { type: 'update_group'; id: string; name?: string; color?: GroupColor }
+	| { type: 'ungroup'; id: string }
+	// null closes the open one.
+	| { type: 'open_group'; id: string | null }
+	// The whole group goes just before another active ref, or to the end with null.
+	| { type: 'move_group'; id: string; before: string | null }
 	// isCorrection: the developer's words went there by mistake; Voice OS says it stopped it.
 	| { type: 'interrupt'; ref: string; isCorrection?: true }
 	| { type: 'allow_denied'; denialId: string }
@@ -896,6 +922,8 @@ export type Observation =
 	| { type: 'active_loaded'; refs: string[] }
 	// The names saved before a restart.
 	| { type: 'names_loaded'; names: Record<string, string> }
+	// The groups saved before a restart; loaded after the active set.
+	| { type: 'groups_loaded'; groups: SessionGroup[]; openGroup: string | null }
 	// The modes saved before a restart; loaded before the active set, so sessions start in theirs.
 	| { type: 'modes_loaded'; modes: Record<string, SessionModeEntry> };
 

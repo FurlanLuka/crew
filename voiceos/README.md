@@ -371,6 +371,7 @@ Everything is under `~/.crew/voiceos/` (`src/config.ts`, `resolvePaths`):
 | `view.json` | The last view shown — saved whenever the view moves (a switch, or an activation that opens its session). |
 | `active.json` | Active refs, in activation order. `pinned.json` is read once, only when this file does not exist. |
 | `names.json` | Session names by ref. |
+| `groups.json` | The top bar's groups (`{groups, openGroup}`), merged after `active.json` (`memory/groups.ts`): groups made since boot win, members no longer active are dropped, and each group stays one block in the active order (`state/groups.ts` `reconcileGroups`). |
 | `voice-off.json` | Voice off (the top bar's "voice"): read before Discord starts, so the bot never joins only to leave. `speech/voice-off.ts` lets go of every listener, the playing clip, the TTS socket and the Discord channel; `VoiceOut` drains lines to the page unplayed. |
 | `journal/<ref>.jsonl` | Append-only: every turn's ask, result, cost and HEAD, used by `read_history`. |
 | `notes/<workspace>.md`, `notes/_general.md` | The developer's notes, one line each (`crew server notes`). |

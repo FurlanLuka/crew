@@ -76,6 +76,7 @@ import {
 	toShownView,
 } from './active.js';
 import { isNameInput, reduceName } from './names.js';
+import { isGroupInput, reconcileGroups, reduceGroup } from './groups.js';
 import { isModeInput, reduceSessionMode } from './session-modes.js';
 import { isActive } from '../shared/active.js';
 
@@ -229,6 +230,8 @@ export const createInitialState = (): State => ({
 	machines: {},
 	active: [],
 	names: {},
+	groups: [],
+	openGroup: null,
 	modes: {},
 	attachments: {},
 	voiceOff: false,
@@ -504,6 +507,11 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 	// Names are this Voice OS's own too: a session out of reach is renamed like any other.
 	if (isNameInput(input)) {
 		return reduceName(state, input);
+	}
+
+	// Groups are the page's own arrangement: a member out of reach is grouped like any other.
+	if (isGroupInput(input)) {
+		return reduceGroup(state, input);
 	}
 
 	// A mode is kept for a session out of reach too: its start, or the resync, applies it when it is back.
@@ -1160,5 +1168,8 @@ export const reduce = (state: State, stamped: Stamped): ReducerResult => {
 
 	const result = followSends(before, reduceInput(before, stamped), stamped);
 
-	return { ...result, state: settleMeanwhile(before, result.state, stamped.input) };
+	return {
+		...result,
+		state: reconcileGroups(before, settleMeanwhile(before, result.state, stamped.input)),
+	};
 };

@@ -1,10 +1,11 @@
 // The top bar's "New": a plain session, a worktree to activate, or a machine's page — every way in
-// from one place. The menu keeps ModeMenu's manners: arrows move, Esc closes, a click outside too.
-import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
+// from one place, with the page's menu manners (menu-keys.ts).
+import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { LOCAL_MACHINE } from '../../shared/machine-ref.js';
 import { isMachineReachable, listMachineIds, readMachineTitle } from '../../shared/machines.js';
 import type { State } from '../../shared/protocol.js';
 import { describeCounts } from '../derive.js';
+import { handleMenuKey, useClickOutside } from '../menu-keys.js';
 import type { Dispatch } from '../types.js';
 import { PlusIcon } from './icons.js';
 
@@ -20,22 +21,14 @@ export const NewMenu = ({ state, dispatch, onNewSession }: NewMenuProps) => {
 	const buttonRef = useRef<HTMLButtonElement | null>(null);
 	const menuRef = useRef<HTMLDivElement | null>(null);
 
+	const dismiss = useCallback(() => setIsOpen(false), []);
+
+	useClickOutside(isOpen, wrapRef, dismiss);
+
 	useEffect(() => {
-		if (!isOpen) {
-			return;
+		if (isOpen) {
+			menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
 		}
-
-		menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
-
-		const closeOutside = (event: PointerEvent) => {
-			if (event.target instanceof Node && !wrapRef.current?.contains(event.target)) {
-				setIsOpen(false);
-			}
-		};
-
-		document.addEventListener('pointerdown', closeOutside);
-
-		return () => document.removeEventListener('pointerdown', closeOutside);
 	}, [isOpen]);
 
 	const close = () => {
@@ -48,34 +41,8 @@ export const NewMenu = ({ state, dispatch, onNewSession }: NewMenuProps) => {
 		run();
 	};
 
-	const handleMenuKey = (event: KeyboardEvent<HTMLDivElement>) => {
-		const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
-		const active = document.activeElement;
-		const focused = active instanceof HTMLButtonElement ? items.indexOf(active) : -1;
-
-		const move = (step: number) => {
-			event.preventDefault();
-			items[(focused + step + items.length) % items.length]?.focus();
-		};
-
-		switch (event.key) {
-			case 'ArrowDown':
-				move(1);
-				break;
-			case 'ArrowUp':
-				move(-1);
-				break;
-			case 'Escape':
-				event.preventDefault();
-				// The page's own Esc would also leave the view.
-				event.stopPropagation();
-				close();
-				break;
-			case 'Tab':
-				setIsOpen(false);
-				break;
-		}
-	};
+	const handleKey = (event: KeyboardEvent<HTMLDivElement>) =>
+		handleMenuKey(event, { onEscape: close, onTab: dismiss });
 
 	const openMachine = (machine?: string) =>
 		dispatch({ type: 'switch_view', view: { kind: 'activate', ...(machine ? { machine } : {}) } });
@@ -97,13 +64,7 @@ export const NewMenu = ({ state, dispatch, onNewSession }: NewMenuProps) => {
 				</span>
 			</button>
 			{isOpen && (
-				<div
-					ref={menuRef}
-					className="nm-menu"
-					role="menu"
-					aria-label="New"
-					onKeyDown={handleMenuKey}
-				>
+				<div ref={menuRef} className="nm-menu" role="menu" aria-label="New" onKeyDown={handleKey}>
 					<button
 						type="button"
 						role="menuitem"

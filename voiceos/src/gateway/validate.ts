@@ -1,15 +1,18 @@
 import { z } from 'zod';
 import {
+	GROUP_COLORS,
 	MAX_TEXT_CHARS,
 	MODEL_ID_PATTERN,
 	SESSION_MODES,
 	type ClientMessage,
 } from '../shared/protocol.js';
 import { isValidHost } from '../shared/machines.js';
+import { GROUP_ID_PATTERN, MAX_GROUP_NAME_LENGTH } from '../shared/groups.js';
 
 const sampleRateSchema = z.number().int().min(8000).max(192000);
 const refSchema = z.string().min(1).max(200);
 const machineIdSchema = z.string().regex(/^[a-z0-9-]{1,64}$/);
+const groupIdSchema = z.string().regex(GROUP_ID_PATTERN);
 const viewSchema = z.discriminatedUnion('kind', [
 	z.object({ kind: z.literal('active') }),
 	z.object({ kind: z.literal('session'), ref: refSchema, from: z.literal('active').optional() }),
@@ -88,6 +91,23 @@ const actionSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('activate'), ref: refSchema, open: z.literal(true).optional() }),
 	z.object({ type: z.literal('deactivate'), ref: refSchema }),
 	z.object({ type: z.literal('move_active'), ref: refSchema, before: refSchema.nullable() }),
+	z.object({
+		type: z.literal('create_group'),
+		refs: z.tuple([refSchema, refSchema]),
+		name: z.string().min(1).max(MAX_GROUP_NAME_LENGTH),
+		color: z.enum(GROUP_COLORS),
+	}),
+	z.object({ type: z.literal('join_group'), id: groupIdSchema, ref: refSchema }),
+	z.object({ type: z.literal('leave_group'), ref: refSchema }),
+	z.object({
+		type: z.literal('update_group'),
+		id: groupIdSchema,
+		name: z.string().max(MAX_GROUP_NAME_LENGTH).optional(),
+		color: z.enum(GROUP_COLORS).optional(),
+	}),
+	z.object({ type: z.literal('ungroup'), id: groupIdSchema }),
+	z.object({ type: z.literal('open_group'), id: groupIdSchema.nullable() }),
+	z.object({ type: z.literal('move_group'), id: groupIdSchema, before: refSchema.nullable() }),
 	z.object({ type: z.literal('interrupt'), ref: refSchema }),
 	z.object({ type: z.literal('allow_denied'), denialId: z.string() }),
 	z.object({ type: z.literal('dismiss_denial'), denialId: z.string() }),

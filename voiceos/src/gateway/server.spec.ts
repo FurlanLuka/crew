@@ -307,6 +307,18 @@ describe('parseClientMessage', () => {
 		add_machine: { type: 'add_machine', host: 'dev@vm1.example.com', name: 'Build box' },
 		rename_machine: { type: 'rename_machine', id: 'vm1', name: 'Build box' },
 		remove_machine: { type: 'remove_machine', id: 'vm1' },
+		create_group: {
+			type: 'create_group',
+			refs: ['store/main', 'vm1:store/wrk1'],
+			name: 'store',
+			color: 'teal',
+		},
+		join_group: { type: 'join_group', id: 'g1', ref: 'store/wrk2' },
+		leave_group: { type: 'leave_group', ref: 'store/wrk2' },
+		update_group: { type: 'update_group', id: 'g1', name: 'shop', color: 'pink' },
+		ungroup: { type: 'ungroup', id: 'g12' },
+		open_group: { type: 'open_group', id: null },
+		move_group: { type: 'move_group', id: 'g1', before: 'admin/main' },
 		cancel_queued: { type: 'cancel_queued', ref: 'store/main', queuedId: 'q1' },
 		promote_queued: { type: 'promote_queued', ref: 'store/main', queuedId: 'q1' },
 		promote_all_queued: { type: 'promote_all_queued', ref: 'store/main' },
@@ -434,6 +446,29 @@ describe('parseClientMessage', () => {
 			ok: true,
 			message: { type: 'action', action: { type: 'activate', ref: 'store/main', open: true } },
 		});
+	});
+
+	it('a page loading groups, a group with other than two refs, an unknown colour, a name empty or past 40 characters, an id not g<n> → refused', () => {
+		const refused = [
+			// The saved groups come from the server's own file, never from a page.
+			{ type: 'groups_loaded', groups: [], openGroup: null },
+			{ type: 'create_group', refs: ['store/main'], name: 'store', color: 'blue' },
+			{ type: 'create_group', refs: ['a/main', 'b/main', 'c/main'], name: 'store', color: 'blue' },
+			{ type: 'create_group', refs: ['a/main', ''], name: 'store', color: 'blue' },
+			{ type: 'create_group', refs: ['a/main', 'b/main'], name: 'store', color: 'red' },
+			{ type: 'create_group', refs: ['a/main', 'b/main'], name: '', color: 'blue' },
+			{ type: 'create_group', refs: ['a/main', 'b/main'], name: 'x'.repeat(41), color: 'blue' },
+			{ type: 'update_group', id: 'g1', color: 'green' },
+			{ type: 'update_group', id: 'g1', name: 'x'.repeat(41) },
+			{ type: 'join_group', id: '../g1', ref: 'a/main' },
+			{ type: 'open_group', id: 3 },
+			{ type: 'open_group' },
+			{ type: 'move_group', id: 'group-1', before: null },
+		];
+
+		for (const action of refused) {
+			expect(parseClientMessage(JSON.stringify({ type: 'action', action })).ok).toBe(false);
+		}
 	});
 
 	it('a session view from anywhere but Active, the old pin and start actions, an activate without a ref, a page loading the active set or names, a rename without a name or past 60 characters → refused', () => {
