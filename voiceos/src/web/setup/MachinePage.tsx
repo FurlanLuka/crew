@@ -130,7 +130,7 @@ export const MachinePage = ({ ctx }: { ctx: SetupContext }) => {
 						actionLabel="Remove machine"
 						run={local.run}
 						onCancel={() => setIsRemoving(false)}
-						onDone={() => ctx.go({ page: 'board', tab: 'projects' })}
+						onDone={() => ctx.go({ page: 'board', tab: 'workspaces' })}
 					/>
 				) : (
 					<div className="row-actions">
@@ -156,7 +156,7 @@ export const AddMachine = ({ ctx }: { ctx: SetupContext }) => {
 		event.preventDefault();
 
 		if (command && isOk(await action.run(command))) {
-			ctx.go({ page: 'board', tab: 'projects' });
+			ctx.go({ page: 'board', tab: 'workspaces' });
 		}
 	};
 
@@ -216,7 +216,7 @@ export const AddMachine = ({ ctx }: { ctx: SetupContext }) => {
 					<button
 						type="button"
 						className="btn ghost"
-						onClick={() => ctx.go({ page: 'board', tab: 'projects' })}
+						onClick={() => ctx.go({ page: 'board', tab: 'workspaces' })}
 					>
 						Cancel
 					</button>

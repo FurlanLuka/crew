@@ -10,7 +10,6 @@ import { DOT_BY_STATE, RunnerLine, StepLine, TickRow, toggle } from './flow.js';
 import {
 	CHOICE_LABELS,
 	type Choice,
-	type ChoiceKind,
 	type ImportRun,
 	blankChoice,
 	buildRun,
@@ -119,9 +118,7 @@ const ProjectChoiceRow = ({ row, choice, replaceRefusal, onChange }: ProjectChoi
 				<b>{row.name}</b>
 				<span className="m">{describeRow(row)}</span>
 			</span>
-			<span className="m fr-side">
-				{row.status === 'found' && choice.kind === 'mine' ? 'use mine' : ''}
-			</span>
+			<span className="m fr-side" />
 			{options.length > 1 && (
 				<div className="fr-choice">
 					<div className="seg">
@@ -177,7 +174,7 @@ const describeRow = (row: PlanRow): string => {
 		case 'clone':
 			return `clone into ${row.detail}`;
 		case 'found':
-			return `already checked out at ${row.detail}`;
+			return `clone from its remote (yours at ${row.detail} stays as it is)`;
 		case 'other remote':
 			return `a different repo here has that name (${row.detail})`;
 		case 'blocked':
@@ -587,7 +584,7 @@ const DoneStep = ({ ctx, summary }: { ctx: SetupContext; summary: DoneSummary })
 				ref={boardRef}
 				type="button"
 				className={`launch-choice ${first ? '' : 'last'}`}
-				onClick={() => ctx.go({ page: 'board', tab: 'projects' })}
+				onClick={() => ctx.go({ page: 'board', tab: 'workspaces' })}
 			>
 				<b>Go to the board</b>
 				<span>See what came in, and set up what was skipped.</span>

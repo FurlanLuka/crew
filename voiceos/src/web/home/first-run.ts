@@ -2,6 +2,8 @@
 // how far the worktree has come, and what the last step says.
 import { countOf } from '../count.js';
 import { type LineState, isRunning, listFailedProjects, readStepState } from '../setup/progress.js';
+import type { SetupCommand } from '../../crew/commands.js';
+import type { FoundCheckout } from '../setup/readers.js';
 import type { CrewProject, CrewSetupStatus } from '../setup/types.js';
 
 export type FirstRunStep = 'intro' | 'projects' | 'workspace' | 'prepare' | 'ready';
@@ -16,6 +18,13 @@ export const PROGRESS_STEPS: { step: FirstRunStep; title: string }[] = [
 // The step after the opening: past whatever crew already has.
 export const firstStepFor = (pool: CrewProject[]): FirstRunStep =>
 	pool.length > 0 ? 'workspace' : 'projects';
+
+// A checkout found on this Mac becomes a fresh clone of its remote under crew's own folder, so
+// crew's branches never land in the developer's repo; one with no remote can only be used in place.
+export const toAddCommand = (checkout: FoundCheckout): SetupCommand =>
+	checkout.remote
+		? { type: 'add_project', name: checkout.name, url: checkout.remote }
+		: { type: 'add_project', name: checkout.name, path: checkout.path };
 
 export type RunnerState = 'waiting' | 'running' | 'ok' | 'failed';
 

@@ -235,6 +235,7 @@ export const createInitialState = (): State => ({
 	modes: {},
 	attachments: {},
 	voiceOff: false,
+	onboarded: false,
 	discord: null,
 	pendingActivations: [],
 });
@@ -1151,6 +1152,11 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				voiceOff: input.voiceOff,
 				...(input.voiceOff ? {} : { meanwhile: [] }),
 			});
+
+		case 'set_onboarded':
+			return input.onboarded === state.onboarded
+				? withoutEffects(state)
+				: withoutEffects({ ...state, onboarded: input.onboarded });
 
 		// followSends (sends.ts) owns these.
 		case 'offer_switch':

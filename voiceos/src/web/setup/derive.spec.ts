@@ -9,6 +9,7 @@ import {
 	hasDevServers,
 	listWorkspacesOf,
 	decideFirstRun,
+	decideOnboarding,
 	deriveProjectState,
 	describeIssue,
 	describeStages,
@@ -53,6 +54,30 @@ describe('decideFirstRun', () => {
 	it('worktrees → not a first run', () =>
 		expect(decideFirstRun(PROJECTS, WORKTREES)).toEqual({ isFirstRun: false }));
 	it('not read yet → undecided', () => expect(decideFirstRun(null, null)).toBeNull());
+});
+
+describe('decideOnboarding', () => {
+	const FIRST = { isFirstRun: true as const, installing: null };
+	const RESUME = { isFirstRun: true as const, installing: 'store-front/main' };
+
+	it('crew not read yet → undecided, nothing marked', () =>
+		expect(decideOnboarding(false, null)).toBeNull());
+	it('never onboarded, nothing set up → the first run', () =>
+		expect(decideOnboarding(false, FIRST)).toEqual({ show: FIRST, markDone: false }));
+	it('never onboarded, its one worktree installing → back on that progress', () =>
+		expect(decideOnboarding(false, RESUME)).toEqual({ show: RESUME, markDone: false }));
+	it('never onboarded but crew has worktrees → no first run, marked once', () =>
+		expect(decideOnboarding(false, { isFirstRun: false })).toEqual({
+			show: null,
+			markDone: true,
+		}));
+	it('onboarded, nothing set up (skipped) → no first run: the empty board', () =>
+		expect(decideOnboarding(true, FIRST)).toEqual({ show: null, markDone: false }));
+	it('onboarded with worktrees → nothing to do', () =>
+		expect(decideOnboarding(true, { isFirstRun: false })).toEqual({
+			show: null,
+			markDone: false,
+		}));
 });
 
 describe('the board from crew goldens', () => {

@@ -78,10 +78,10 @@ export const AddProject = ({ ctx }: { ctx: SetupContext }) => {
 			<form onSubmit={(event) => void submit(event)}>
 				<div className="seg">
 					<button type="button" aria-pressed={source === 'url'} onClick={() => setSource('url')}>
-						Git URL
+						Clone by URL
 					</button>
 					<button type="button" aria-pressed={source === 'path'} onClick={() => setSource('path')}>
-						A folder
+						Use a folder on this Mac
 					</button>
 				</div>
 				{source === 'url' ? (
@@ -108,7 +108,9 @@ export const AddProject = ({ ctx }: { ctx: SetupContext }) => {
 							value={path}
 							onChange={(event) => setPath(event.target.value)}
 						/>
-						<small>used where it is; nothing is moved</small>
+						<small>
+							used where it is, for a repo with no remote: crew's worktrees branch from it
+						</small>
 					</label>
 				)}
 				<label className="field">

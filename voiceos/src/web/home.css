@@ -268,17 +268,27 @@
 	opacity: 0;
 }
 /* Centred by its own row, not a transform: the entrance animation owns transform. */
-.fr-go {
+.fr-ways {
 	position: absolute;
-	left: 0;
-	right: 0;
-	top: calc(50% + 86px);
-	display: flex;
-	justify-content: center;
+	left: 50%;
+	top: calc(50% + 70px);
+	width: min(860px, calc(100% - 32px));
+	margin-left: calc(min(860px, calc(100% - 32px)) / -2);
+	display: grid;
+	gap: 18px;
+	text-align: center;
 }
-.fr-go .btn {
-	min-height: 36px;
-	padding: 6px 20px;
+.fr-ways .fr-lead {
+	margin: 0 auto;
+}
+.fr-ways .launch-choices {
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.fr-ways .launch-choice b {
+	font-size: 18px;
+}
+.fr-ways .launch-choice span {
+	font-size: 14px;
 }
 
 /* The three steps, in order: the current one bright, the done ones dimmer. */
@@ -484,7 +494,7 @@ button.fr-row:disabled {
 	.first-run[data-stage="intro"] .fr-mark .tagline {
 		animation: soft-in 0.9s var(--fr-ease) 0.75s both;
 	}
-	.fr-go {
+	.fr-ways {
 		animation: soft-in 0.9s var(--fr-ease) 1.4s both;
 	}
 	/* Each step arrives once the wordmark has moved out of its way. */
@@ -501,6 +511,14 @@ button.fr-row:disabled {
 	.fr-mark .tagline,
 	.fr-bar div {
 		transition: none;
+	}
+}
+@media (max-width: 860px) {
+	.fr-ways .launch-choices {
+		grid-template-columns: 1fr;
+	}
+	.fr-ways .launch-choice small {
+		display: none;
 	}
 }
 @media (max-width: 560px) {

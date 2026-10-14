@@ -8,6 +8,7 @@ import { type SetupContext, followRow } from './common.js';
 import {
 	type Problem,
 	decideFirstRun,
+	decideOnboarding,
 	describeIssue,
 	describeServer,
 	listProblems,
@@ -197,19 +198,22 @@ export const Board = ({ ctx, tab, onFirstRun }: BoardProps) => {
 	// This Mac's board on a first run: the first run is Home. Decided once per visit, so a board
 	// opened after the first run made its worktree stays.
 	const hasDecided = useRef(false);
-	const firstRun = decideFirstRun(projects.data, worktrees.data);
+	const onboarding = decideOnboarding(
+		ctx.state.onboarded,
+		decideFirstRun(projects.data, worktrees.data),
+	);
 
 	useEffect(() => {
-		if (hasDecided.current || !firstRun) {
+		if (hasDecided.current || !onboarding) {
 			return;
 		}
 
 		hasDecided.current = true;
 
-		if (ctx.machine === LOCAL_MACHINE && firstRun.isFirstRun) {
+		if (ctx.machine === LOCAL_MACHINE && onboarding.show) {
 			onFirstRun();
 		}
-	}, [firstRun, ctx.machine]);
+	}, [onboarding, ctx.machine]);
 
 	const projectRows = projects.data ?? [];
 	const worktreeRows = worktrees.data ?? [];

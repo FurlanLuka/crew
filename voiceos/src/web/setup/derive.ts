@@ -45,6 +45,32 @@ export const decideFirstRun = (
 		: { isFirstRun: false };
 };
 
+export interface OnboardingDecision {
+	// The first run to show, if any.
+	show: Extract<FirstRunDecision, { isFirstRun: true }> | null;
+	// crew already has worktrees but the Mac was never marked: a Mac set up before the flag, or
+	// from the CLI. Marked once, so an emptied Mac later gets the empty board, not the first run.
+	markDone: boolean;
+}
+
+// The first run is shown once per Mac: only while it was never finished or skipped, and crew holds
+// no worktree of its own (or its one is still being made by the first run). null while crew's reads
+// are on their way.
+export const decideOnboarding = (
+	onboarded: boolean,
+	firstRun: FirstRunDecision | null,
+): OnboardingDecision | null => {
+	if (firstRun === null) {
+		return null;
+	}
+
+	if (onboarded) {
+		return { show: null, markDone: false };
+	}
+
+	return firstRun.isFirstRun ? { show: firstRun, markDone: false } : { show: null, markDone: true };
+};
+
 // A project's state is facts only: its kept check failed, or not. A project with no dev servers (a
 // library, infra) is a whole project, never "unfinished".
 export type ProjectState = 'ready' | 'failed';

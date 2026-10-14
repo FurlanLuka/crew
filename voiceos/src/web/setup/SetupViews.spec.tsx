@@ -87,15 +87,24 @@ describe('ClaudeCard', () => {
 describe('FirstRun', () => {
 	const render = (resume: string | null) =>
 		renderToStaticMarkup(
-			<FirstRun resume={resume} openVoice={noop} askClaude={noop} goSetup={noop} />,
+			<FirstRun
+				resume={resume}
+				openVoice={noop}
+				askClaude={noop}
+				goSetup={noop}
+				goImport={noop}
+				markOnboarded={noop}
+			/>,
 		);
 
-	it('a fresh first run → the opening: the wordmark and Get started, no steps yet', () => {
+	it('a fresh first run → the opening: the wordmark and three ways in, no steps yet', () => {
 		const html = render(null);
 
 		expect(html).toContain('data-stage="intro"');
 		expect(html).toContain('your sessions, every machine');
-		expect(html).toContain('Get started');
+		expect(html).toContain('<b>Import</b>');
+		expect(html).toContain('<b>Set it up step by step</b>');
+		expect(html).toContain('<b>Skip</b>');
 		expect(html).not.toContain('fr-progress');
 	});
 
@@ -104,6 +113,6 @@ describe('FirstRun', () => {
 
 		expect(html).toContain('Getting store-front/main ready');
 		expect(html).toMatch(/<li[^>]*aria-current="step"[^>]*>\s*Getting it ready</);
-		expect(html).not.toContain('Get started');
+		expect(html).not.toContain('Set it up step by step');
 	});
 });

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { LOCAL_MACHINE, refOn, SETUP_REF } from '../../shared/machine-ref.js';
 import { isMachineReachable, readMachineTitle } from '../../shared/machines.js';
 import type { ClientMessage, State } from '../../shared/protocol.js';
-import type { Navigate, Route, SetupPage } from '../router.js';
+import { BOARD, type Navigate, type Route, type SetupPage } from '../router.js';
 import { useCrew } from './api.js';
 import { Board } from './Board.js';
 import { CheckPage } from './CheckPage.js';
@@ -13,9 +13,8 @@ import { crumbsFor, pageAbove } from './crumbs.js';
 import { countNeedsYou } from './derive.js';
 import { ExportPage } from './ExportPage.js';
 import { ImportPage } from './ImportPage.js';
-import { LogsPage } from './LogsPage.js';
 import { AddMachine, MachinePage } from './MachinePage.js';
-import { NewWorktree, Progress } from './NewWorktree.js';
+import { NewWorktree } from './NewWorktree.js';
 import { ProjectForm } from './ProjectForm.js';
 import { AddProject } from './AddProject.js';
 import { ProjectPage } from './ProjectPage.js';
@@ -209,7 +208,7 @@ export const SetupShell = ({
 
 	const pickMachine = (next: string) => {
 		setIsMenuOpen(false);
-		navigate({ half: 'setup', machine: next, page: { page: 'board', tab: 'projects' } });
+		navigate({ half: 'setup', machine: next, page: BOARD });
 	};
 
 	const crumbs = crumbsFor(page);
@@ -292,7 +291,7 @@ export const SetupShell = ({
 				<nav className="crumbs" aria-label="Where you are">
 					{crumbs.length > 0 && (
 						<>
-							<button type="button" onClick={() => go({ page: 'board', tab: 'projects' })}>
+							<button type="button" onClick={() => go(BOARD)}>
 								{machineTitle}
 							</button>
 							{crumbs.map((crumb, index) => {
@@ -417,10 +416,6 @@ const SetupPageView = ({
 			return <WorktreePage ctx={ctx} worktreeRef={page.ref} />;
 		case 'worktree-new':
 			return <NewWorktree ctx={ctx} workspace={page.workspace} />;
-		case 'progress':
-			return <Progress ctx={ctx} worktreeRef={page.ref} />;
-		case 'logs':
-			return <LogsPage ctx={ctx} worktreeRef={page.ref} />;
 		case 'rename':
 			return <WorktreeNameForm ctx={ctx} worktreeRef={page.ref} kind="rename" />;
 		case 'duplicate':

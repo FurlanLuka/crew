@@ -2221,6 +2221,18 @@ describe('a crash with words waiting', () => {
 	});
 });
 
+describe('set_onboarded', () => {
+	it('sets the flag; the same value again → still set, no effects', () => {
+		const set = run([{ type: 'set_onboarded', onboarded: true }]);
+		expect(set.state.onboarded).toBe(true);
+		expect(set.effects).toEqual([]);
+
+		const again = run([{ type: 'set_onboarded', onboarded: true }], set.state);
+		expect(again.state.onboarded).toBe(true);
+		expect(again.effects).toEqual([]);
+	});
+});
+
 describe('set_voice_off', () => {
 	it('off → only the flag; back on → the updates that waited are dropped, the page showed them', () => {
 		const waiting = run([

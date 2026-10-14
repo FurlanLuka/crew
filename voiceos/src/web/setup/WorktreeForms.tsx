@@ -12,7 +12,7 @@ interface NameFormCopy {
 	lead: string;
 	field: string;
 	command: (ref: string, name: string) => SetupCommand;
-	// Where a success lands: the renamed worktree, or the new one's setup progress.
+	// Where a success lands: the renamed worktree, or the new one, its setup following on its page.
 	next: (ref: string) => SetupPage;
 }
 
@@ -29,7 +29,7 @@ const COPY: Record<NameFormKind, NameFormCopy> = {
 		lead: 'Fresh checkouts of the same projects, on new ports, with the values set for this worktree copied across.',
 		field: 'Name',
 		command: (ref, name) => ({ type: 'duplicate_worktree', ref, name }),
-		next: (ref) => ({ page: 'progress', ref }),
+		next: (ref) => ({ page: 'worktree', ref }),
 	},
 };
 

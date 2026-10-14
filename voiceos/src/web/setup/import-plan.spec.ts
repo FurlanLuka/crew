@@ -33,14 +33,14 @@ const choose = (choices: Record<string, Choice>, name: string, patch: Partial<Ch
 });
 
 describe("what each of crew's plan rows offers", () => {
-	it('here → kept; to clone → cloned; found → your checkout first; no remote → nothing until you pick', () => {
+	it('here → kept; to clone → cloned; found on this Mac → still cloned; no remote → nothing until you pick', () => {
 		expect(PROJECTS.map((each) => [each.name, each.status, optionsFor(each).start])).toEqual([
 			['store-front', 'exists', 'keep'],
 			['store-api', 'clone', 'clone'],
-			['checkout-api', 'found', 'mine'],
+			['checkout-api', 'found', 'clone'],
 			['infra-ops', 'missing', null],
 		]);
-		expect(optionsFor(row('checkout-api')).options).toEqual(['mine', 'clone']);
+		expect(optionsFor(row('checkout-api')).options).toEqual(['clone']);
 		expect(
 			optionsFor({ kind: 'project', name: 'x', status: 'other remote', detail: '' }).options,
 		).toEqual(['rename', 'replace', 'skip']);
@@ -74,12 +74,7 @@ describe('one Import', () => {
 
 		expect(run.projects.map((item) => item.command)).toEqual([
 			{ type: 'import_project', bundle: 'BUNDLE', name: 'store-api' },
-			{
-				type: 'import_project',
-				bundle: 'BUNDLE',
-				name: 'checkout-api',
-				path: row('checkout-api').detail,
-			},
+			{ type: 'import_project', bundle: 'BUNDLE', name: 'checkout-api' },
 			{ type: 'import_project', bundle: 'BUNDLE', name: 'infra-ops', path: '/x/infra-ops' },
 		]);
 		expect(run.workspaces.map((item) => item.command)).toEqual([
@@ -162,13 +157,12 @@ describe('a workspace is made from its members as the export names them', () => 
 		).toBe('already here'));
 });
 
-it('the summary counts what is open, what clones, what is already checked out and what is here', () =>
+it('the summary counts what is open, what clones (a checkout found here too) and what is here', () =>
 	expect(
 		describeSummary(ROWS, startChoices(ROWS), ['admin']).map((pill) => `${pill.tone}:${pill.text}`),
 	).toEqual([
 		'ask:1 project needs a choice',
-		':1 clone',
-		':1 already checked out',
+		':2 clones',
 		':1 workspace',
 		':1 already here',
 	]));

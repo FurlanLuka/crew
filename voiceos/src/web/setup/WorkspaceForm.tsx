@@ -68,7 +68,7 @@ export const WorkspaceForm = ({ ctx, name }: WorkspaceFormProps) => {
 		ctx.go(
 			isEdit
 				? { page: 'workspace', name: workspaceName }
-				: { page: 'progress', ref: `${workspaceName.trim()}/main` },
+				: { page: 'worktree', ref: `${workspaceName.trim()}/main` },
 		);
 	};
 

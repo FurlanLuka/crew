@@ -7,7 +7,9 @@ import {
 	isCleanFinish,
 	listRunnerRows,
 	progressOf,
+	toAddCommand,
 } from './first-run.js';
+import { readCheckouts } from '../setup/readers.js';
 
 const status = (name: string): CrewSetupStatus => readGolden<CrewSetupStatus>(`${name}.json`);
 
@@ -23,6 +25,27 @@ describe('where the first run starts after the opening', () => {
 		expect(firstStepFor([{ name: 'store-front', path: '/code/store-front', remote: '' }])).toBe(
 			'workspace',
 		);
+	});
+});
+
+describe('a checkout found on this Mac, added (crew add project --scan golden)', () => {
+	const found = readCheckouts(readGolden<unknown>('scan-checkouts.json'));
+
+	it('with a remote → a fresh clone of it, never the checkout itself', () =>
+		expect(toAddCommand(found.find((row) => row.name === 'checkout-api')!)).toEqual({
+			type: 'add_project',
+			name: 'checkout-api',
+			url: found.find((row) => row.name === 'checkout-api')!.remote,
+		}));
+	it('no remote → used where it is', () => {
+		const local = found.find((row) => row.name === 'infra-ops')!;
+
+		expect(local.remote).toBe('');
+		expect(toAddCommand(local)).toEqual({
+			type: 'add_project',
+			name: 'infra-ops',
+			path: local.path,
+		});
 	});
 });
 

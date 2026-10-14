@@ -616,6 +616,9 @@ export interface State {
 	// Voice off (the top bar's "voice"): nothing listens or speaks, Discord's bot leaves its channel;
 	// typing and the page go on. Kept across restarts.
 	voiceOff: boolean;
+	// This Mac went through Set up's first run, or skipped it: it never opens again, even with no
+	// worktree. Kept across restarts.
+	onboarded: boolean;
 	// The Discord voice channel (crew server discord setup), when set up; null otherwise.
 	discord: DiscordPresence | null;
 	// Activations of worktrees crew has made but Voice OS has not listed yet (Set up's "Open Voice
@@ -743,6 +746,8 @@ export type Action =
 	| { type: 'rename_session'; ref: string; name: string }
 	// The top bar's "voice" (and loaded at boot).
 	| { type: 'set_voice_off'; voiceOff: boolean }
+	// The first run finished or skipped, or crew already had worktrees (and loaded at boot).
+	| { type: 'set_onboarded'; onboarded: boolean }
 	// "What did I miss?", or the quiet came: the waiting updates are said as one line.
 	| { type: 'play_meanwhile' }
 	// A status update said aloud covered these sessions: their waiting updates are heard.

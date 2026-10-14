@@ -242,6 +242,13 @@ const App = () => {
 		navigate({ half: 'setup', machine: LOCAL_MACHINE, page: BOARD });
 	};
 
+	const goImport = () => {
+		writeLastHalf('setup');
+		navigate({ half: 'setup', machine: LOCAL_MACHINE, page: { page: 'import' } });
+	};
+
+	const markOnboarded = () => dispatch({ type: 'set_onboarded', onboarded: true });
+
 	const askSetupClaude = (prompt: string) => {
 		setPendingAsk(prompt);
 		navigate({ half: 'setup', machine: LOCAL_MACHINE, page: { page: 'chat' } });
@@ -273,6 +280,8 @@ const App = () => {
 							openVoice={openVoiceFromHome}
 							askClaude={askSetupClaude}
 							goSetup={goSetup}
+							goImport={goImport}
+							markOnboarded={markOnboarded}
 						/>
 					)}
 					{route.half === 'voice' && (
