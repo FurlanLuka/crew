@@ -1527,3 +1527,93 @@ button.srv-line:hover {
 		border-bottom: 1px solid var(--sep);
 	}
 }
+
+/* The board with no workspace: the three ways to start. */
+.tab-note {
+	margin: -6px 0 0;
+	max-width: 80ch;
+}
+.empty-board {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 12px;
+}
+.empty-way {
+	display: grid;
+	align-content: start;
+	justify-items: start;
+	gap: 6px;
+	padding: 16px;
+	border-radius: 14px;
+	background: var(--elev-1);
+	box-shadow: inset 0 0 0 1px var(--hair);
+}
+.empty-way span {
+	color: var(--label-2);
+	font-size: 13px;
+}
+.empty-way .btn {
+	margin-top: 6px;
+}
+@media (max-width: 700px) {
+	.empty-board {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+
+/* The setup chat and, while Claude is on a worktree, that worktree beside it. */
+.chat-layout {
+	width: min(1200px, 100%);
+	height: 100%;
+	min-height: 0;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	gap: 14px;
+}
+.chat-layout.with-panel {
+	grid-template-columns: minmax(0, 1fr) minmax(0, 420px);
+}
+.chat-layout .chatpage {
+	width: 100%;
+}
+.chat-panel {
+	display: grid;
+	align-content: start;
+	gap: 10px;
+	min-height: 0;
+	overflow-y: auto;
+}
+.chat-panel-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 4px 0;
+}
+.chat-panel-head b {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 15px;
+}
+.chat-panel .srv-split.open {
+	grid-template-columns: minmax(0, 1fr);
+}
+.chat-panel .srv-split.open .srv-list {
+	border-right: 0;
+	border-bottom: 1px solid var(--sep);
+}
+.chat-panel .log-pane-lines {
+	min-height: 160px;
+	max-height: 280px;
+}
+@media (max-width: 900px) {
+	.chat-layout.with-panel {
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-rows: minmax(0, 1fr) auto;
+	}
+	.chat-panel {
+		max-height: 40vh;
+	}
+}

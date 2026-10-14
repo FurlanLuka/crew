@@ -221,7 +221,7 @@ export const ServersCard = ({
 				<b className="srv-card-title">{describeHeadline({ mode, lines, row })}</b>
 				<span className="row-actions">
 					{fixLine && (
-						<button type="button" className="btn sm" onClick={() => ctx.askClaude(fixLine)}>
+						<button type="button" className="btn sm" onClick={() => ctx.askClaude(fixLine, ref)}>
 							Fix with Claude
 						</button>
 					)}

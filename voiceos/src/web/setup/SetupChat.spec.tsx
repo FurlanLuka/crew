@@ -8,7 +8,7 @@ import { AskDock } from '../components/AskDock.js';
 import { SessionStream } from '../components/SessionStream.js';
 import type { SetupContext } from './common.js';
 import { SetupChat } from './SetupChat.js';
-import { setupRefFor } from './SetupShell.js';
+import { type AskedFocus, setupRefFor } from './SetupShell.js';
 
 const noop = () => undefined;
 
@@ -50,9 +50,14 @@ const createContext = (state: State, machine = 'local'): SetupContext => ({
 	openVoice: noop,
 });
 
-const renderChat = (state: State, machine = 'local') =>
+const renderChat = (state: State, machine = 'local', askedFocus: AskedFocus | null = null) =>
 	renderToStaticMarkup(
-		<SetupChat ctx={createContext(state, machine)} draft="" onDraftUsed={noop} />,
+		<SetupChat
+			ctx={createContext(state, machine)}
+			draft=""
+			onDraftUsed={noop}
+			askedFocus={askedFocus}
+		/>,
 	);
 
 describe('SessionStream', () => {
@@ -199,5 +204,21 @@ describe('setupRefFor', () => {
 	it("this Mac's is setup, another machine's is prefixed with its id", () => {
 		expect(setupRefFor('local')).toBe('setup');
 		expect(setupRefFor('vm1')).toBe('vm1:setup');
+	});
+});
+
+describe('the worktree beside the chat', () => {
+	it('a Fix with Claude names its worktree → the panel shows it before anything is sent', () => {
+		const html = renderChat(createInitialState(), 'local', { ref: 'store/wrk1', afterIndex: 0 });
+
+		expect(html).toContain('aria-label="store/wrk1 beside the chat"');
+		expect(html).toContain('with-panel');
+	});
+
+	it('nothing named → the plain chat', () => {
+		const html = renderChat(createInitialState());
+
+		expect(html).not.toContain('beside the chat');
+		expect(html).not.toContain('with-panel');
 	});
 });

@@ -14,8 +14,11 @@ import {
 	listProblems,
 	listWorkspacesOf,
 	readCheck,
+	readWorktreeState,
 	summarizeList,
+	type WorktreeState,
 } from './derive.js';
+import { EmptyBoard } from './EmptyBoard.js';
 import { isSetupBusy, setupRefFor } from './SetupShell.js';
 import type { CrewCheckStatus, CrewProject, CrewWorkspace, CrewWorktree } from './types.js';
 import { countOf } from '../count.js';
@@ -102,7 +105,16 @@ export const ProblemsStrip = ({ ctx, problems }: { ctx: SetupContext; problems: 
 						<button type="button" className="btn sm" onClick={() => ctx.go(problem.fix)}>
 							Fix
 						</button>
-						<button type="button" className="btn sm" onClick={() => ctx.askClaude(problem.ask)}>
+						<button
+							type="button"
+							className="btn sm"
+							onClick={() =>
+								ctx.askClaude(
+									problem.ask,
+									problem.fix.page === 'worktree' ? problem.fix.ref : undefined,
+								)
+							}
+						>
 							Fix with Claude
 						</button>
 					</span>
@@ -110,6 +122,13 @@ export const ProblemsStrip = ({ ctx, problems }: { ctx: SetupContext; problems: 
 			))}
 		</div>
 	);
+};
+
+const PILL_CLASS: Record<WorktreeState, string> = {
+	issue: 'down',
+	installing: 'wait',
+	running: 'up',
+	stopped: '',
 };
 
 // Shown before "+N" in a cell: what fits one line beside the other columns.
@@ -237,18 +256,18 @@ export const Board = ({ ctx, tab, onFirstRun }: BoardProps) => {
 					<button
 						type="button"
 						role="tab"
-						aria-selected={isProjects}
-						onClick={() => ctx.go({ page: 'board', tab: 'projects' }, { replace: true })}
-					>
-						Projects
-					</button>
-					<button
-						type="button"
-						role="tab"
 						aria-selected={!isProjects}
 						onClick={() => ctx.go({ page: 'board', tab: 'workspaces' }, { replace: true })}
 					>
 						Workspaces
+					</button>
+					<button
+						type="button"
+						role="tab"
+						aria-selected={isProjects}
+						onClick={() => ctx.go({ page: 'board', tab: 'projects' }, { replace: true })}
+					>
+						Projects
 					</button>
 				</div>
 				<button
@@ -264,6 +283,11 @@ export const Board = ({ ctx, tab, onFirstRun }: BoardProps) => {
 						: `${countOf(workspaceRows.length, 'workspace')} on ${ctx.machineTitle}`}
 				</span>
 			</div>
+			<p className="m tab-note">
+				{isProjects
+					? 'The repos crew knows on this machine: how each installs and which dev servers it runs. Set once, used by every workspace.'
+					: 'Where you work. A workspace groups projects; each of its worktrees is a full working set, every project on its own branch and ports.'}
+			</p>
 			<ClaudeCard ctx={ctx} />
 			{failure && (
 				<p className="result-line bad" role="alert">
@@ -332,6 +356,8 @@ export const Board = ({ ctx, tab, onFirstRun }: BoardProps) => {
 						</tbody>
 					</table>
 				</div>
+			) : workspaces.data && workspaceRows.length === 0 ? (
+				<EmptyBoard ctx={ctx} />
 			) : (
 				<div className="matrix-wrap">
 					<table className="matrix workspaces">
@@ -380,13 +406,7 @@ export const Board = ({ ctx, tab, onFirstRun }: BoardProps) => {
 													const ref = `${workspace.name}/${name}`;
 													const row = worktreeRows.find((worktree) => worktree.ref === ref);
 													const issue = row?.issues?.[0];
-													const cls = issue
-														? 'down'
-														: row?.installing
-															? 'wait'
-															: row?.dev_running
-																? 'up'
-																: '';
+													const cls = row ? PILL_CLASS[readWorktreeState(row)] : '';
 
 													return (
 														<button

@@ -102,6 +102,12 @@ interface BusyAsk {
 	prompt: string;
 }
 
+// A worktree named by a "Fix with Claude": the chat shows it until the stream names one after it.
+export interface AskedFocus {
+	ref: string;
+	afterIndex: number;
+}
+
 export const SetupShell = ({
 	state,
 	route,
@@ -115,6 +121,7 @@ export const SetupShell = ({
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
 	const [busyAsk, setBusyAsk] = useState<BusyAsk | null>(null);
 	const [chatDraft, setChatDraft] = useState('');
+	const [askedFocus, setAskedFocus] = useState<AskedFocus | null>(null);
 	const menuRef = useRef<HTMLDivElement | null>(null);
 	const machineTitle = readMachineTitle(state, machine);
 	const setupRef = setupRefFor(machine);
@@ -126,7 +133,11 @@ export const SetupShell = ({
 	);
 
 	const askClaude = useCallback(
-		(prompt: string) => {
+		(prompt: string, ref?: string) => {
+			if (ref) {
+				setAskedFocus({ ref, afterIndex: state.sessions[setupRef]?.stream.length ?? 0 });
+			}
+
 			if (isSetupBusy(state, setupRef)) {
 				setBusyAsk({ prompt });
 
@@ -330,6 +341,7 @@ export const SetupShell = ({
 					page={page}
 					chatDraft={chatDraft}
 					onChatDraftUsed={() => setChatDraft('')}
+					askedFocus={askedFocus}
 					onFirstRun={goFirstRun}
 				/>
 			</main>
@@ -383,6 +395,7 @@ interface SetupPageViewProps {
 	page: SetupPage;
 	chatDraft: string;
 	onChatDraftUsed: () => void;
+	askedFocus: AskedFocus | null;
 	onFirstRun: () => void;
 }
 
@@ -391,13 +404,21 @@ const SetupPageView = ({
 	page,
 	chatDraft,
 	onChatDraftUsed,
+	askedFocus,
 	onFirstRun,
 }: SetupPageViewProps) => {
 	switch (page.page) {
 		case 'board':
 			return <Board ctx={ctx} tab={page.tab} onFirstRun={onFirstRun} />;
 		case 'chat':
-			return <SetupChat ctx={ctx} draft={chatDraft} onDraftUsed={onChatDraftUsed} />;
+			return (
+				<SetupChat
+					ctx={ctx}
+					draft={chatDraft}
+					onDraftUsed={onChatDraftUsed}
+					askedFocus={askedFocus}
+				/>
+			);
 		case 'project':
 			return <ProjectPage ctx={ctx} name={page.name} />;
 		case 'project-new':

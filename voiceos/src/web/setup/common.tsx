@@ -20,8 +20,9 @@ export interface SetupContext {
 	machine: string;
 	machineTitle: string;
 	go: (page: SetupPage, options?: { replace?: boolean }) => void;
-	// "Fix with Claude", "Ask Claude": to this machine's setup chat, never interrupting it.
-	askClaude: (prompt: string) => void;
+	// "Fix with Claude", "Ask Claude": to this machine's setup chat, never interrupting it. ref: the
+	// worktree it is about, shown beside the chat at once.
+	askClaude: (prompt: string, ref?: string) => void;
 	send: (message: ClientMessage) => void;
 	// Voice OS on that worktree's session: activated, then on screen.
 	openVoice: (sessionRef: string) => void;

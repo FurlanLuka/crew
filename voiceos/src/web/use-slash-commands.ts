@@ -3,6 +3,7 @@
 import { type KeyboardEvent, useEffect, useState } from 'react';
 import { LOCAL_MACHINE } from '../shared/machine-ref.js';
 import type { ClientMessage, State } from '../shared/protocol.js';
+import { readMenuKey } from './box-menu-keys.js';
 import { runCrew } from './setup/api.js';
 import {
 	describeUpdate,
@@ -104,33 +105,24 @@ export const useSlashCommands = ({
 
 	const handleKey = (event: KeyboardEvent): boolean => {
 		const entry = entries[index];
+		const menuKey = readMenuKey({
+			key: event.key,
+			isShift: event.shiftKey,
+			isComposing: event.nativeEvent.isComposing,
+			index,
+			length: entries.length,
+		});
 
-		if (!entry) {
+		if (!entry || !menuKey) {
 			return false;
 		}
 
-		switch (event.key) {
-			case 'ArrowDown':
-				setSelected((index + 1) % entries.length);
-				break;
-			case 'ArrowUp':
-				setSelected((index - 1 + entries.length) % entries.length);
-				break;
-			case 'Escape':
-				setClosedFor(text);
-				break;
-			case 'Tab':
-				choose(entry);
-				break;
-			case 'Enter':
-				if (event.shiftKey || event.nativeEvent.isComposing) {
-					return false;
-				}
-
-				choose(entry);
-				break;
-			default:
-				return false;
+		if (menuKey.kind === 'move') {
+			setSelected(menuKey.index);
+		} else if (menuKey.kind === 'close') {
+			setClosedFor(text);
+		} else {
+			choose(entry);
 		}
 
 		event.preventDefault();
