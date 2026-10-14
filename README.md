@@ -25,11 +25,12 @@ crew
 ```
 
 That's it. `crew` starts its server and opens a page in your browser (over SSH it prints the link
-instead). The first time, it finds the git repos you already have, you tick the ones you work on,
-group them into a workspace, and it makes the first working copy of all of them while you watch.
+instead). The first time, you import from another machine, skip to set things up yourself, or go
+step by step: it finds the git repos you already have, you tick the ones you work on, group them
+into a workspace, and it makes the first working copy of all of them while you watch.
 Then you open Voice OS, give it two API keys, hold **Space** and talk.
 
-![The first run: crew lists the git checkouts it found in your code folders, each ticked, with the commands it will run](docs/images/setup/first-run.png)
+![The first run: crew lists the git checkouts it found in your code folders, each ticked, each cloned from its remote](docs/images/setup/first-run.png)
 
 ## Every machine, one voice
 

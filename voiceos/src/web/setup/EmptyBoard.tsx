@@ -3,7 +3,7 @@
 import type { SetupContext } from './common.js';
 
 export const EmptyBoard = ({ ctx }: { ctx: SetupContext }) => (
-	<div className="empty-board" aria-label="Nothing set up yet">
+	<section className="empty-board" aria-label="Nothing set up yet">
 		<div className="empty-way">
 			<b>New workspace</b>
 			<span>Pick the projects that belong together. crew clones the ones it doesn't know yet.</span>
@@ -29,5 +29,5 @@ export const EmptyBoard = ({ ctx }: { ctx: SetupContext }) => (
 				Open the chat
 			</button>
 		</div>
-	</div>
+	</section>
 );
