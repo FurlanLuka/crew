@@ -107,6 +107,8 @@ export interface FakeCrew {
 	setDevLogs: (server: string, answer: string[] | { refuse: string } | null) => void;
 	// Reads of this server's log wait until the returned release is called: a slow crew, held.
 	holdDevLogs: (server: string) => () => void;
+	// Every command of this type waits until the returned release is called: a slow read, held.
+	holdCommand: (type: SetupCommand['type']) => () => void;
 	// Every command for this machine fails the way the link fails it (out of reach, an older crew),
 	// until reset; null puts it back.
 	failMachine: (id: string, failure: MachineFailure | null) => void;
@@ -342,17 +344,19 @@ export const createFakeCrew = ({
 	const failNext = new Set<string>();
 	const devLogs = new Map<string, string[] | { refuse: string }>();
 	const heldLogs = new Map<string, PromiseWithResolvers<void>>();
+	const heldCommands = new Map<string, PromiseWithResolvers<void>>();
 	const failing = new Map<string, MachineFailure>();
 
 	const reset = (next: 'golden' | 'empty' = seed) => {
 		devLogs.clear();
 
 		// A test that failed while holding a read must not leave the next ones waiting on it.
-		for (const gate of heldLogs.values()) {
+		for (const gate of [...heldLogs.values(), ...heldCommands.values()]) {
 			gate.resolve();
 		}
 
 		heldLogs.clear();
+		heldCommands.clear();
 
 		for (const id of [LOCAL_MACHINE, ...remotes]) {
 			machines[id] = seedMachine(next);
@@ -1430,6 +1434,8 @@ export const createFakeCrew = ({
 				await heldLogs.get(command.server)?.promise;
 			}
 
+			await heldCommands.get(command.type)?.promise;
+
 			return asCrewPrints(command, run(machine, command));
 		},
 		machines,
@@ -1441,6 +1447,15 @@ export const createFakeCrew = ({
 
 			return () => {
 				heldLogs.delete(server);
+				gate.resolve();
+			};
+		},
+		holdCommand: (type) => {
+			const gate = Promise.withResolvers<void>();
+			heldCommands.set(type, gate);
+
+			return () => {
+				heldCommands.delete(type);
 				gate.resolve();
 			};
 		},
