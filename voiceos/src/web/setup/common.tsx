@@ -54,7 +54,7 @@ export const describeSize = (bytes: number | undefined): string =>
 interface ConfirmProps {
 	title: string;
 	why: ReactNode;
-	// The removal itself, shown as its command; its dry run says what it costs.
+	// The removal itself; its dry run says what it costs.
 	command: SetupCommand;
 	dryRun?: SetupCommand | null;
 	// The dry run already read by the page that opens this (it needed the answer too): shown as it is,

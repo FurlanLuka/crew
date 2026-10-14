@@ -15,7 +15,7 @@ body:has(.setup) {
 	position: sticky;
 	top: calc(10px + env(safe-area-inset-top, 0px));
 	z-index: 20;
-	width: min(860px, calc(100% - 32px));
+	width: min(1200px, calc(100% - 32px));
 	margin: 10px auto 0;
 	display: flex;
 	align-items: center;
@@ -123,11 +123,18 @@ body:has(.setup) {
 	justify-items: center;
 	padding: 26px 16px 0;
 }
+/* Every page is as wide as the toolbar; forms keep a column a form reads well at. */
 .page {
-	width: min(860px, 100%);
+	width: min(1200px, 100%);
 	display: grid;
 	gap: 18px;
 	align-content: start;
+}
+.page.narrow {
+	width: min(640px, 100%);
+}
+.page .lead {
+	max-width: 68ch;
 }
 @media (prefers-reduced-motion: no-preference) {
 	.page {
@@ -1360,4 +1367,55 @@ select.sel:disabled {
 }
 .c-warn {
 	color: var(--amber);
+}
+
+/* A workspace's worktrees: one card each, its servers as pills under its name. */
+.wt-cards {
+	display: grid;
+	gap: 10px;
+}
+.wt-card {
+	display: grid;
+	gap: 8px;
+	padding: 12px 14px;
+	border-radius: 14px;
+	background: var(--elev-1);
+	box-shadow: inset 0 0 0 1px var(--hair);
+}
+.wt-card-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px 10px;
+	min-width: 0;
+}
+.wt-card-head .rowname b {
+	font-size: 15px;
+}
+.wt-card-status {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.wt-pills {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	padding-left: 18px;
+}
+.wt-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 3px 9px;
+	border-radius: 8px;
+	background: var(--elev-2);
+	color: var(--label-2);
+	font-size: 12px;
+}
+.danger-zone {
+	padding-top: 10px;
+	border-top: 1px solid var(--sep);
 }

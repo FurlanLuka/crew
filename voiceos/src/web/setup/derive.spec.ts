@@ -10,6 +10,8 @@ import {
 	listWorkspacesOf,
 	decideFirstRun,
 	decideOnboarding,
+	readWorktreeState,
+	type WorktreeState,
 	deriveProjectState,
 	describeIssue,
 	describeStages,
@@ -54,6 +56,24 @@ describe('decideFirstRun', () => {
 	it('worktrees → not a first run', () =>
 		expect(decideFirstRun(PROJECTS, WORKTREES)).toEqual({ isFirstRun: false }));
 	it('not read yet → undecided', () => expect(decideFirstRun(null, null)).toBeNull());
+});
+
+describe('readWorktreeState', () => {
+	const row = (patch: Partial<CrewWorktree>) => ({
+		dev_running: false,
+		installing: false,
+		...patch,
+	});
+	const ISSUE = { stage: 'install', project: 'store-api', detail: '' };
+
+	it.each<[ReturnType<typeof row>, WorktreeState]>([
+		[row({}), 'stopped'],
+		[row({ dev_running: true }), 'running'],
+		[row({ installing: true }), 'installing'],
+		[row({ installing: true, issues: [ISSUE] }), 'issue'],
+		[row({ dev_running: true, issues: [ISSUE] }), 'issue'],
+		[row({ issues: [] }), 'stopped'],
+	])('%j → %s', (input, state) => expect(readWorktreeState(input)).toBe(state));
 });
 
 describe('decideOnboarding', () => {

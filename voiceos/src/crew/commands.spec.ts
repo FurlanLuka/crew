@@ -168,6 +168,7 @@ const SECOND_SAMPLES: SetupCommand[] = [
 	{ type: 'dev_add', project: 'store-api', name: 'worker' },
 	{ type: 'add_worktree', ref: 'store-front/wrk2' },
 	{ type: 'env', ref: 'store-front/main', project: 'store-front' },
+	{ type: 'setup_logs', ref: 'store-front/wrk1', project: 'store-api', server: 'api', lines: 200 },
 	{ type: 'dev_add', project: 'store-api', name: 'http', rename: 'api', port: 0 },
 ];
 

@@ -1,135 +1,296 @@
 [
 	{
 		"type": "ls_projects",
-		"argv": ["ls", "projects", "--json"]
+		"argv": [
+			"ls",
+			"projects",
+			"--json"
+		]
 	},
 	{
 		"type": "ls_workspaces",
-		"argv": ["ls", "workspaces", "--json"]
+		"argv": [
+			"ls",
+			"workspaces",
+			"--json"
+		]
 	},
 	{
 		"type": "ls_worktrees",
-		"argv": ["ls", "worktrees", "store-front", "--size", "--json"]
+		"argv": [
+			"ls",
+			"worktrees",
+			"store-front",
+			"--size",
+			"--json"
+		]
 	},
 	{
 		"type": "ls_bindings",
-		"argv": ["ls", "bindings", "store-front", "--check=store-front/main", "--json"]
+		"argv": [
+			"ls",
+			"bindings",
+			"store-front",
+			"--check=store-front/main",
+			"--json"
+		]
 	},
 	{
 		"type": "ls_bindings_preview",
-		"argv": ["ls", "bindings", "store-front", "--preview", "--json"]
+		"argv": [
+			"ls",
+			"bindings",
+			"store-front",
+			"--preview",
+			"--json"
+		]
 	},
 	{
 		"type": "ls_overrides",
-		"argv": ["ls", "overrides", "store-front/main", "--json"]
+		"argv": [
+			"ls",
+			"overrides",
+			"store-front/main",
+			"--json"
+		]
 	},
 	{
 		"type": "ls_bases",
-		"argv": ["ls", "bases", "store-front", "--json"]
+		"argv": [
+			"ls",
+			"bases",
+			"store-front",
+			"--json"
+		]
 	},
 	{
 		"type": "show",
-		"argv": ["show", "store-front/main", "--json"]
+		"argv": [
+			"show",
+			"store-front/main",
+			"--json"
+		]
 	},
 	{
 		"type": "scan_checkouts",
-		"argv": ["add", "project", "--scan", "--json"]
+		"argv": [
+			"add",
+			"project",
+			"--scan",
+			"--json"
+		]
 	},
 	{
 		"type": "setup_status",
-		"argv": ["setup", "status", "store-front/wrk1", "--json"]
+		"argv": [
+			"setup",
+			"status",
+			"store-front/wrk1",
+			"--json"
+		]
 	},
 	{
 		"type": "setup_logs",
-		"argv": ["setup", "logs", "store-front/wrk1", "store-api", "--lines=200", "--json"]
+		"argv": [
+			"setup",
+			"logs",
+			"store-front/wrk1",
+			"store-api",
+			"--lines=200",
+			"--json"
+		]
 	},
 	{
 		"type": "check_status",
-		"argv": ["check", "project", "store-api", "--status", "--json"]
+		"argv": [
+			"check",
+			"project",
+			"store-api",
+			"--status",
+			"--json"
+		]
 	},
 	{
 		"type": "dev_status",
-		"argv": ["dev", "status", "store-front/main", "--json"]
+		"argv": [
+			"dev",
+			"status",
+			"store-front/main",
+			"--json"
+		]
 	},
 	{
 		"type": "dev_check",
-		"argv": ["dev", "check", "store-front/main", "--json"]
+		"argv": [
+			"dev",
+			"check",
+			"store-front/main",
+			"--json"
+		]
 	},
 	{
 		"type": "dev_logs",
-		"argv": ["dev", "logs", "store-front/main", "web", "--lines=100", "--json"]
+		"argv": [
+			"dev",
+			"logs",
+			"store-front/main",
+			"web",
+			"--lines=100",
+			"--json"
+		]
 	},
 	{
 		"type": "env",
-		"argv": ["env", "store-front/main", "store-front/web", "--json"]
+		"argv": [
+			"env",
+			"store-front/main",
+			"store-front/web",
+			"--json"
+		]
 	},
 	{
 		"type": "fix",
-		"argv": ["fix", "store-front/main", "--print"]
+		"argv": [
+			"fix",
+			"store-front/main",
+			"--print"
+		]
 	},
 	{
 		"type": "import_plan",
-		"argv": ["import", "-", "--plan", "--json"]
+		"argv": [
+			"import",
+			"-",
+			"--plan",
+			"--json"
+		]
 	},
 	{
 		"type": "export",
-		"argv": ["export", "--projects=store-front,store-api", "--workspaces=store-front", "-"]
+		"argv": [
+			"export",
+			"--projects=store-front,store-api",
+			"--workspaces=store-front",
+			"-"
+		]
 	},
 	{
 		"type": "clean_dry_run",
-		"argv": ["clean", "--dry-run", "--json"]
+		"argv": [
+			"clean",
+			"--dry-run",
+			"--json"
+		]
 	},
 	{
 		"type": "trash",
-		"argv": ["trash", "--json"]
+		"argv": [
+			"trash",
+			"--json"
+		]
 	},
 	{
 		"type": "config_show",
-		"argv": ["config", "show", "--json"]
+		"argv": [
+			"config",
+			"show",
+			"--json"
+		]
 	},
 	{
 		"type": "proxy_status",
-		"argv": ["dev", "proxy", "status", "--json"]
+		"argv": [
+			"dev",
+			"proxy",
+			"status",
+			"--json"
+		]
 	},
 	{
 		"type": "update_check",
-		"argv": ["update", "--check", "--json"]
+		"argv": [
+			"update",
+			"--check",
+			"--json"
+		]
 	},
 	{
 		"type": "server_status",
-		"argv": ["voice", "status", "--json"]
+		"argv": [
+			"voice",
+			"status",
+			"--json"
+		]
 	},
 	{
 		"type": "machines_ls",
-		"argv": ["voice", "machines", "ls", "--json"]
+		"argv": [
+			"voice",
+			"machines",
+			"ls",
+			"--json"
+		]
 	},
 	{
 		"type": "keys_status",
-		"argv": ["voice", "keys", "status", "--json"]
+		"argv": [
+			"voice",
+			"keys",
+			"status",
+			"--json"
+		]
 	},
 	{
 		"type": "discord_status",
-		"argv": ["voice", "discord", "status", "--json"]
+		"argv": [
+			"voice",
+			"discord",
+			"status",
+			"--json"
+		]
 	},
 	{
 		"type": "debug_tail",
-		"argv": ["debug", "--tail=50"]
+		"argv": [
+			"debug",
+			"--tail=50"
+		]
 	},
 	{
 		"type": "doctor",
-		"argv": ["doctor", "--json"]
+		"argv": [
+			"doctor",
+			"--json"
+		]
 	},
 	{
 		"type": "migrate_dry_run",
-		"argv": ["migrate", "--dry-run", "--json"]
+		"argv": [
+			"migrate",
+			"--dry-run",
+			"--json"
+		]
 	},
 	{
 		"type": "rm_workspace_project_dry_run",
-		"argv": ["rm", "workspace", "store-front", "signals", "--dry-run", "--json"]
+		"argv": [
+			"rm",
+			"workspace",
+			"store-front",
+			"signals",
+			"--dry-run",
+			"--json"
+		]
 	},
 	{
 		"type": "rm_worktree_dry_run",
-		"argv": ["rm", "worktree", "store-front/wrk1", "--dry-run", "--json"]
+		"argv": [
+			"rm",
+			"worktree",
+			"store-front/wrk1",
+			"--dry-run",
+			"--json"
+		]
 	},
 	{
 		"type": "add_binding_dry_run",
@@ -145,7 +306,13 @@
 	},
 	{
 		"type": "add_binding_scan",
-		"argv": ["add", "binding", "store-front", "--scan", "--json"]
+		"argv": [
+			"add",
+			"binding",
+			"store-front",
+			"--scan",
+			"--json"
+		]
 	},
 	{
 		"type": "add_project",
@@ -160,11 +327,22 @@
 	},
 	{
 		"type": "update_project",
-		"argv": ["add", "project", "store-api", "--setup=", "--env-cmd=make env"]
+		"argv": [
+			"add",
+			"project",
+			"store-api",
+			"--setup=",
+			"--env-cmd=make env"
+		]
 	},
 	{
 		"type": "rm_project",
-		"argv": ["rm", "project", "signals", "--keep-clone"]
+		"argv": [
+			"rm",
+			"project",
+			"signals",
+			"--keep-clone"
+		]
 	},
 	{
 		"type": "dev_add",
@@ -181,79 +359,181 @@
 	},
 	{
 		"type": "dev_rm",
-		"argv": ["dev", "rm", "store-api", "worker"]
+		"argv": [
+			"dev",
+			"rm",
+			"store-api",
+			"worker"
+		]
 	},
 	{
 		"type": "add_binding",
-		"argv": ["add", "binding", "store-front", "--var=API_URL", "--value={{store-api/api}}"]
+		"argv": [
+			"add",
+			"binding",
+			"store-front",
+			"--var=API_URL",
+			"--value={{store-api/api}}"
+		]
 	},
 	{
 		"type": "add_binding_scan_apply",
-		"argv": ["add", "binding", "store-front", "--scan", "--apply", "--json"]
+		"argv": [
+			"add",
+			"binding",
+			"store-front",
+			"--scan",
+			"--apply",
+			"--json"
+		]
 	},
 	{
 		"type": "rm_binding",
-		"argv": ["rm", "binding", "store-front/web", "API_URL"]
+		"argv": [
+			"rm",
+			"binding",
+			"store-front/web",
+			"API_URL"
+		]
 	},
 	{
 		"type": "check_project",
-		"argv": ["check", "project", "store-api", "--pull", "--no-smoke", "--json"]
+		"argv": [
+			"check",
+			"project",
+			"store-api",
+			"--pull",
+			"--no-smoke",
+			"--json"
+		]
 	},
 	{
 		"type": "add_workspace",
-		"argv": ["add", "workspace", "store-front", "store-front", "store-api", "--json"]
+		"argv": [
+			"add",
+			"workspace",
+			"store-front",
+			"store-front",
+			"store-api",
+			"--json"
+		]
 	},
 	{
 		"type": "rm_workspace_project",
-		"argv": ["rm", "workspace", "store-front", "signals"]
+		"argv": [
+			"rm",
+			"workspace",
+			"store-front",
+			"signals"
+		]
 	},
 	{
 		"type": "rm_workspace",
-		"argv": ["rm", "admin"]
+		"argv": [
+			"rm",
+			"admin"
+		]
 	},
 	{
 		"type": "add_worktree",
-		"argv": ["add", "worktree", "store-front/wrk2", "--pull", "--json"]
+		"argv": [
+			"add",
+			"worktree",
+			"store-front/wrk2",
+			"--pull",
+			"--json"
+		]
 	},
 	{
 		"type": "rm_worktree",
-		"argv": ["rm", "worktree", "store-front/wrk1"]
+		"argv": [
+			"rm",
+			"worktree",
+			"store-front/wrk1"
+		]
 	},
 	{
 		"type": "rename_worktree",
-		"argv": ["rename", "worktree", "store-front/wrk1", "checkout", "--json"]
+		"argv": [
+			"rename",
+			"worktree",
+			"store-front/wrk1",
+			"checkout",
+			"--json"
+		]
 	},
 	{
 		"type": "duplicate_worktree",
-		"argv": ["duplicate", "store-front/main", "wrk3", "--json"]
+		"argv": [
+			"duplicate",
+			"store-front/main",
+			"wrk3",
+			"--json"
+		]
 	},
 	{
 		"type": "add_override",
-		"argv": ["add", "override", "store-front/main", "API_URL=x"]
+		"argv": [
+			"add",
+			"override",
+			"store-front/main",
+			"API_URL=x"
+		]
 	},
 	{
 		"type": "rm_override",
-		"argv": ["rm", "override", "store-front/main", "API_URL"]
+		"argv": [
+			"rm",
+			"override",
+			"store-front/main",
+			"API_URL"
+		]
 	},
 	{
 		"type": "setup_rerun",
-		"argv": ["setup", "store-front/wrk1", "store-api", "--no-smoke", "--json"]
+		"argv": [
+			"setup",
+			"store-front/wrk1",
+			"store-api",
+			"--no-smoke",
+			"--json"
+		]
 	},
 	{
 		"type": "verify",
-		"argv": ["verify", "store-front/main", "store-front", "--json"]
+		"argv": [
+			"verify",
+			"store-front/main",
+			"store-front",
+			"--json"
+		]
 	},
 	{
 		"type": "dev_start",
-		"argv": ["dev", "start", "store-front/main", "--proxy", "--json"]
+		"argv": [
+			"dev",
+			"start",
+			"store-front/main",
+			"--proxy",
+			"--json"
+		]
 	},
 	{
 		"type": "dev_stop",
-		"argv": ["dev", "stop", "store-front/main"]
+		"argv": [
+			"dev",
+			"stop",
+			"store-front/main"
+		]
 	},
 	{
 		"type": "dev_restart",
-		"argv": ["dev", "restart", "store-front/main", "--json"]
+		"argv": [
+			"dev",
+			"restart",
+			"store-front/main",
+			"--json"
+		]
 	},
 	{
 		"type": "import_project",
@@ -285,110 +565,251 @@
 	},
 	{
 		"type": "import_all",
-		"argv": ["import", "-", "--all", "--replace", "--json"]
+		"argv": [
+			"import",
+			"-",
+			"--all",
+			"--replace",
+			"--json"
+		]
 	},
 	{
 		"type": "clean",
-		"argv": ["clean", "--json"]
+		"argv": [
+			"clean",
+			"--json"
+		]
 	},
 	{
 		"type": "trash_empty",
-		"argv": ["trash", "empty", "--json"]
+		"argv": [
+			"trash",
+			"empty",
+			"--json"
+		]
 	},
 	{
 		"type": "config_set",
-		"argv": ["config", "set", "server_ip", "192.168.1.20"]
+		"argv": [
+			"config",
+			"set",
+			"server_ip",
+			"192.168.1.20"
+		]
 	},
 	{
 		"type": "config_refresh",
-		"argv": ["config", "refresh"]
+		"argv": [
+			"config",
+			"refresh"
+		]
 	},
 	{
 		"type": "proxy_trust",
-		"argv": ["dev", "proxy", "trust", "--json"]
+		"argv": [
+			"dev",
+			"proxy",
+			"trust",
+			"--json"
+		]
 	},
 	{
 		"type": "migrate",
-		"argv": ["migrate", "--yes", "--json"]
+		"argv": [
+			"migrate",
+			"--yes",
+			"--json"
+		]
 	},
 	{
 		"type": "update",
-		"argv": ["update", "--json"]
+		"argv": [
+			"update",
+			"--json"
+		]
 	},
 	{
 		"type": "server_restart",
-		"argv": ["voice", "restart", "--no-open"]
+		"argv": [
+			"voice",
+			"restart",
+			"--no-open"
+		]
 	},
 	{
 		"type": "server_stop",
-		"argv": ["voice", "stop"]
+		"argv": [
+			"voice",
+			"stop"
+		]
 	},
 	{
 		"type": "uninstall",
-		"argv": ["uninstall", "--purge", "--yes"]
+		"argv": [
+			"uninstall",
+			"--purge",
+			"--yes"
+		]
 	},
 	{
 		"type": "machines_add",
-		"argv": ["voice", "machines", "add", "build-box", "--name=Build box", "--json"]
+		"argv": [
+			"voice",
+			"machines",
+			"add",
+			"build-box",
+			"--name=Build box",
+			"--json"
+		]
 	},
 	{
 		"type": "machines_rm",
-		"argv": ["voice", "machines", "rm", "vm1", "--json"]
+		"argv": [
+			"voice",
+			"machines",
+			"rm",
+			"vm1",
+			"--json"
+		]
 	},
 	{
 		"type": "machines_rename",
-		"argv": ["voice", "machines", "rename", "vm1", "Build box", "--json"]
+		"argv": [
+			"voice",
+			"machines",
+			"rename",
+			"vm1",
+			"Build box",
+			"--json"
+		]
 	},
 	{
 		"type": "keys_set",
-		"argv": ["voice", "keys", "set", "soniox", "--json"]
+		"argv": [
+			"voice",
+			"keys",
+			"set",
+			"soniox",
+			"--json"
+		]
 	},
 	{
 		"type": "discord_off",
-		"argv": ["voice", "discord", "off", "--json"]
+		"argv": [
+			"voice",
+			"discord",
+			"off",
+			"--json"
+		]
 	},
 	{
 		"type": "ls_chats",
-		"argv": ["ls", "chats", "--json"]
+		"argv": [
+			"ls",
+			"chats",
+			"--json"
+		]
 	},
 	{
 		"type": "chat_add",
-		"argv": ["chat", "add", "--dir=~/notes", "--name=Weekly notes", "--json"]
+		"argv": [
+			"chat",
+			"add",
+			"--dir=~/notes",
+			"--name=Weekly notes",
+			"--json"
+		]
 	},
 	{
 		"type": "chat_rm",
-		"argv": ["chat", "rm", "chat/3fa9c1", "--json"]
+		"argv": [
+			"chat",
+			"rm",
+			"chat/3fa9c1",
+			"--json"
+		]
 	},
 	{
 		"type": "discord_channels",
-		"argv": ["voice", "discord", "channels", "--json"]
+		"argv": [
+			"voice",
+			"discord",
+			"channels",
+			"--json"
+		]
 	},
 	{
 		"type": "discord_text_channel",
-		"argv": ["voice", "discord", "setup", "--text-channel=1001", "--json"]
+		"argv": [
+			"voice",
+			"discord",
+			"setup",
+			"--text-channel=1001",
+			"--json"
+		]
 	},
 	{
 		"type": "chat_add",
-		"argv": ["chat", "add", "--json"]
+		"argv": [
+			"chat",
+			"add",
+			"--json"
+		]
 	},
 	{
 		"type": "uninstall",
-		"argv": ["uninstall", "--yes"]
+		"argv": [
+			"uninstall",
+			"--yes"
+		]
 	},
 	{
 		"type": "dev_add",
-		"argv": ["dev", "add", "store-api", "--name=worker"]
+		"argv": [
+			"dev",
+			"add",
+			"store-api",
+			"--name=worker"
+		]
 	},
 	{
 		"type": "add_worktree",
-		"argv": ["add", "worktree", "store-front/wrk2", "--json"]
+		"argv": [
+			"add",
+			"worktree",
+			"store-front/wrk2",
+			"--json"
+		]
 	},
 	{
 		"type": "env",
-		"argv": ["env", "store-front/main", "store-front", "--json"]
+		"argv": [
+			"env",
+			"store-front/main",
+			"store-front",
+			"--json"
+		]
+	},
+	{
+		"type": "setup_logs",
+		"argv": [
+			"setup",
+			"logs",
+			"store-front/wrk1",
+			"store-api/api",
+			"--lines=200",
+			"--json"
+		]
 	},
 	{
 		"type": "dev_add",
-		"argv": ["dev", "add", "store-api", "--name=http", "--rename=api", "--port=0"]
+		"argv": [
+			"dev",
+			"add",
+			"store-api",
+			"--name=http",
+			"--rename=api",
+			"--port=0"
+		]
 	}
 ]

@@ -1073,10 +1073,10 @@ crew setup status store-front/wrk3 --json
 
 ### `crew setup logs`
 
-The last lines of one project's runner log: its steps as they finished and everything its install printed — live while it runs, kept afterwards. What to read when a step is taking long. --json: {ref, project, lines: []}, cleaned as dev logs --json cleans them.
+The last lines of one project's runner log: its steps as they finished and everything its install printed — live while it runs, kept afterwards. What to read when a step is taking long. <project>/<server> is what that server printed while setup or verify tried it, kept after the try stopped it — where a server that died during verify says why. --json: {ref, project, server?, lines: []}, cleaned as dev logs --json cleans them.
 
 ```
-crew setup logs <workspace>[/<worktree>] <project> [--lines=<n>]
+crew setup logs <workspace>[/<worktree>] <project>[/<server>] [--lines=<n>]
 ```
 
 - `--lines=<n>` — How many lines from the end (default 50)
@@ -1084,6 +1084,7 @@ crew setup logs <workspace>[/<worktree>] <project> [--lines=<n>]
 ```bash
 crew setup logs store-front/wrk3 store-api
 crew setup logs store-front/wrk3 store-api --lines=200
+crew setup logs store-front/wrk3 store-api/api
 ```
 
 ## `crew uninstall`

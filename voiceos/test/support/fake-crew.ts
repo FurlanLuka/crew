@@ -758,7 +758,14 @@ export const createFakeCrew = ({
 				});
 			}
 			case 'setup_logs':
-				return json(readGolden('setup-logs.json'));
+				return command.server
+					? json({
+							ref: command.ref,
+							project: command.project,
+							server: command.server,
+							lines: [`${command.server} tried by the runner`, `${command.server} listening`],
+						})
+					: json(readGolden('setup-logs.json'));
 			case 'dev_logs': {
 				const answer = devLogs.get(command.server);
 

@@ -160,6 +160,20 @@ export const describeIssue = (issue: CrewIssue, { isNamed = true } = {}): string
 	return lastLine ? `${what} · ${lastLine}` : what;
 };
 
+export type WorktreeState = 'issue' | 'installing' | 'running' | 'stopped';
+
+// A recorded failure outranks everything: a worktree that failed while installing still needs you.
+export const readWorktreeState = (
+	row: Pick<CrewWorktree, 'issues' | 'installing' | 'dev_running'>,
+): WorktreeState =>
+	row.issues?.length
+		? 'issue'
+		: row.installing
+			? 'installing'
+			: row.dev_running
+				? 'running'
+				: 'stopped';
+
 export interface Problem {
 	key: string;
 	name: string;

@@ -202,7 +202,7 @@ func TestGoldenSetupStatus(t *testing.T) {
 }
 
 func TestGoldenSetupLogs(t *testing.T) {
-	checkGolden(t, "setup-logs.json", logsDoc(workspace.Ref{Workspace: "store-front", Worktree: "wrk1"}, "store-api", "▸ checkout\n✓ checkout 0.9s\n▸ pnpm install\nERR_PNPM_NO_MATCHING_VERSION", 50))
+	checkGolden(t, "setup-logs.json", logsDoc(workspace.Ref{Workspace: "store-front", Worktree: "wrk1"}, "store-api", "", "▸ checkout\n✓ checkout 0.9s\n▸ pnpm install\nERR_PNPM_NO_MATCHING_VERSION", 50))
 }
 
 // What a tmux pane records around a server: zsh's end-of-line marker, the

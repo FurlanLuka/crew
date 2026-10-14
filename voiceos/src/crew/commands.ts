@@ -53,7 +53,13 @@ export const SetupCommandSchema = z.discriminatedUnion('type', [
 	variant('show', { ref: word }),
 	variant('scan_checkouts', {}),
 	variant('setup_status', { ref: word }),
-	variant('setup_logs', { ref: word, project: word, lines: lines.optional() }),
+	// server: what that server printed while setup or verify tried it.
+	variant('setup_logs', {
+		ref: word,
+		project: word,
+		server: word.optional(),
+		lines: lines.optional(),
+	}),
 	variant('check_status', { project: word }),
 	variant('dev_status', { ref: word.optional() }),
 	variant('dev_check', { ref: word }),
@@ -393,7 +399,13 @@ const baseArgv = (command: SetupCommand): string[] => {
 		case 'setup_status':
 			return ['setup', 'status', command.ref];
 		case 'setup_logs':
-			return ['setup', 'logs', command.ref, command.project, ...flag('lines', command.lines)];
+			return [
+				'setup',
+				'logs',
+				command.ref,
+				scoped(command.project, command.server),
+				...flag('lines', command.lines),
+			];
 		case 'check_status':
 			return ['check', 'project', command.project, '--status'];
 		case 'dev_status':
