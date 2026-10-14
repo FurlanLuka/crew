@@ -6,6 +6,7 @@ import {
 	firstStepFor,
 	isCleanFinish,
 	listRunnerRows,
+	planFirstWorkspace,
 	progressOf,
 	toAddCommand,
 } from './first-run.js';
@@ -26,6 +27,51 @@ describe('where the first run starts after the opening', () => {
 			'workspace',
 		);
 	});
+});
+
+describe('planFirstWorkspace', () => {
+	const existing = (projects: string[]) => ({
+		name: 'store',
+		project_count: projects.length,
+		projects: projects.map((name) => ({ name, mode: 'worktree' })),
+		worktrees: [],
+		dev_running: false,
+	});
+
+	it('no name, or no project ticked → nothing to run', () => {
+		expect(
+			planFirstWorkspace({ workspace: '', members: ['store-api'], existing: undefined }),
+		).toEqual([]);
+		expect(planFirstWorkspace({ workspace: 'store', members: [], existing: undefined })).toEqual(
+			[],
+		);
+	});
+
+	it('a new workspace → made with its projects (crew makes main with it)', () =>
+		expect(
+			planFirstWorkspace({ workspace: 'store', members: ['store-api'], existing: undefined }),
+		).toEqual([{ type: 'add_workspace', name: 'store', projects: ['store-api'] }]));
+
+	it('one made earlier with every member → only its main', () =>
+		expect(
+			planFirstWorkspace({
+				workspace: 'store',
+				members: ['store-api'],
+				existing: existing(['store-api']),
+			}),
+		).toEqual([{ type: 'add_worktree', ref: 'store/main' }]));
+
+	it('one made earlier, a member missing → that member joins, then its main', () =>
+		expect(
+			planFirstWorkspace({
+				workspace: 'store',
+				members: ['store-api', 'store-front'],
+				existing: existing(['store-api']),
+			}),
+		).toEqual([
+			{ type: 'add_workspace', name: 'store', projects: ['store-front'] },
+			{ type: 'add_worktree', ref: 'store/main' },
+		]));
 });
 
 describe('a checkout found on this Mac, added (crew add project --scan golden)', () => {

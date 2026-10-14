@@ -3,6 +3,10 @@ import type { SetupCommand } from '../../crew/commands.js';
 import {
 	CARD_ACTIONS,
 	type CardMode,
+	actionCommand,
+	describeHeadline,
+	describeServerChip,
+	listProjectLines,
 	type LogTarget,
 	logCommandFor,
 	pickStartTarget,
@@ -113,6 +117,36 @@ describe('readCardMode', () => {
 		],
 	])('%s → its mode', (_, input, mode) => expect(readCardMode(input)).toBe(mode));
 
+	it('two runners: one trying its servers, one still installing → installing', () =>
+		expect(
+			readCardMode({
+				row: row({ installing: true }),
+				status: {
+					...status([{ name: 'smoke api', status: 'running' }]),
+					projects: [
+						{
+							project: 'store-api',
+							state: 'running',
+							steps: [{ name: 'smoke api', status: 'running' }],
+							issues: [],
+						},
+						{
+							project: 'store-front',
+							state: 'running',
+							steps: [{ name: 'pnpm install', status: 'running' }],
+							issues: [],
+						},
+					],
+				},
+				lines: [],
+			}),
+		).toBe('installing'));
+
+	it('a runner starting, no step yet → installing', () =>
+		expect(
+			readCardMode({ row: row({ installing: true }), status: status([], 'starting'), lines: [] }),
+		).toBe('installing'));
+
 	it('nothing to press while a runner works; a failed install is installed again', () => {
 		expect(CARD_ACTIONS.installing).toEqual([]);
 		expect(CARD_ACTIONS.verifying).toEqual([]);
@@ -135,6 +169,32 @@ describe('withSmokeSteps', () => {
 			'db:stopped',
 		]);
 		expect(withSmokeSteps(lines, null)).toEqual(lines);
+	});
+
+	it("two projects' servers with one name: each takes its own project's try", () => {
+		const lines = [line('web', 'stopped', 'store-front'), line('web', 'stopped', 'store-api')];
+		const doc: CrewSetupStatus = {
+			...status([]),
+			projects: [
+				{
+					project: 'store-front',
+					state: 'running',
+					steps: [{ name: 'smoke web', status: 'ok' }],
+					issues: [],
+				},
+				{
+					project: 'store-api',
+					state: 'failed',
+					steps: [{ name: 'smoke web', status: 'failed' }],
+					issues: [],
+				},
+			],
+		};
+
+		expect(withSmokeSteps(lines, doc).map((each) => `${each.project}:${each.state}`)).toEqual([
+			'store-front:up',
+			'store-api:died',
+		]);
 	});
 });
 
@@ -181,5 +241,71 @@ describe('pickStartTarget', () => {
 			server: 'api',
 		});
 		expect(pickStartTarget('running', [line('web', 'up')], undefined)).toBeNull();
+	});
+});
+
+describe('describeHeadline', () => {
+	it.each<[CardMode, ServerLine[], CrewIssue | undefined, string]>([
+		['stopped', [], undefined, 'Stopped'],
+		['running', [line('web', 'up'), line('api', 'quiet')], undefined, 'Running · 1 of 2 listening'],
+		['died', [line('web', 'up'), line('api', 'died')], undefined, 'api died'],
+		['died', [line('web', 'up')], SMOKE_ISSUE, 'api died'],
+		[
+			'verifying',
+			[line('web', 'up'), line('api', 'quiet')],
+			undefined,
+			'Verifying · 1 of 2 servers answered',
+		],
+		['setup-failed', [], INSTALL_ISSUE, 'store-api install failed'],
+		['verify-failed', [], undefined, 'Something failed'],
+	])('%s → %s', (mode, lines, issue, text) =>
+		expect(describeHeadline({ mode, lines, issue })).toBe(text),
+	);
+});
+
+describe('describeServerChip', () => {
+	it('its state; a stopped one with a port says the port', () => {
+		expect(describeServerChip(line('api', 'quiet'))).toBe('not listening yet');
+		expect(describeServerChip(line('api', 'died'))).toBe('died');
+		expect(describeServerChip({ ...line('api', 'stopped'), port: 3000 })).toBe(':3000');
+		expect(describeServerChip(line('api', 'stopped'))).toBe('stopped');
+	});
+});
+
+describe('actionCommand', () => {
+	it('Install again re-runs each failed project once, even with two issues', () =>
+		expect(
+			actionCommand('install-again', REF, [
+				INSTALL_ISSUE,
+				{ ...SMOKE_ISSUE, project: 'store-api' },
+				{ ...INSTALL_ISSUE, project: 'store-front' },
+			]),
+		).toEqual({ type: 'setup_rerun', ref: REF, projects: ['store-api', 'store-front'] }));
+
+	it('the rest are the dev commands of the worktree', () => {
+		expect(actionCommand('restart', REF, [])).toEqual({ type: 'dev_restart', ref: REF });
+		expect(actionCommand('verify', REF, [])).toEqual({ type: 'verify', ref: REF });
+	});
+});
+
+describe('listProjectLines', () => {
+	it('no runner left → the members, only the failed one marked', () =>
+		expect(
+			listProjectLines({
+				runners: [],
+				members: ['store-front', 'store-api'],
+				issue: INSTALL_ISSUE,
+			}),
+		).toEqual([
+			{ project: 'store-front', state: 'ok', side: 'ready' },
+			{ project: 'store-api', state: 'failed', side: 'failed' },
+		]));
+
+	it('runners → as they are', () => {
+		const runners = [
+			{ project: 'store-api', state: 'running' as const, steps: [], side: 'pnpm install' },
+		];
+
+		expect(listProjectLines({ runners, members: ['store-api'], issue: undefined })).toBe(runners);
 	});
 });

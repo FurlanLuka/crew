@@ -5,7 +5,7 @@
 import { useState } from 'react';
 import { refOn } from '../../shared/machine-ref.js';
 import { useCrew, useCrewAction } from './api.js';
-import { Confirm, PageHead, type SetupContext, describeSize } from './common.js';
+import { Confirm, LoadingRow, PageHead, type SetupContext, describeSize } from './common.js';
 import { ServersCard } from './ServersCard.js';
 import type { CrewDryRun, CrewMember, CrewProject, CrewWorktree } from './types.js';
 import { WorktreeEnvironment } from './WorktreeValues.js';
@@ -110,14 +110,7 @@ export const WorktreePage = ({ ctx, worktreeRef }: WorktreePageProps) => {
 					onChanged={worktrees.refresh}
 				/>
 			) : (
-				<div className="box">
-					<div className="box-row" aria-busy="true">
-						<span className="dot idle" />
-						<span className="sub">
-							<span className="m">Reading the worktree…</span>
-						</span>
-					</div>
-				</div>
+				<LoadingRow text="Reading the worktree…" />
 			)}
 			<WorktreeEnvironment
 				ctx={ctx}

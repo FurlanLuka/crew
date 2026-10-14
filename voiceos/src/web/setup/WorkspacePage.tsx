@@ -3,7 +3,7 @@
 import type { SetupCommand } from '../../crew/commands.js';
 import { refOn } from '../../shared/machine-ref.js';
 import { isOk, useCrew, useCrewAction } from './api.js';
-import { PageHead, ResultLine, type SetupContext, describeSize } from './common.js';
+import { LoadingRow, PageHead, ResultLine, type SetupContext, describeSize } from './common.js';
 import type { CrewProject, CrewWorkspace, CrewWorktree } from './types.js';
 import { type PillState, type WorktreeCard, listWorktreeCards } from './workspace.js';
 import { countOf } from '../count.js';
@@ -108,16 +108,7 @@ export const WorkspacePage = ({ ctx, name }: WorkspacePageProps) => {
 				</span>
 			</div>
 			<div className="wt-cards">
-				{worktrees.data === null && (
-					<div className="box">
-						<div className="box-row" aria-busy="true">
-							<span className="dot idle" />
-							<span className="sub">
-								<span className="m">Reading worktrees…</span>
-							</span>
-						</div>
-					</div>
-				)}
+				{worktrees.data === null && <LoadingRow text="Reading worktrees…" />}
 				{worktrees.data && cards.length === 0 && (
 					<div className="box">
 						<div className="box-row">

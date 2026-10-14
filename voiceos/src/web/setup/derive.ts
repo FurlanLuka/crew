@@ -174,6 +174,17 @@ export const readWorktreeState = (
 				? 'running'
 				: 'stopped';
 
+// After a worktree's name on the board: what failed in it, or that it is installing.
+export const describeWorktreePill = (row: Pick<CrewWorktree, 'issues' | 'installing'>): string => {
+	const issue = row.issues?.[0];
+
+	if (issue) {
+		return ` · ${issue.server ?? issue.project} ${issue.stage === 'smoke' ? 'died' : 'failed'}`;
+	}
+
+	return row.installing ? ' · installing' : '';
+};
+
 export interface Problem {
 	key: string;
 	name: string;

@@ -8,7 +8,15 @@ import { Home } from './home/Home.js';
 import { Opening, isReducedMotion } from './home/Opening.js';
 import { type Half, readAlwaysVoice, shouldOpenVoice, writeLastHalf } from './home/prefs.js';
 import { VoiceMoment } from './home/VoiceMoment.js';
-import { BOARD, matchRoute, toView, toVoiceRoute, useRoute, viewKey } from './router.js';
+import {
+	BOARD,
+	type SetupPage,
+	matchRoute,
+	toView,
+	toVoiceRoute,
+	useRoute,
+	viewKey,
+} from './router.js';
 import { SetupShell } from './setup/SetupShell.js';
 import { useConnection, type OpenRequest } from './use-connection.js';
 import { useSpeechPlayer } from './use-speech-player.js';
@@ -237,14 +245,9 @@ const App = () => {
 		openVoice(ref);
 	};
 
-	const goSetup = () => {
+	const goSetup = (page: SetupPage = BOARD) => {
 		writeLastHalf('setup');
-		navigate({ half: 'setup', machine: LOCAL_MACHINE, page: BOARD });
-	};
-
-	const goImport = () => {
-		writeLastHalf('setup');
-		navigate({ half: 'setup', machine: LOCAL_MACHINE, page: { page: 'import' } });
+		navigate({ half: 'setup', machine: LOCAL_MACHINE, page });
 	};
 
 	const markOnboarded = () => dispatch({ type: 'set_onboarded', onboarded: true });
@@ -279,8 +282,8 @@ const App = () => {
 							onStage={openVoiceIfAlways}
 							openVoice={openVoiceFromHome}
 							askClaude={askSetupClaude}
-							goSetup={goSetup}
-							goImport={goImport}
+							goSetup={() => goSetup()}
+							goImport={() => goSetup({ page: 'import' })}
 							markOnboarded={markOnboarded}
 						/>
 					)}

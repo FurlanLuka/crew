@@ -607,6 +607,74 @@ describe('worktrees', () => {
 		await context.close();
 	}, 20_000);
 
+	it('Stop and verify where crew refuses the stop → no verify on top of running servers', async () => {
+		server.crew.refuseCommand('dev_stop', 'Error: tmux is not answering');
+		const { context, page } = await open('/setup/worktree/store-front/main');
+		const card = page.locator('section.srv-card[data-mode="died"]');
+		await card.getByRole('button', { name: 'Verify' }).click({ timeout: 5000 });
+		await card.locator('.srv-confirm').getByRole('button', { name: 'Stop and verify' }).click();
+		await waitUntil(() => commandsOf('dev_stop').length === 1);
+		await card.locator('.result-line.bad').waitFor({ timeout: 5000 });
+		await Bun.sleep(200);
+		expect(commandsOf('verify')).toEqual([]);
+		await context.close();
+	}, 20_000);
+
+	it('Verify on stopped servers asks nothing: only verify runs', async () => {
+		server.crew.machines.local!.worktrees.find(
+			(row) => row.ref === 'store-front/main',
+		)!.devRunning = false;
+		const { context, page } = await open('/setup/worktree/store-front/main');
+		const card = page.locator('section.srv-card[data-mode="stopped"]');
+		await card.getByRole('button', { name: 'Verify' }).click({ timeout: 5000 });
+		await waitUntil(() => commandsOf('verify').length === 1);
+		expect(await card.locator('.srv-confirm').count()).toBe(0);
+		expect(commandsOf('dev_stop')).toEqual([]);
+		expect(commandsOf('verify')).toEqual([{ type: 'verify', ref: 'store-front/main' }]);
+		await context.close();
+	}, 20_000);
+
+	it('a failed install: its project listed with its install log open; Install again re-runs it once', async () => {
+		const { context, page } = await open('/setup/worktree/store-front/wrk1');
+		const card = page.locator('section.srv-card[data-mode="setup-failed"]');
+		await card.locator('section.log-pane').waitFor({ timeout: 5000 });
+		expect(
+			await card.locator('.srv-line[data-project="store-api"]').getAttribute('data-state'),
+		).toBe('failed');
+		expect(commandsOf('setup_logs')).toContainEqual({
+			type: 'setup_logs',
+			ref: 'store-front/wrk1',
+			project: 'store-api',
+			lines: 200,
+		});
+
+		await card.getByRole('button', { name: 'Install again' }).click();
+		await waitUntil(() => commandsOf('setup_rerun').length === 1);
+		expect(commandsOf('setup_rerun')).toEqual([
+			{ type: 'setup_rerun', ref: 'store-front/wrk1', projects: ['store-api', 'store-front'] },
+		]);
+		await context.close();
+	}, 20_000);
+
+	it("a failed verify, nothing running: the server's try is the log, read with its server", async () => {
+		const wrk1 = server.crew.machines.local!.worktrees.find(
+			(row) => row.ref === 'store-front/wrk1',
+		)!;
+		wrk1.issues = (wrk1.issues ?? []).filter((issue) => issue.stage === 'smoke');
+		const { context, page } = await open('/setup/worktree/store-front/wrk1');
+		const card = page.locator('section.srv-card[data-mode="verify-failed"]');
+		const pane = card.locator('section.log-pane');
+		await pane.getByText('web tried by the runner').waitFor({ timeout: 5000 });
+		expect(commandsOf('setup_logs')).toContainEqual({
+			type: 'setup_logs',
+			ref: 'store-front/wrk1',
+			project: 'store-front',
+			server: 'web',
+			lines: 200,
+		});
+		await context.close();
+	}, 20_000);
+
 	it('the old progress and logs links open the worktree page', async () => {
 		for (const path of [
 			'/setup/worktree/store-front/main/progress',
@@ -1273,6 +1341,8 @@ describe('first run', () => {
 			.getByRole('heading', { name: 'store-front/main is ready' })
 			.waitFor({ timeout: 10_000 });
 		expect(await flow.getByText('3 projects checked out and installed.').count()).toBe(1);
+		// Reaching the last step is the first run done: it never opens again.
+		await waitUntil(() => server.store.state.onboarded);
 		expect(commandsOf('setup_rerun')).toEqual([
 			{ type: 'setup_rerun', ref: 'store-front/main', projects: ['infra-ops'] },
 		]);

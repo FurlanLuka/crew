@@ -27,7 +27,8 @@ describe('findFocus', () => {
 		['crew env other/main store-api', null],
 		['ls ~/.crew/workspaces/store/main/store-api', null],
 		['git log crew/store/wrk1/store-api', null],
-		['cat store/wrk1.log', null],
+		['crew dev logs other/main web > store/wrk1.log', null],
+		['crew dev check store/wrk1.', 'store/wrk1'],
 	])('%s → %s', (command, ref) => expect(refOf([bash(command)])).toBe(ref));
 
 	it('a message sent names one too; a reply of Claude does not', () => {
@@ -60,19 +61,27 @@ describe('pickFocus', () => {
 	const found = { ref: 'store/main', atId: 't9', index: 4 };
 
 	it('found → open; closed on that mention → shut; a newer mention → open again', () => {
-		expect(pickFocus({ found, asked: null, closedAt: null })).toBe('store/main');
+		expect(pickFocus({ found, asked: null, closedAt: null })).toEqual({
+			ref: 'store/main',
+			closeKey: 't9',
+		});
 		expect(pickFocus({ found, asked: null, closedAt: 't9' })).toBeNull();
 		expect(
-			pickFocus({ found: { ...found, atId: 't10', index: 5 }, asked: null, closedAt: 't9' }),
+			pickFocus({ found: { ...found, atId: 't10', index: 5 }, asked: null, closedAt: 't9' })?.ref,
 		).toBe('store/main');
 	});
 
 	it('a Fix with Claude opens its worktree at once, until the stream names one after it', () => {
 		const asked = { ref: 'store/wrk1', afterIndex: 5 };
 
-		expect(pickFocus({ found, asked, closedAt: null })).toBe('store/wrk1');
-		expect(pickFocus({ found: null, asked, closedAt: null })).toBe('store/wrk1');
-		expect(pickFocus({ found: { ...found, index: 6 }, asked, closedAt: null })).toBe('store/main');
+		expect(pickFocus({ found, asked, closedAt: null })).toEqual({
+			ref: 'store/wrk1',
+			closeKey: 'ask 5',
+		});
+		expect(pickFocus({ found: null, asked, closedAt: null })?.ref).toBe('store/wrk1');
+		expect(pickFocus({ found: { ...found, index: 6 }, asked, closedAt: null })?.ref).toBe(
+			'store/main',
+		);
 		expect(pickFocus({ found, asked, closedAt: 'ask 5' })).toBeNull();
 	});
 

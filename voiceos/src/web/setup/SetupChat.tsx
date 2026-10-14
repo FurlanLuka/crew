@@ -18,10 +18,10 @@ import { readSessionAsk } from '../moments.js';
 import { useCrew } from './api.js';
 import type { SetupContext } from './common.js';
 import { isCheckRef } from './derive.js';
-import { findFocus, pickFocus } from './focus.js';
+import { type AskedFocus, findFocus, pickFocus } from './focus.js';
 import { MentionMenu } from './MentionMenu.js';
 import { listRecordedLines } from './recorded.js';
-import { type AskedFocus, setupRefFor } from './SetupShell.js';
+import { setupRefFor } from './SetupShell.js';
 import type { CrewProject, CrewWorktree } from './types.js';
 import { useMentions } from './use-mentions.js';
 import { WorktreePanel } from './WorktreePanel.js';
@@ -56,9 +56,6 @@ export const SetupChat = ({ ctx, draft, onDraftUsed, askedFocus }: SetupChatProp
 	const found = findFocus({ stream: session?.stream ?? [], refs });
 	const [closedAt, setClosedAt] = useState<string | null>(null);
 	const focus = pickFocus({ found, asked: askedFocus, closedAt });
-	const isAskedShown = Boolean(
-		askedFocus && focus === askedFocus.ref && (!found || found.index < askedFocus.afterIndex),
-	);
 	const mentions = useMentions({
 		text,
 		setText,
@@ -194,15 +191,11 @@ export const SetupChat = ({ ctx, draft, onDraftUsed, askedFocus }: SetupChatProp
 			</section>
 			{focus && (
 				<WorktreePanel
-					key={focus}
+					key={focus.ref}
 					ctx={ctx}
-					worktreeRef={focus}
+					worktreeRef={focus.ref}
 					projects={projects.data ?? []}
-					onClose={() =>
-						setClosedAt(
-							isAskedShown && askedFocus ? `ask ${askedFocus.afterIndex}` : (found?.atId ?? null),
-						)
-					}
+					onClose={() => setClosedAt(focus.closeKey)}
 				/>
 			)}
 		</div>

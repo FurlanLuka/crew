@@ -9,16 +9,14 @@ import {
 	type Problem,
 	decideFirstRun,
 	decideOnboarding,
-	describeIssue,
 	describeServer,
 	listProblems,
 	listWorkspacesOf,
 	readCheck,
-	readWorktreeState,
 	summarizeList,
-	type WorktreeState,
 } from './derive.js';
 import { EmptyBoard } from './EmptyBoard.js';
+import { WorkspacesTable } from './WorkspacesTable.js';
 import { isSetupBusy, setupRefFor } from './SetupShell.js';
 import type { CrewCheckStatus, CrewProject, CrewWorkspace, CrewWorktree } from './types.js';
 import { countOf } from '../count.js';
@@ -124,18 +122,9 @@ export const ProblemsStrip = ({ ctx, problems }: { ctx: SetupContext; problems: 
 	);
 };
 
-const PILL_CLASS: Record<WorktreeState, string> = {
-	issue: 'down',
-	installing: 'wait',
-	running: 'up',
-	stopped: '',
-};
-
 // Shown before "+N" in a cell: what fits one line beside the other columns.
 const SERVERS_SHOWN = 2;
 const WORKSPACES_SHOWN = 1;
-const MEMBERS_SHOWN = 3;
-const WORKTREES_SHOWN = 3;
 
 const describeLead = (
 	projects: CrewProject[],
@@ -359,105 +348,7 @@ export const Board = ({ ctx, tab, onFirstRun }: BoardProps) => {
 			) : workspaces.data && workspaceRows.length === 0 ? (
 				<EmptyBoard ctx={ctx} />
 			) : (
-				<div className="matrix-wrap">
-					<table className="matrix workspaces">
-						<colgroup>
-							<col className="c-name" />
-							<col className="c-members" />
-							<col className="c-worktrees" />
-						</colgroup>
-						<thead>
-							<tr>
-								<th>Workspace</th>
-								<th>Projects</th>
-								<th>Worktrees</th>
-							</tr>
-						</thead>
-						<tbody>
-							{workspaceRows.map((workspace) => {
-								const members = (workspace.projects ?? []).map((member) => member.name);
-								const hidden = workspace.worktrees.length - WORKTREES_SHOWN;
-
-								return (
-									<tr
-										key={workspace.name}
-										className="row-link"
-										data-workspace={workspace.name}
-										onClick={followRow(() => ctx.go({ page: 'workspace', name: workspace.name }))}
-									>
-										<td>
-											<button
-												type="button"
-												className="rowname"
-												title={workspace.name}
-												onClick={() => ctx.go({ page: 'workspace', name: workspace.name })}
-											>
-												<b>{workspace.name}</b>
-											</button>
-										</td>
-										<td className="m" title={members.join(' · ') || undefined}>
-											{members.length
-												? summarizeList(members, MEMBERS_SHOWN)
-												: countOf(workspace.project_count, 'project')}
-										</td>
-										<td>
-											<span className="srv">
-												{workspace.worktrees.slice(0, WORKTREES_SHOWN).map((name) => {
-													const ref = `${workspace.name}/${name}`;
-													const row = worktreeRows.find((worktree) => worktree.ref === ref);
-													const issue = row?.issues?.[0];
-													const cls = row ? PILL_CLASS[readWorktreeState(row)] : '';
-
-													return (
-														<button
-															key={name}
-															type="button"
-															className={cls}
-															title={issue ? describeIssue(issue) : undefined}
-															onClick={() => ctx.go({ page: 'worktree', ref })}
-														>
-															{name}
-															{issue
-																? ` · ${issue.server ?? issue.project} ${issue.stage === 'smoke' ? 'died' : 'failed'}`
-																: row?.installing
-																	? ' · installing'
-																	: ''}
-														</button>
-													);
-												})}
-												{hidden > 0 && (
-													<button
-														type="button"
-														title={workspace.worktrees.slice(WORKTREES_SHOWN).join(', ')}
-														onClick={() =>
-															ctx.go({
-																page: 'workspace',
-																name: workspace.name,
-															})
-														}
-													>
-														+{hidden}
-													</button>
-												)}
-												<button
-													type="button"
-													onClick={() =>
-														ctx.go({
-															page: 'worktree-new',
-															workspace: workspace.name,
-														})
-													}
-												>
-													+ new
-												</button>
-											</span>
-										</td>
-									</tr>
-								);
-							})}
-						</tbody>
-					</table>
-				</div>
+				<WorkspacesTable ctx={ctx} workspaces={workspaceRows} worktrees={worktreeRows} />
 			)}
 		</section>
 	);

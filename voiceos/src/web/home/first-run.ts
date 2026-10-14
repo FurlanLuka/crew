@@ -4,7 +4,7 @@ import { countOf } from '../count.js';
 import { type LineState, isRunning, listFailedProjects, readStepState } from '../setup/progress.js';
 import type { SetupCommand } from '../../crew/commands.js';
 import type { FoundCheckout } from '../setup/readers.js';
-import type { CrewProject, CrewSetupStatus } from '../setup/types.js';
+import type { CrewProject, CrewSetupStatus, CrewWorkspace } from '../setup/types.js';
 
 export type FirstRunStep = 'intro' | 'projects' | 'workspace' | 'prepare' | 'ready';
 
@@ -25,6 +25,39 @@ export const toAddCommand = (checkout: FoundCheckout): SetupCommand =>
 	checkout.remote
 		? { type: 'add_project', name: checkout.name, url: checkout.remote }
 		: { type: 'add_project', name: checkout.name, path: checkout.path };
+
+export interface PlanFirstWorkspaceParams {
+	workspace: string;
+	members: string[];
+	// A workspace of that name crew already has.
+	existing: CrewWorkspace | undefined;
+}
+
+// A new workspace is made with its main worktree. One made earlier from the terminal has no worktree
+// yet: joining it adds only the members it lacks (crew refuses one it has) and makes main itself.
+export const planFirstWorkspace = ({
+	workspace,
+	members,
+	existing,
+}: PlanFirstWorkspaceParams): SetupCommand[] => {
+	if (!workspace || members.length === 0) {
+		return [];
+	}
+
+	if (!existing) {
+		return [{ type: 'add_workspace', name: workspace, projects: members }];
+	}
+
+	const has = new Set((existing.projects ?? []).map((project) => project.name));
+	const joining = members.filter((member) => !has.has(member));
+
+	return [
+		...(joining.length
+			? [{ type: 'add_workspace' as const, name: workspace, projects: joining }]
+			: []),
+		{ type: 'add_worktree', ref: `${workspace}/main` },
+	];
+};
 
 export type RunnerState = 'waiting' | 'running' | 'ok' | 'failed';
 

@@ -3,11 +3,9 @@
 // beside the list. Verify and installs are followed here, not on a page of their own.
 import { useState } from 'react';
 import type { SetupCommand } from '../../crew/commands.js';
-import { countOf } from '../count.js';
 import { listRunnerRows } from '../home/first-run.js';
 import { isOk, useCrew, useCrewAction } from './api.js';
 import { ResultLine, type SetupContext } from './common.js';
-import { describeIssue } from './derive.js';
 import { DOT_BY_STATE } from './flow.js';
 import { LogPane } from './LogPane.js';
 import {
@@ -15,7 +13,11 @@ import {
 	type CardAction,
 	type CardMode,
 	type LogTarget,
+	actionCommand,
+	describeHeadline,
+	describeServerChip,
 	isProjectList,
+	listProjectLines,
 	logCommandFor,
 	pickStartTarget,
 	readCardMode,
@@ -58,59 +60,6 @@ const ACTION_LABELS: Record<CardAction, string> = {
 	restart: 'Restart',
 	verify: 'Verify',
 	'install-again': 'Install again',
-};
-
-interface HeadlineParams {
-	mode: CardMode;
-	lines: ServerLine[];
-	row: CrewWorktree;
-}
-
-const describeHeadline = ({ mode, lines, row }: HeadlineParams): string => {
-	const issue = row.issues?.[0];
-	const up = lines.filter((line) => line.state === 'up').length;
-
-	switch (mode) {
-		case 'stopped':
-			return 'Stopped';
-		case 'running':
-			return lines.length ? `Running · ${up} of ${lines.length} listening` : 'Running';
-		case 'died': {
-			const died = lines.filter((line) => line.state === 'died').map((line) => line.name);
-
-			return died.length
-				? `${died.join(', ')} died`
-				: issue
-					? describeIssue(issue)
-					: 'A server died';
-		}
-		case 'installing':
-			return 'Installing';
-		case 'verifying':
-			return `Verifying · ${up} of ${countOf(lines.length, 'server')} answered`;
-		case 'setup-failed':
-		case 'verify-failed':
-			return issue ? describeIssue(issue) : 'Something failed';
-	}
-};
-
-const actionCommand = (action: CardAction, ref: string, row: CrewWorktree): SetupCommand => {
-	switch (action) {
-		case 'start':
-			return { type: 'dev_start', ref };
-		case 'stop':
-			return { type: 'dev_stop', ref };
-		case 'restart':
-			return { type: 'dev_restart', ref };
-		case 'verify':
-			return { type: 'verify', ref };
-		case 'install-again':
-			return {
-				type: 'setup_rerun',
-				ref,
-				projects: [...new Set((row.issues ?? []).map((issue) => issue.project))],
-			};
-	}
 };
 
 interface ServersCardProps {
@@ -161,7 +110,12 @@ export const ServersCard = ({
 	const mode = readCardMode({ row, status: runnerStatus, lines });
 	const issue = row.issues?.[0];
 	const target = isClosed ? null : (picked ?? pickStartTarget(mode, lines, issue));
-	const runners = listRunnerRows(runnerStatus);
+	const projectLines = listProjectLines({
+		runners: listRunnerRows(runnerStatus),
+		members: members.map((member) => member.name),
+		issue,
+	});
+	const headline = describeHeadline({ mode, lines, issue });
 
 	const run = async (command: SetupCommand) => {
 		const reply = await action.run(command);
@@ -198,7 +152,7 @@ export const ServersCard = ({
 			return;
 		}
 
-		void run(actionCommand(pressed, ref, row));
+		void run(actionCommand(pressed, ref, row.issues ?? []));
 	};
 
 	const open = (next: LogTarget) => {
@@ -211,14 +165,14 @@ export const ServersCard = ({
 
 	const fixLine =
 		mode === 'died' || mode === 'setup-failed' || mode === 'verify-failed'
-			? `In ${ref}: ${describeHeadline({ mode, lines, row })}. Fix it.`
+			? `In ${ref}: ${headline}. Fix it.`
 			: null;
 
 	return (
 		<section className="srv-card" aria-label="Dev servers" data-mode={mode}>
 			<div className="srv-card-head">
 				<span className={`dot ${MODE_DOT[mode]}`} />
-				<b className="srv-card-title">{describeHeadline({ mode, lines, row })}</b>
+				<b className="srv-card-title">{headline}</b>
 				<span className="row-actions">
 					{fixLine && (
 						<button type="button" className="btn sm" onClick={() => ctx.askClaude(fixLine, ref)}>
@@ -260,14 +214,7 @@ export const ServersCard = ({
 			<div className={`srv-split ${target ? 'open' : ''}`}>
 				<div className="srv-list">
 					{isProjectList(mode)
-						? (runners.length
-								? runners
-								: members.map((member) => ({
-										project: member.name,
-										state: issue?.project === member.name ? ('failed' as const) : ('ok' as const),
-										side: issue?.project === member.name ? 'failed' : 'ready',
-									}))
-							).map((runner) => (
+						? projectLines.map((runner) => (
 								<button
 									key={runner.project}
 									type="button"
@@ -311,17 +258,7 @@ export const ServersCard = ({
 											{line.url.replace(/^https?:\/\//, '')} ↗
 										</a>
 									) : (
-										<span className="chip">
-											{line.state === 'died'
-												? 'died'
-												: line.state === 'quiet'
-													? 'not listening yet'
-													: line.state === 'up'
-														? 'answered'
-														: line.port
-															? `:${line.port}`
-															: 'stopped'}
-										</span>
+										<span className="chip">{describeServerChip(line)}</span>
 									)}
 								</button>
 							))}

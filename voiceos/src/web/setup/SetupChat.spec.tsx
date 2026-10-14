@@ -8,7 +8,8 @@ import { AskDock } from '../components/AskDock.js';
 import { SessionStream } from '../components/SessionStream.js';
 import type { SetupContext } from './common.js';
 import { SetupChat } from './SetupChat.js';
-import { type AskedFocus, setupRefFor } from './SetupShell.js';
+import type { AskedFocus } from './focus.js';
+import { setupRefFor } from './SetupShell.js';
 
 const noop = () => undefined;
 

@@ -7,7 +7,7 @@ import {
 	useEffect,
 	useState,
 } from 'react';
-import { readMenuKey } from '../box-menu-keys.js';
+import { applyMenuKey } from '../box-menu-keys.js';
 import { type MentionEntry, filterMentions, insertMention, readMention } from './mentions.js';
 
 export interface Mentions {
@@ -60,29 +60,17 @@ export const useMentions = ({
 
 	const handleKey = (event: KeyboardEvent): boolean => {
 		const entry = entries[index];
-		const menuKey = readMenuKey({
-			key: event.key,
-			isShift: event.shiftKey,
-			isComposing: event.nativeEvent.isComposing,
-			index,
-			length: entries.length,
-		});
 
-		if (!entry || !menuKey) {
-			return false;
-		}
-
-		if (menuKey.kind === 'move') {
-			setSelected(menuKey.index);
-		} else if (menuKey.kind === 'close') {
-			setClosedFor(text);
-		} else {
-			choose(entry);
-		}
-
-		event.preventDefault();
-
-		return true;
+		return (
+			Boolean(entry) &&
+			applyMenuKey(event, {
+				index,
+				length: entries.length,
+				onMove: setSelected,
+				onClose: () => setClosedFor(text),
+				onChoose: () => entry && choose(entry),
+			})
+		);
 	};
 
 	return {

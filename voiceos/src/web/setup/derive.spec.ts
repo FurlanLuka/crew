@@ -11,6 +11,7 @@ import {
 	decideFirstRun,
 	decideOnboarding,
 	readWorktreeState,
+	describeWorktreePill,
 	type WorktreeState,
 	deriveProjectState,
 	describeIssue,
@@ -74,6 +75,25 @@ describe('readWorktreeState', () => {
 		[row({ dev_running: true, issues: [ISSUE] }), 'issue'],
 		[row({ issues: [] }), 'stopped'],
 	])('%j → %s', (input, state) => expect(readWorktreeState(input)).toBe(state));
+});
+
+describe('describeWorktreePill', () => {
+	it('a dead server by its name, a failed install by its project, an install running; else nothing', () => {
+		expect(
+			describeWorktreePill({
+				installing: false,
+				issues: [{ stage: 'smoke', project: 'store-api', server: 'api', detail: '' }],
+			}),
+		).toBe(' · api died');
+		expect(
+			describeWorktreePill({
+				installing: true,
+				issues: [{ stage: 'install', project: 'store-api', detail: '' }],
+			}),
+		).toBe(' · store-api failed');
+		expect(describeWorktreePill({ installing: true })).toBe(' · installing');
+		expect(describeWorktreePill({ installing: false })).toBe('');
+	});
 });
 
 describe('decideOnboarding', () => {

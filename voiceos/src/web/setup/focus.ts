@@ -14,9 +14,10 @@ export interface Focus {
 
 const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-// A ref inside a path or a branch has a slash, a dot or a word character against one of its ends.
+// A ref inside a path, a branch or a file name has a slash, a dot or a word character against one
+// of its ends; a sentence's own full stop after it does not count.
 const refPattern = (ref: string): RegExp =>
-	new RegExp(`(?<![\\w./~-])${escapeRegExp(ref)}(?![\\w/-])`, 'g');
+	new RegExp(`(?<![\\w./~-])${escapeRegExp(ref)}(?![\\w/-]|\\.\\w)`, 'g');
 
 // The last listed ref the text names, by where it is named.
 const lastRefIn = (text: string, refs: string[]): string | null => {
@@ -88,19 +89,33 @@ export const findFocus = ({ stream, refs }: FindFocusParams): Focus | null => {
 	return null;
 };
 
+// A worktree named by a "Fix with Claude" before anything is sent: it holds until the stream names
+// one after it.
+export interface AskedFocus {
+	ref: string;
+	afterIndex: number;
+}
+
 export interface PickFocusParams {
 	found: Focus | null;
-	// A "Fix with Claude" names its worktree before anything is sent: it holds until the stream
-	// names one after it.
-	asked: { ref: string; afterIndex: number } | null;
+	asked: AskedFocus | null;
 	// The mention the developer closed the panel on; a newer one opens it again.
 	closedAt: string | null;
 }
 
-export const pickFocus = ({ found, asked, closedAt }: PickFocusParams): string | null => {
-	if (asked && (!found || found.index < asked.afterIndex)) {
-		return closedAt === `ask ${asked.afterIndex}` ? null : asked.ref;
-	}
+export interface ShownFocus {
+	ref: string;
+	// What a close remembers: this mention, so only a newer one opens the panel again.
+	closeKey: string;
+}
 
-	return found && found.atId !== closedAt ? found.ref : null;
+export const pickFocus = ({ found, asked, closedAt }: PickFocusParams): ShownFocus | null => {
+	const shown =
+		asked && (!found || found.index < asked.afterIndex)
+			? { ref: asked.ref, closeKey: `ask ${asked.afterIndex}` }
+			: found
+				? { ref: found.ref, closeKey: found.atId }
+				: null;
+
+	return shown && shown.closeKey !== closedAt ? shown : null;
 };

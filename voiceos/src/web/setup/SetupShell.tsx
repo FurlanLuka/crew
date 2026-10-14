@@ -11,6 +11,7 @@ import { CheckPage } from './CheckPage.js';
 import type { SetupContext } from './common.js';
 import { crumbsFor, pageAbove } from './crumbs.js';
 import { countNeedsYou } from './derive.js';
+import type { AskedFocus } from './focus.js';
 import { ExportPage } from './ExportPage.js';
 import { ImportPage } from './ImportPage.js';
 import { AddMachine, MachinePage } from './MachinePage.js';
@@ -100,12 +101,6 @@ const MachineItem = ({ state, id, isCurrent, onPick }: MachineItemProps) => {
 
 interface BusyAsk {
 	prompt: string;
-}
-
-// A worktree named by a "Fix with Claude": the chat shows it until the stream names one after it.
-export interface AskedFocus {
-	ref: string;
-	afterIndex: number;
 }
 
 export const SetupShell = ({

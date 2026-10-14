@@ -49,6 +49,18 @@ export const ResultLine = ({ reply, okText = 'Done.' }: ResultLineProps) => {
 	);
 };
 
+// A list still on its way from crew: said, so an empty answer is never shown before it is read.
+export const LoadingRow = ({ text }: { text: string }) => (
+	<div className="box">
+		<div className="box-row" aria-busy="true">
+			<span className="dot idle" />
+			<span className="sub">
+				<span className="m">{text}</span>
+			</span>
+		</div>
+	</div>
+);
+
 export const describeSize = (bytes: number | undefined): string =>
 	bytes === undefined ? '' : formatBytes(bytes);
 

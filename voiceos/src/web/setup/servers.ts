@@ -1,6 +1,9 @@
 // The worktree's servers card, pure: what the card is showing (running, verifying, a failed
 // install…), what it offers, its lines, and which log a line opens.
 import type { SetupCommand } from '../../crew/commands.js';
+import { countOf } from '../count.js';
+import type { RunnerRow } from '../home/first-run.js';
+import { describeIssue } from './derive.js';
 import { readStepState } from './progress.js';
 import type { CrewIssue, CrewSetupStatus, CrewWorktree } from './types.js';
 import type { ServerLine } from './worktree.js';
@@ -74,6 +77,101 @@ export const CARD_ACTIONS: Record<CardMode, CardAction[]> = {
 	'setup-failed': ['install-again'],
 	'verify-failed': ['start', 'verify'],
 };
+
+export const actionCommand = (
+	action: CardAction,
+	ref: string,
+	issues: CrewIssue[],
+): SetupCommand => {
+	switch (action) {
+		case 'start':
+			return { type: 'dev_start', ref };
+		case 'stop':
+			return { type: 'dev_stop', ref };
+		case 'restart':
+			return { type: 'dev_restart', ref };
+		case 'verify':
+			return { type: 'verify', ref };
+		case 'install-again':
+			return {
+				type: 'setup_rerun',
+				ref,
+				projects: [...new Set(issues.map((issue) => issue.project))],
+			};
+	}
+};
+
+export interface DescribeHeadlineParams {
+	mode: CardMode;
+	lines: ServerLine[];
+	issue: CrewIssue | undefined;
+}
+
+// The card's top line: what is going on with the worktree's servers, in a few words.
+export const describeHeadline = ({ mode, lines, issue }: DescribeHeadlineParams): string => {
+	const up = lines.filter((line) => line.state === 'up').length;
+
+	switch (mode) {
+		case 'stopped':
+			return 'Stopped';
+		case 'running':
+			return lines.length ? `Running · ${up} of ${lines.length} listening` : 'Running';
+		case 'died': {
+			const died = lines.filter((line) => line.state === 'died').map((line) => line.name);
+
+			if (died.length) {
+				return `${died.join(', ')} died`;
+			}
+
+			return issue ? describeIssue(issue) : 'A server died';
+		}
+		case 'installing':
+			return 'Installing';
+		case 'verifying':
+			return `Verifying · ${up} of ${countOf(lines.length, 'server')} answered`;
+		case 'setup-failed':
+		case 'verify-failed':
+			return issue ? describeIssue(issue) : 'Something failed';
+	}
+};
+
+const CHIP: Record<ServerLine['state'], string> = {
+	died: 'died',
+	quiet: 'not listening yet',
+	up: 'answered',
+	stopped: 'stopped',
+};
+
+// Right of a server with no URL to open: its state, or its port while it is stopped.
+export const describeServerChip = (line: ServerLine): string =>
+	line.state === 'stopped' && line.port ? `:${line.port}` : CHIP[line.state];
+
+export interface ProjectLine {
+	project: string;
+	state: RunnerRow['state'];
+	side: string;
+}
+
+export interface ListProjectLinesParams {
+	runners: RunnerRow[];
+	members: string[];
+	issue: CrewIssue | undefined;
+}
+
+// The projects while they install; after a failed install (no runner left to read), the members,
+// the failed one marked.
+export const listProjectLines = ({
+	runners,
+	members,
+	issue,
+}: ListProjectLinesParams): ProjectLine[] =>
+	runners.length
+		? runners
+		: members.map((member) =>
+				issue?.project === member
+					? { project: member, state: 'failed', side: 'failed' }
+					: { project: member, state: 'ok', side: 'ready' },
+			);
 
 // What the list shows: servers, except while a project installs or failed to, when the list is the
 // projects being made (no server exists yet).
