@@ -769,25 +769,6 @@ form {
 .danger-zone {
 	background: rgba(224, 108, 95, 0.05);
 }
-.srv-full {
-	grid-template-columns: 10px minmax(0, 1fr) auto auto;
-}
-.links {
-	display: grid;
-	justify-items: end;
-	gap: 1px;
-}
-.links a {
-	color: #fff;
-	font: 13px var(--mono);
-	text-decoration: none;
-}
-.links a:hover {
-	text-decoration: underline;
-}
-.ov-say {
-	margin: 0 0 -10px;
-}
 .ov-add,
 .inline-form {
 	display: grid;
@@ -1152,15 +1133,6 @@ form {
 	.pick > .m {
 		display: none;
 	}
-	.srv-full {
-		grid-template-columns: 10px minmax(0, 1fr);
-	}
-	.srv-full .links,
-	.srv-full .row-actions,
-	.srv-full .chip {
-		grid-column: 2;
-		justify-items: start;
-	}
 	.ov-add {
 		grid-template-columns: 1fr;
 	}
@@ -1415,7 +1387,143 @@ select.sel:disabled {
 	color: var(--label-2);
 	font-size: 12px;
 }
-.danger-zone {
-	padding-top: 10px;
+.remove-row {
+	padding-top: 14px;
 	border-top: 1px solid var(--sep);
+}
+
+/* A worktree's servers card: its state and actions on top, the list, and a line's log beside it. */
+.srv-card {
+	border-radius: 14px;
+	background: var(--elev-1);
+	box-shadow: inset 0 0 0 1px var(--hair);
+	overflow: hidden;
+}
+.srv-card-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px 10px;
+	padding: 10px 14px;
+	border-bottom: 1px solid var(--sep);
+}
+.srv-card-title {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.srv-confirm {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px 12px;
+	padding: 10px 14px;
+	border-bottom: 1px solid var(--sep);
+	background: var(--amber-fill);
+	font-size: 13px;
+}
+.srv-split {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+}
+.srv-split.open {
+	grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+}
+.srv-split.open .srv-list {
+	border-right: 1px solid var(--sep);
+}
+.srv-line {
+	display: grid;
+	grid-template-columns: 10px minmax(0, 1fr) auto;
+	align-items: center;
+	gap: 12px;
+	width: 100%;
+	padding: 10px 14px;
+	border: 0;
+	border-top: 1px solid var(--sep);
+	background: none;
+	color: inherit;
+	text-align: left;
+}
+.srv-line:first-child {
+	border-top: 0;
+}
+button.srv-line:hover {
+	background: rgba(255, 255, 255, 0.03);
+}
+.srv-line.sel {
+	background: var(--fill);
+}
+.srv-text {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+}
+.srv-text .m {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.srv-url {
+	color: var(--label-2);
+	font: 12.5px var(--mono);
+	text-decoration: none;
+	white-space: nowrap;
+}
+.srv-url:hover {
+	color: #fff;
+	text-decoration: underline;
+}
+.log-pane {
+	display: grid;
+	grid-template-rows: auto minmax(0, 1fr);
+	min-width: 0;
+	background: rgba(0, 0, 0, 0.45);
+}
+.log-pane-head {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--sep);
+	font-size: 13px;
+}
+.log-pane-head .x {
+	margin-left: auto;
+}
+.log-pane-lines {
+	min-height: 220px;
+	max-height: 360px;
+	overflow: auto;
+	padding: 10px 12px;
+	font: 12px / 1.55 var(--mono);
+	color: #c3ccd6;
+	white-space: pre;
+}
+
+/* A worktree's Environment: its values, the form and what each server gets, one card. */
+.env-card .ov-add {
+	padding: 12px 14px;
+	border-top: 1px solid var(--sep);
+}
+.env-card .ov-add:first-child {
+	border-top: 0;
+}
+.env-card .env-all {
+	border-top: 1px solid var(--sep);
+	border-radius: 0;
+	background: none;
+}
+
+@media (max-width: 760px) {
+	.srv-split.open {
+		grid-template-columns: minmax(0, 1fr);
+	}
+	.srv-split.open .srv-list {
+		border-right: 0;
+		border-bottom: 1px solid var(--sep);
+	}
 }

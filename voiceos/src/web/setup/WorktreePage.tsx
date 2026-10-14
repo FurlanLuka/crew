@@ -1,30 +1,14 @@
-// A worktree: its name with rename and duplicate beside it, Open in Voice OS, a recorded failure with
-// its ways out, its servers with their actions (start, stop, restart, verify, logs), its Environment
-// (values set for this worktree, what each server gets), and its removal. Rename and duplicate are
-// their own small forms (WorktreeForms.tsx); what it reads is derived in worktree.ts.
+// A worktree: its name with rename and duplicate beside it, Open in Voice OS, its servers card
+// (ServersCard.tsx: actions, verify and installs followed in place, each server's log), its
+// Environment card and its removal. Rename and duplicate are their own small forms
+// (WorktreeForms.tsx).
 import { useState } from 'react';
-import type { SetupCommand } from '../../crew/commands.js';
 import { refOn } from '../../shared/machine-ref.js';
-import { isOk, useCrew, useCrewAction } from './api.js';
-import {
-	Confirm,
-	FailBlock,
-	PageHead,
-	ResultLine,
-	type SetupContext,
-	describeSize,
-} from './common.js';
-import { describeIssue, describeStages } from './derive.js';
-import type {
-	CrewDryRun,
-	CrewMember,
-	CrewProject,
-	CrewRoute,
-	CrewSmoke,
-	CrewWorktree,
-} from './types.js';
-import { type ServerLine, describeIssueWhy, listServerLines } from './worktree.js';
-import { WorktreeEnvironment, WorktreeOverrides } from './WorktreeValues.js';
+import { useCrew, useCrewAction } from './api.js';
+import { Confirm, PageHead, type SetupContext, describeSize } from './common.js';
+import { ServersCard } from './ServersCard.js';
+import type { CrewDryRun, CrewMember, CrewProject, CrewWorktree } from './types.js';
+import { WorktreeEnvironment } from './WorktreeValues.js';
 
 interface WorktreePageProps {
 	ctx: SetupContext;
@@ -33,32 +17,23 @@ interface WorktreePageProps {
 
 const POLL_MS = 4000;
 
-const SERVER_DOT: Record<ServerLine['state'], string> = {
-	up: 'ok',
-	died: 'ask',
-	quiet: 'run',
-	stopped: 'ring',
-};
-
 export const WorktreePage = ({ ctx, worktreeRef }: WorktreePageProps) => {
 	const [workspace = ''] = worktreeRef.split('/');
+	// The row is read fast and often; its size walks every checkout, so it comes once, later.
 	const worktrees = useCrew<CrewWorktree[]>(
 		ctx.machine,
-		{ type: 'ls_worktrees', workspace, size: true },
+		{ type: 'ls_worktrees', workspace },
 		{ pollMs: POLL_MS },
 	);
+	const sizes = useCrew<CrewWorktree[]>(ctx.machine, {
+		type: 'ls_worktrees',
+		workspace,
+		size: true,
+	});
 	const members = useCrew<CrewMember[]>(ctx.machine, { type: 'show', ref: worktreeRef });
 	const projects = useCrew<CrewProject[]>(ctx.machine, { type: 'ls_projects' });
 	const row = worktrees.data?.find((candidate) => candidate.ref === worktreeRef);
-	const checks = useCrew<CrewSmoke[]>(
-		ctx.machine,
-		row?.dev_running ? { type: 'dev_check', ref: worktreeRef } : null,
-		{ pollMs: POLL_MS },
-	);
-	const routes = useCrew<CrewRoute[]>(
-		ctx.machine,
-		row?.dev_running ? { type: 'dev_status', ref: worktreeRef } : null,
-	);
+	const size = sizes.data?.find((candidate) => candidate.ref === worktreeRef)?.size_bytes;
 	const action = useCrewAction(ctx.machine);
 	const [isRemoving, setIsRemoving] = useState(false);
 	// The workspace's last worktree: removing it is removing the workspace (crew says which).
@@ -68,27 +43,6 @@ export const WorktreePage = ({ ctx, worktreeRef }: WorktreePageProps) => {
 	);
 	const isLast = removal.data?.last === true;
 	const memberRows = members.data ?? [];
-	// Bumped when a value set for this worktree changes: what each server gets follows.
-	const [valuesChanged, setValuesChanged] = useState(0);
-	const servers = listServerLines({
-		members: memberRows,
-		projects: projects.data ?? [],
-		checks: checks.data ?? [],
-		routes: routes.data ?? [],
-		worktreeRef,
-	});
-	const issue = row?.issues?.[0];
-	const sessionRef = refOn(ctx.machine, worktreeRef);
-
-	const run = async (command: SetupCommand) => {
-		const reply = await action.run(command);
-
-		worktrees.refresh();
-		checks.refresh();
-		routes.refresh();
-
-		return reply;
-	};
 
 	if (worktrees.data && !row) {
 		return (
@@ -98,8 +52,6 @@ export const WorktreePage = ({ ctx, worktreeRef }: WorktreePageProps) => {
 		);
 	}
 
-	const isRunning = Boolean(row?.dev_running);
-
 	return (
 		<section className="page" aria-label={`Worktree ${worktreeRef}`}>
 			<PageHead
@@ -107,7 +59,7 @@ export const WorktreePage = ({ ctx, worktreeRef }: WorktreePageProps) => {
 				lead={[
 					ctx.machineTitle,
 					`branch crew/${worktreeRef}/*`,
-					row?.size_bytes ? `${describeSize(row.size_bytes)} on disk` : '',
+					size ? `${describeSize(size)} on disk` : '',
 				]
 					.filter(Boolean)
 					.join(' · ')}
@@ -139,181 +91,43 @@ export const WorktreePage = ({ ctx, worktreeRef }: WorktreePageProps) => {
 					</>
 				}
 			>
-				<button type="button" className="btn" onClick={() => ctx.openVoice(sessionRef)}>
+				<button
+					type="button"
+					className="btn"
+					onClick={() => ctx.openVoice(refOn(ctx.machine, worktreeRef))}
+				>
 					Open in Voice OS
 				</button>
 			</PageHead>
-			{issue && (
-				<FailBlock
-					title={describeIssue(issue).split(' · ')[0] ?? 'Something failed'}
-					when={row?.health}
-					steps={describeStages(issue.stage)}
-					log={issue.detail}
-					why={describeIssueWhy(issue)}
-				>
-					{issue.stage !== 'smoke' && (
-						<button
-							type="button"
-							className="btn primary"
-							disabled={action.isBusy}
-							onClick={async () => {
-								if (
-									isOk(
-										await run({ type: 'setup_rerun', ref: worktreeRef, projects: [issue.project] }),
-									)
-								) {
-									ctx.go({ page: 'progress', ref: worktreeRef });
-								}
-							}}
-						>
-							{issue.stage === 'install' ? 'Install again' : 'Retry'}
-						</button>
-					)}
-					<button
-						type="button"
-						className={`btn ${issue.stage === 'smoke' ? 'primary' : ''}`}
-						onClick={() => ctx.askClaude(`In ${worktreeRef}: ${describeIssue(issue)}. Fix it.`)}
-					>
-						Fix with Claude
-					</button>
-					<button
-						type="button"
-						className="btn ghost"
-						onClick={() => ctx.go({ page: 'logs', ref: worktreeRef })}
-					>
-						Full log
-					</button>
-				</FailBlock>
-			)}
-			<section className="section" aria-label="Dev servers">
-				<div className="section-head">
-					<div className="label">Dev servers</div>
-					<div className="row-actions">
-						{row?.installing && (
-							<button
-								type="button"
-								className="btn sm"
-								onClick={() => ctx.go({ page: 'progress', ref: worktreeRef })}
-							>
-								Installing… follow it
-							</button>
-						)}
-						<button
-							type="button"
-							className="btn sm"
-							disabled={action.isBusy || row?.installing}
-							onClick={() =>
-								void run(
-									isRunning
-										? { type: 'dev_stop', ref: worktreeRef }
-										: { type: 'dev_start', ref: worktreeRef },
-								)
-							}
-						>
-							{isRunning ? 'Stop servers' : 'Start servers'}
-						</button>
-						{isRunning && (
-							<button
-								type="button"
-								className="btn sm"
-								disabled={action.isBusy}
-								onClick={() => void run({ type: 'dev_restart', ref: worktreeRef })}
-							>
-								Restart
-							</button>
-						)}
-						<button
-							type="button"
-							className="btn sm"
-							disabled={action.isBusy || row?.installing}
-							onClick={async () => {
-								if (isOk(await run({ type: 'verify', ref: worktreeRef }))) {
-									ctx.go({ page: 'progress', ref: worktreeRef });
-								}
-							}}
-						>
-							Verify
-						</button>
-						<button
-							type="button"
-							className="btn sm ghost"
-							onClick={() => ctx.go({ page: 'logs', ref: worktreeRef })}
-						>
-							Logs
-						</button>
+			<div className="label">Dev servers</div>
+			{row ? (
+				<ServersCard
+					ctx={ctx}
+					worktreeRef={worktreeRef}
+					row={row}
+					members={memberRows}
+					projects={projects.data ?? []}
+					onChanged={worktrees.refresh}
+				/>
+			) : (
+				<div className="box">
+					<div className="box-row" aria-busy="true">
+						<span className="dot idle" />
+						<span className="sub">
+							<span className="m">Reading the worktree…</span>
+						</span>
 					</div>
 				</div>
-				<div className="box">
-					{servers.length === 0 && (
-						<div className="box-row">
-							<span className="dot idle" />
-							<span className="sub">
-								<span className="m">No dev servers</span>
-							</span>
-						</div>
-					)}
-					{servers.map((server) => (
-						<div
-							key={`${server.project} ${server.name}`}
-							className="box-row srv-full one-line"
-							data-server={server.name}
-							data-state={server.state}
-							title={`${server.name} · ${server.project} · ${server.command}`}
-						>
-							<span className={`dot ${SERVER_DOT[server.state]}`} />
-							<span className="sub">
-								<b>{server.name}</b>
-								<span className="m">
-									{server.project} · {server.command}
-								</span>
-							</span>
-							{server.state === 'died' ? (
-								<span className="chip ask">died{server.port ? ` · :${server.port}` : ''}</span>
-							) : server.url ? (
-								<span className="links">
-									<a href={server.url} target="_blank" rel="noopener noreferrer">
-										{server.url.replace(/^https?:\/\//, '')} ↗
-									</a>
-								</span>
-							) : (
-								<span className="chip">
-									{server.state === 'quiet'
-										? 'not listening yet'
-										: server.state === 'stopped'
-											? 'stopped'
-											: 'running, no port'}
-								</span>
-							)}
-							<span className="row-actions">
-								<button
-									type="button"
-									className="btn sm ghost"
-									onClick={() => ctx.go({ page: 'logs', ref: worktreeRef })}
-								>
-									Logs
-								</button>
-							</span>
-						</div>
-					))}
-				</div>
-			</section>
-			<ResultLine reply={action.last} />
-			<WorktreeOverrides
-				ctx={ctx}
-				worktreeRef={worktreeRef}
-				members={memberRows}
-				projects={projects.data ?? []}
-				onChanged={() => setValuesChanged((count) => count + 1)}
-			/>
+			)}
 			<WorktreeEnvironment
 				ctx={ctx}
 				worktreeRef={worktreeRef}
 				members={memberRows}
-				refreshKey={valuesChanged}
+				projects={projects.data ?? []}
 			/>
 			<dl className="facts">
 				<dt>On disk</dt>
-				<dd>{[describeSize(row?.size_bytes), row?.path].filter(Boolean).join(' · ')}</dd>
+				<dd>{[describeSize(size), row?.path].filter(Boolean).join(' · ')}</dd>
 				<dt>Projects</dt>
 				<dd>{memberRows.map((member) => `${member.name} (${member.mode})`).join(', ') || '—'}</dd>
 			</dl>

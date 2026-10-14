@@ -160,9 +160,4 @@ describe('a workspace is made from its members as the export names them', () => 
 it('the summary counts what is open, what clones (a checkout found here too) and what is here', () =>
 	expect(
 		describeSummary(ROWS, startChoices(ROWS), ['admin']).map((pill) => `${pill.tone}:${pill.text}`),
-	).toEqual([
-		'ask:1 project needs a choice',
-		':2 clones',
-		':1 workspace',
-		':1 already here',
-	]));
+	).toEqual(['ask:1 project needs a choice', ':2 clones', ':1 workspace', ':1 already here']));

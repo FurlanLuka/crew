@@ -52,12 +52,20 @@ describe('matchRoute', () => {
 		[
 			'/setup/worktree/store-front/main/logs',
 			'',
-			{ half: 'setup', machine: LOCAL_MACHINE, page: { page: 'worktree', ref: 'store-front/main' } },
+			{
+				half: 'setup',
+				machine: LOCAL_MACHINE,
+				page: { page: 'worktree', ref: 'store-front/main' },
+			},
 		],
 		[
 			'/setup/worktree/store-front/main/progress',
 			'',
-			{ half: 'setup', machine: LOCAL_MACHINE, page: { page: 'worktree', ref: 'store-front/main' } },
+			{
+				half: 'setup',
+				machine: LOCAL_MACHINE,
+				page: { page: 'worktree', ref: 'store-front/main' },
+			},
 		],
 		[
 			'/setup/workspace/store-front/new-worktree',

@@ -256,7 +256,7 @@ const RemoveWorkspace = ({ ctx, name, worktrees }: RemoveWorkspaceProps) => {
 			onDone={() => ctx.go({ page: 'board', tab: 'workspaces' })}
 		/>
 	) : (
-		<div className="form-actions danger-zone">
+		<div className="form-actions remove-row">
 			<button type="button" className="btn danger" onClick={() => setIsRemoving(true)}>
 				Remove workspace
 			</button>
