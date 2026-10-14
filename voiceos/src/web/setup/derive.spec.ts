@@ -87,6 +87,12 @@ describe('describeWorktreePill', () => {
 		).toBe(' · api died');
 		expect(
 			describeWorktreePill({
+				installing: false,
+				issues: [{ stage: 'smoke', project: 'store-api', detail: '' }],
+			}),
+		).toBe(' · store-api died');
+		expect(
+			describeWorktreePill({
 				installing: true,
 				issues: [{ stage: 'install', project: 'store-api', detail: '' }],
 			}),

@@ -61,16 +61,17 @@ export const useMentions = ({
 	const handleKey = (event: KeyboardEvent): boolean => {
 		const entry = entries[index];
 
-		return (
-			Boolean(entry) &&
-			applyMenuKey(event, {
-				index,
-				length: entries.length,
-				onMove: setSelected,
-				onClose: () => setClosedFor(text),
-				onChoose: () => entry && choose(entry),
-			})
-		);
+		if (!entry) {
+			return false;
+		}
+
+		return applyMenuKey(event, {
+			index,
+			length: entries.length,
+			onMove: setSelected,
+			onClose: () => setClosedFor(text),
+			onChoose: () => choose(entry),
+		});
 	};
 
 	return {

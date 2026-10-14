@@ -83,6 +83,10 @@ describe('pickFocus', () => {
 			'store/main',
 		);
 		expect(pickFocus({ found, asked, closedAt: 'ask 5' })).toBeNull();
+		// Closing the Fix with Claude panel never hides a mention after it.
+		expect(
+			pickFocus({ found: { ...found, atId: 't12', index: 6 }, asked, closedAt: 'ask 5' }),
+		).toEqual({ ref: 'store/main', closeKey: 't12' });
 	});
 
 	it('nothing named → no panel', () =>

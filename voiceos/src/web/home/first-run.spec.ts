@@ -61,6 +61,18 @@ describe('planFirstWorkspace', () => {
 			}),
 		).toEqual([{ type: 'add_worktree', ref: 'store/main' }]));
 
+	it('one made earlier whose projects crew did not list → every member joins, then its main', () =>
+		expect(
+			planFirstWorkspace({
+				workspace: 'store',
+				members: ['store-api'],
+				existing: { ...existing([]), projects: undefined },
+			}),
+		).toEqual([
+			{ type: 'add_workspace', name: 'store', projects: ['store-api'] },
+			{ type: 'add_worktree', ref: 'store/main' },
+		]));
+
 	it('one made earlier, a member missing → that member joins, then its main', () =>
 		expect(
 			planFirstWorkspace({

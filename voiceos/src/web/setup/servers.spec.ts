@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import type { SetupCommand } from '../../crew/commands.js';
 import {
 	CARD_ACTIONS,
+	type CardAction,
 	type CardMode,
 	actionCommand,
 	describeHeadline,
@@ -247,6 +248,9 @@ describe('pickStartTarget', () => {
 describe('describeHeadline', () => {
 	it.each<[CardMode, ServerLine[], CrewIssue | undefined, string]>([
 		['stopped', [], undefined, 'Stopped'],
+		['running', [], undefined, 'Running'],
+		['died', [line('web', 'up')], undefined, 'A server died'],
+		['installing', [], undefined, 'Installing'],
 		['running', [line('web', 'up'), line('api', 'quiet')], undefined, 'Running · 1 of 2 listening'],
 		['died', [line('web', 'up'), line('api', 'died')], undefined, 'api died'],
 		['died', [line('web', 'up')], SMOKE_ISSUE, 'api died'],
@@ -282,10 +286,12 @@ describe('actionCommand', () => {
 			]),
 		).toEqual({ type: 'setup_rerun', ref: REF, projects: ['store-api', 'store-front'] }));
 
-	it('the rest are the dev commands of the worktree', () => {
-		expect(actionCommand('restart', REF, [])).toEqual({ type: 'dev_restart', ref: REF });
-		expect(actionCommand('verify', REF, [])).toEqual({ type: 'verify', ref: REF });
-	});
+	it.each<[CardAction, SetupCommand]>([
+		['start', { type: 'dev_start', ref: REF }],
+		['stop', { type: 'dev_stop', ref: REF }],
+		['restart', { type: 'dev_restart', ref: REF }],
+		['verify', { type: 'verify', ref: REF }],
+	])('%s → %j', (action, command) => expect(actionCommand(action, REF, [])).toEqual(command));
 });
 
 describe('listProjectLines', () => {
