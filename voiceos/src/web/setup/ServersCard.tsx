@@ -80,10 +80,13 @@ export const ServersCard = ({
 	projects,
 	onChanged,
 }: ServersCardProps) => {
+	// While a runner works, followed; after a verify that failed with nothing running, read once: its
+	// steps say which servers answered and which died.
+	const isTried = !row.dev_running && (row.issues ?? []).some((issue) => issue.stage === 'smoke');
 	const status = useCrew<CrewSetupStatus>(
 		ctx.machine,
-		row.installing ? { type: 'setup_status', ref } : null,
-		{ pollMs: RUNNER_POLL_MS },
+		row.installing || isTried ? { type: 'setup_status', ref } : null,
+		row.installing ? { pollMs: RUNNER_POLL_MS } : {},
 	);
 	const checks = useCrew<CrewSmoke[]>(
 		ctx.machine,
@@ -99,6 +102,8 @@ export const ServersCard = ({
 	const [isClosed, setIsClosed] = useState(false);
 	const [isConfirmingVerify, setIsConfirmingVerify] = useState(false);
 	const runnerStatus = row.installing ? status.data : null;
+	// A try's verdicts stand for servers only while none runs: a live server's own state wins.
+	const triedStatus = row.installing || isTried ? status.data : null;
 	const plain = listServerLines({
 		members,
 		projects,
@@ -106,7 +111,7 @@ export const ServersCard = ({
 		routes: routes.data ?? [],
 		worktreeRef: ref,
 	});
-	const lines = withSmokeSteps(plain, runnerStatus);
+	const lines = withSmokeSteps(plain, triedStatus);
 	const mode = readCardMode({ row, status: runnerStatus, lines });
 	const issue = row.issues?.[0];
 	const target = isClosed ? null : (picked ?? pickStartTarget(mode, lines, issue));

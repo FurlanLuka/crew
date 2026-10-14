@@ -272,7 +272,7 @@ export const Board = ({ ctx, tab, onFirstRun }: BoardProps) => {
 						: `${countOf(workspaceRows.length, 'workspace')} on ${ctx.machineTitle}`}
 				</span>
 			</div>
-			<p className="m tab-note">
+			<p className="tab-note">
 				{isProjects
 					? 'The repos crew knows on this machine: how each installs and which dev servers it runs. Set once, used by every workspace.'
 					: 'Where you work. A workspace groups projects; each of its worktrees is a full working set, every project on its own branch and ports.'}

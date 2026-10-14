@@ -1532,6 +1532,8 @@ button.srv-line:hover {
 .tab-note {
 	margin: -6px 0 0;
 	max-width: 80ch;
+	color: var(--label-3);
+	font: 13px / 1.5 var(--sys);
 }
 .empty-board {
 	display: grid;
