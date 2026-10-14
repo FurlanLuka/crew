@@ -1,7 +1,7 @@
 // Everything the Set up page asks crew, as one typed union. The page sends a SetupCommand, never
 // argv: the server (or a remote, for its own machine) validates it with this schema and builds the
 // argv with toCrewArgv, so nothing the browser types reaches crew as a flag or a second command.
-// Browser-safe on purpose (zod only): the page imports it for the CommandLine shown on every form.
+// Browser-safe on purpose (zod only): the page builds its commands with these types.
 
 import { MAX_NAME_LENGTH } from '../state/names.js';
 import { z } from 'zod';

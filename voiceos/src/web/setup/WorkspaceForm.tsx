@@ -1,9 +1,7 @@
 // The form that makes a workspace or adds projects to one: each project ticked with its mode, the
 // wires between them, a direct-mode refusal shown on submit.
 import { type FormEvent, useState } from 'react';
-import type { SetupCommand } from '../../crew/commands.js';
 import { isOk, useCrew, useCrewAction } from './api.js';
-import { CommandLine } from './CommandLine.js';
 import { Confirm, PageHead, ResultLine, type SetupContext } from './common.js';
 import type { CrewProject, CrewWorkspace } from './types.js';
 import { type Mode, listWires, planWorkspace } from './workspace.js';
@@ -158,21 +156,6 @@ export const WorkspaceForm = ({ ctx, name }: WorkspaceFormProps) => {
 						))}
 					</div>
 				)}
-				<CommandLine
-					commands={[
-						...commands,
-						...removals.map(
-							(project): SetupCommand => ({
-								type: 'rm_workspace_project',
-								workspace: workspaceName,
-								project,
-								confirm: true,
-							}),
-						),
-					]}
-					then={isEdit ? undefined : 'main is checked out, installed and its servers started'}
-					machineTitle={ctx.machineTitle}
-				/>
 				<ResultLine reply={action.last && !isOk(action.last) ? action.last : null} />
 				<div className="form-actions">
 					<button

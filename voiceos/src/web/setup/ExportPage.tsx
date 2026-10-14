@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { countOf } from '../count.js';
 import { isOk, readCrewLine, runCrew, useCrew } from './api.js';
-import { CommandLine } from './CommandLine.js';
 import { PageHead, type SetupContext } from './common.js';
 import { exportCommand, listExported, listLoose, membersOf } from './export.js';
 import { TickRow, toggle } from './flow.js';
@@ -142,7 +141,6 @@ export const ExportPage = ({ ctx }: { ctx: SetupContext }) => {
 					</span>
 				</div>
 			</div>
-			<CommandLine commands={[command]} />
 			<div className="fr-actions">
 				<span className="m">
 					{exported.length

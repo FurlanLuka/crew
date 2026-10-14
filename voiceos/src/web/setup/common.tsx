@@ -12,7 +12,6 @@ import {
 	readCrewLine,
 	useCrew,
 } from './api.js';
-import { CommandLine } from './CommandLine.js';
 import { describeCost, formatBytes } from './readers.js';
 
 export interface SetupContext {
@@ -120,7 +119,6 @@ export const Confirm = ({
 				)}
 				{cost.reply && !isOk(cost.reply) && <p className="m">{readCrewLine(cost.reply)}</p>}
 			</div>
-			<CommandLine commands={[command]} />
 			{typed && (
 				<label className="field">
 					<span>Type {typed} to confirm</span>

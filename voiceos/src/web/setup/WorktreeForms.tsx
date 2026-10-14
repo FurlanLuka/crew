@@ -3,7 +3,6 @@ import { type FormEvent, useState } from 'react';
 import type { SetupCommand } from '../../crew/commands.js';
 import type { SetupPage } from '../router.js';
 import { isOk, useCrewAction } from './api.js';
-import { CommandLine } from './CommandLine.js';
 import { PageHead, ResultLine, type SetupContext } from './common.js';
 
 type NameFormKind = 'rename' | 'duplicate';
@@ -12,7 +11,6 @@ interface NameFormCopy {
 	verb: string;
 	lead: string;
 	field: string;
-	after?: string;
 	command: (ref: string, name: string) => SetupCommand;
 	// Where a success lands: the renamed worktree, or the new one's setup progress.
 	next: (ref: string) => SetupPage;
@@ -30,7 +28,6 @@ const COPY: Record<NameFormKind, NameFormCopy> = {
 		verb: 'Duplicate',
 		lead: 'Fresh checkouts of the same projects, on new ports, with the values set for this worktree copied across.',
 		field: 'Name',
-		after: 'each project is checked out, installed and its servers tried',
 		command: (ref, name) => ({ type: 'duplicate_worktree', ref, name }),
 		next: (ref) => ({ page: 'progress', ref }),
 	},
@@ -76,7 +73,6 @@ export const WorktreeNameForm = ({ ctx, worktreeRef, kind }: WorktreeNameFormPro
 						</b>
 					</small>
 				</label>
-				<CommandLine commands={[command]} then={copy.after} machineTitle={ctx.machineTitle} />
 				<ResultLine reply={action.last && !isOk(action.last) ? action.last : null} />
 				<div className="form-actions">
 					<button type="submit" className="btn primary" disabled={!command || action.isBusy}>

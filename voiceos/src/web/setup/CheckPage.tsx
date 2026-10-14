@@ -2,7 +2,6 @@
 // what "ready" means. The page starts the check once, then follows crew's own status.
 import { useEffect, useState } from 'react';
 import { isOk, readCrewLine, runCrew, useCrew } from './api.js';
-import { CommandLine } from './CommandLine.js';
 import { FailBlock, PageHead, type SetupContext } from './common.js';
 import { describeIssue, listWorkspacesOf } from './derive.js';
 import { ProgressBox, isRunning, listFailedProjects, listProgressLines } from './progress.js';
@@ -130,10 +129,6 @@ export const CheckPage = ({ ctx, name }: CheckPageProps) => {
 						</button>
 					</FailBlock>
 				)}
-				<CommandLine
-					commands={[{ type: 'check_project', project: name }]}
-					machineTitle={ctx.machineTitle}
-				/>
 			</ProgressBox>
 			{isDone && failed.length === 0 && (
 				<div className="check-done">

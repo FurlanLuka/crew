@@ -3,7 +3,6 @@
 // as crew env reads it.
 import { type FormEvent, useEffect, useState } from 'react';
 import { isOk, useCrew, useCrewAction } from './api.js';
-import { CommandLine } from './CommandLine.js';
 import { ResultLine, type SetupContext } from './common.js';
 import type { CrewEnvRow, CrewMember, CrewProject } from './types.js';
 import { describeOverride, readOverrides, toOverrideCommand } from './worktree.js';
@@ -32,8 +31,6 @@ export const WorktreeOverrides = ({
 		describeOverride(entry.key, members, projects),
 	);
 	const command = toOverrideCommand({ ref: worktreeRef, text, project });
-	// Every form shows its command: before anything is typed, its shape.
-	const shown = command ?? toOverrideCommand({ ref: worktreeRef, text: 'VAR=value', project });
 
 	const run = async (next: Parameters<typeof action.run>[0]) => {
 		const reply = await action.run(next);
@@ -122,7 +119,6 @@ export const WorktreeOverrides = ({
 					Set value
 				</button>
 			</form>
-			<CommandLine commands={[shown]} machineTitle={ctx.machineTitle} />
 			<ResultLine reply={action.last} />
 		</>
 	);

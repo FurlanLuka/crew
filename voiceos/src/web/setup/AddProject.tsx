@@ -3,7 +3,6 @@
 import { type FormEvent, useState } from 'react';
 import type { SetupCommand } from '../../crew/commands.js';
 import { isOk, useCrew, useCrewAction } from './api.js';
-import { CommandLine } from './CommandLine.js';
 import { PageHead, ResultLine, type SetupContext } from './common.js';
 import type { CrewWorkspace } from './types.js';
 
@@ -138,10 +137,6 @@ export const AddProject = ({ ctx }: { ctx: SetupContext }) => {
 					</select>
 					<small>sessions run in a workspace's worktrees</small>
 				</label>
-				<CommandLine
-					commands={[addProject, addWorkspace]}
-					then="set up its install and dev servers"
-				/>
 				<ResultLine reply={action.last && !isOk(action.last) ? action.last : null} />
 				<div className="form-actions">
 					<button type="submit" className="btn primary" disabled={!addProject || action.isBusy}>

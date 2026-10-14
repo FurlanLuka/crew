@@ -2,7 +2,6 @@
 import { useState } from 'react';
 import type { SetupCommand } from '../../crew/commands.js';
 import { useCrew } from './api.js';
-import { CommandLine } from './CommandLine.js';
 import { PageHead, type SetupContext } from './common.js';
 import { readLogText } from './readers.js';
 import type { CrewMember, CrewProject } from './types.js';
@@ -102,7 +101,6 @@ export const LogsPage = ({ ctx, worktreeRef }: LogsPageProps) => {
 				))}
 			</div>
 			<pre className="log big">{text || (log.isLoading ? 'Reading…' : 'Nothing logged yet.')}</pre>
-			<CommandLine commands={[tab?.command(lines)]} machineTitle={ctx.machineTitle} />
 		</section>
 	);
 };

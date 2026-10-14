@@ -5,7 +5,6 @@ import { type DragEvent, useEffect, useRef, useState } from 'react';
 import { countOf } from '../count.js';
 import { type RunnerRow, isCleanFinish, listRunnerRows } from '../home/first-run.js';
 import { isOk, readCrewLine, runCrew, useCrew } from './api.js';
-import { CommandLine } from './CommandLine.js';
 import { PageHead, type SetupContext } from './common.js';
 import { DOT_BY_STATE, RunnerLine, StepLine, TickRow, toggle } from './flow.js';
 import {
@@ -321,12 +320,6 @@ const ChooseStep = ({ ctx, loaded, onImport }: ChooseStepProps) => {
 					{already.map(choiceRow)}
 				</details>
 			)}
-			<CommandLine
-				commands={[...run.projects, ...run.workspaces].map((item) => item.command)}
-				then={
-					run.workspaces.length ? "each workspace's main is checked out and installed" : undefined
-				}
-			/>
 			{isConfirming && (
 				<div
 					className="confirm"

@@ -7,7 +7,6 @@ import { LOCAL_MACHINE } from '../../shared/machine-ref.js';
 import { countOf } from '../count.js';
 import { nameFromPath, nameFromUrl } from '../setup/AddProject.js';
 import { type UseCrew, isOk, useCrew, useCrewAction } from '../setup/api.js';
-import { CommandLine } from '../setup/CommandLine.js';
 import { FailBlock, ResultLine } from '../setup/common.js';
 import { describeIssue } from '../setup/derive.js';
 import { isRunning, listFailedProjects } from '../setup/progress.js';
@@ -70,7 +69,6 @@ const Adder = ({ kind, onAdded }: { kind: AdderKind; onAdded: () => void }) => {
 					onChange={(event) => setValue(event.target.value)}
 				/>
 			</label>
-			<CommandLine commands={[command]} />
 			<ResultLine reply={action.last && !isOk(action.last) ? action.last : null} />
 			<div className="row-actions">
 				<button type="submit" className="btn" disabled={!command || action.isBusy}>
@@ -183,7 +181,6 @@ const ProjectsStep = ({ pool, onPoolChanged, onNext }: ProjectsStepProps) => {
 					}}
 				/>
 			)}
-			<CommandLine commands={commands} />
 			<ResultLine reply={action.last && !isOk(action.last) ? action.last : null} />
 			<div className="fr-actions">
 				<span className="m">You can add more later in Set up.</span>
@@ -278,10 +275,6 @@ const WorkspaceStep = ({ pool, onBack, onCreated }: WorkspaceStepProps) => {
 					/>
 				))}
 			</div>
-			<CommandLine
-				commands={commands}
-				then="main is checked out, its .env copied and each project installed"
-			/>
 			<ResultLine reply={action.last && !isOk(action.last) ? action.last : null} />
 			<div className="fr-actions">
 				<button type="button" className="btn ghost" onClick={onBack}>

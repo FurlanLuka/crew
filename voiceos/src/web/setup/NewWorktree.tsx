@@ -4,7 +4,6 @@ import { type FormEvent, useState } from 'react';
 import type { SetupCommand } from '../../crew/commands.js';
 import { refOn } from '../../shared/machine-ref.js';
 import { isOk, useCrew, useCrewAction } from './api.js';
-import { CommandLine } from './CommandLine.js';
 import { FailBlock, PageHead, ResultLine, type SetupContext } from './common.js';
 import { describeIssue } from './derive.js';
 import { ProgressBox, isRunning, listFailedProjects, listProgressLines } from './progress.js';
@@ -96,11 +95,6 @@ export const NewWorktree = ({ ctx, workspace }: NewWorktreeProps) => {
 						pull first
 					</label>
 				</div>
-				<CommandLine
-					commands={[command]}
-					then="each project is checked out, installed and its servers tried"
-					machineTitle={ctx.machineTitle}
-				/>
 				<ResultLine reply={action.last && !isOk(action.last) ? action.last : null} />
 				<div className="form-actions">
 					<button type="submit" className="btn primary" disabled={!command || action.isBusy}>
@@ -195,10 +189,6 @@ export const Progress = ({ ctx, worktreeRef }: ProgressProps) => {
 						</FailBlock>
 					);
 				})}
-				<CommandLine
-					commands={[{ type: 'setup_status', ref: worktreeRef }]}
-					machineTitle={ctx.machineTitle}
-				/>
 			</ProgressBox>
 			<ResultLine reply={action.last && !isOk(action.last) ? action.last : null} />
 			{isDone && (

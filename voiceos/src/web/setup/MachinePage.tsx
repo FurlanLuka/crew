@@ -5,7 +5,6 @@ import type { SetupCommand } from '../../crew/commands.js';
 import { LOCAL_MACHINE } from '../../shared/machine-ref.js';
 import { isValidHost } from '../../shared/machines.js';
 import { describeRefusal, isOk, useCrew, useCrewAction } from './api.js';
-import { CommandLine } from './CommandLine.js';
 import { Confirm, PageHead, ResultLine, type SetupContext } from './common.js';
 import { deriveProjectState } from './derive.js';
 import type { UpdateCheck } from './settings/settings.js';
@@ -74,9 +73,6 @@ export const MachinePage = ({ ctx }: { ctx: SetupContext }) => {
 						Cancel
 					</button>
 				</form>
-			)}
-			{name?.trim() && (
-				<CommandLine commands={[{ type: 'machines_rename', id: ctx.machine, name: name.trim() }]} />
 			)}
 			<div className="label">On it</div>
 			<div className="box">
@@ -200,7 +196,6 @@ export const AddMachine = ({ ctx }: { ctx: SetupContext }) => {
 						onChange={(event) => setName(event.target.value)}
 					/>
 				</label>
-				<CommandLine commands={[command]} />
 				<ResultLine reply={action.last && !isOk(action.last) ? action.last : null} />
 				<div className="form-actions">
 					<button

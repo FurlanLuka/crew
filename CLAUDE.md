@@ -496,8 +496,8 @@ the runners are done; `l` opens the runner logs (`NewSetupLogsView`).
 
 ## Conventions
 
-- **Every feature is a command.** crew's page composes commands (each form shows the argv
-  it runs); nothing is page-only, and nothing needs a tty except the launch view, `claude`
+- **Every feature is a command.** crew's page composes commands (it runs them and never
+  prints them); nothing is page-only, and nothing needs a tty except the launch view, `claude`
   and `open` (their no-tty error names the data alternative). A read the page uses gets a
   `--json` shape pinned by a golden in `voiceos/testdata/`. A new command goes in `help.go`
   (the launch TUI's entries carry a `Notes` line naming the CLI equivalent), and `help_test` requires its usage line and output format

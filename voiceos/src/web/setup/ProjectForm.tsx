@@ -4,7 +4,6 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import type { SetupCommand } from '../../crew/commands.js';
 import { isOk, useCrew, useCrewAction } from './api.js';
-import { CommandLine } from './CommandLine.js';
 import { PageHead, ResultLine, type SetupContext } from './common.js';
 import { describeBindingSource, readPreview } from './environment.js';
 import { type ServerRow, listSources, planProjectSave, toRow } from './project-form.js';
@@ -98,7 +97,6 @@ const ProjectFormLoaded = ({ ctx, project, projects, onSaved }: LoadedProps) => 
 	const previewDoc = readPreview(preview.data);
 	const previewRows = previewDoc.rows;
 	const commands = planProjectSave({ project, setup, envCmd, rows, binding });
-	const check: SetupCommand = { type: 'check_project', project: project.name };
 
 	const updateRow = (key: number, patch: Partial<ServerRow>) =>
 		setRows(rows.map((row) => (row.key === key ? { ...row, ...patch } : row)));
@@ -361,7 +359,6 @@ const ProjectFormLoaded = ({ ctx, project, projects, onSaved }: LoadedProps) => 
 					)}
 				</div>
 
-				<CommandLine commands={[...commands, check]} machineTitle={ctx.machineTitle} />
 				<ResultLine reply={action.last && !isOk(action.last) ? action.last : null} />
 				<div className="form-actions">
 					<button type="submit" className="btn primary" disabled={action.isBusy}>
