@@ -123,15 +123,12 @@ body:has(.setup) {
 	justify-items: center;
 	padding: 26px 16px 0;
 }
-/* Every page is as wide as the toolbar; forms keep a column a form reads well at. */
+/* Every page is as wide as the toolbar: one column edge everywhere. */
 .page {
 	width: min(1200px, 100%);
 	display: grid;
 	gap: 18px;
 	align-content: start;
-}
-.page.narrow {
-	width: min(640px, 100%);
 }
 .page .lead {
 	max-width: 68ch;
@@ -600,6 +597,7 @@ form {
 }
 .field {
 	display: grid;
+	align-content: start;
 	gap: 6px;
 }
 .field > span {

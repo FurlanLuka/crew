@@ -55,7 +55,7 @@ export const WorktreeNameForm = ({ ctx, worktreeRef, kind }: WorktreeNameFormPro
 	};
 
 	return (
-		<section className="page narrow" aria-label={`${copy.verb} ${worktreeRef}`}>
+		<section className="page" aria-label={`${copy.verb} ${worktreeRef}`}>
 			<PageHead title={`${copy.verb} ${worktreeRef}`} lead={copy.lead} />
 			<form onSubmit={(event) => void submit(event)}>
 				<label className="field">

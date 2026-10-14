@@ -161,7 +161,7 @@ export const AddMachine = ({ ctx }: { ctx: SetupContext }) => {
 	};
 
 	return (
-		<section className="page narrow" aria-label="Add a machine">
+		<section className="page" aria-label="Add a machine">
 			<PageHead
 				title="Add a machine"
 				lead="Run projects on another computer or a VM and set them up from here."

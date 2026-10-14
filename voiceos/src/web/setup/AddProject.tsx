@@ -70,7 +70,7 @@ export const AddProject = ({ ctx }: { ctx: SetupContext }) => {
 	};
 
 	return (
-		<section className="page narrow" aria-label="Add a project">
+		<section className="page" aria-label="Add a project">
 			<PageHead
 				title="Add a project"
 				lead="Its sessions can work on the code at once. Then set it up: fill in the install and dev servers yourself (prefilled with what crew finds), or let Claude work them out and ask you only what it can't."

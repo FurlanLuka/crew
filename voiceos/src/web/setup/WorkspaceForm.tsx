@@ -76,7 +76,7 @@ export const WorkspaceForm = ({ ctx, name }: WorkspaceFormProps) => {
 	const removing = removalQueue[0];
 
 	return (
-		<section className="page narrow" aria-label={isEdit ? `${name} settings` : 'New workspace'}>
+		<section className="page" aria-label={isEdit ? `${name} settings` : 'New workspace'}>
 			<PageHead
 				title={isEdit ? `${name} settings` : 'New workspace'}
 				lead={

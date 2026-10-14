@@ -61,7 +61,7 @@ export const ExportPage = ({ ctx }: { ctx: SetupContext }) => {
 	};
 
 	return (
-		<section className="page narrow move" aria-label="Export">
+		<section className="page move" aria-label="Export">
 			<PageHead
 				title="Export to another machine"
 				lead="Pick workspaces and the projects in them come along. The other machine clones each project from its git remote, so nothing here is copied but the setup."

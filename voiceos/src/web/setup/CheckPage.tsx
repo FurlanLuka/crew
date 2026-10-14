@@ -76,7 +76,7 @@ export const CheckPage = ({ ctx, name }: CheckPageProps) => {
 	const issue = failed[0]?.issues[0] ?? data?.health?.issues[0];
 
 	return (
-		<section className="page narrow" aria-label={`Checking ${name}`}>
+		<section className="page" aria-label={`Checking ${name}`}>
 			<PageHead
 				title={`Checking ${name}`}
 				lead="A clean checkout, the install, then every dev server has to answer."

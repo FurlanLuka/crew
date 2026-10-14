@@ -17,7 +17,7 @@ export const SettingsPage = ({ ctx }: { ctx: SetupContext }) => {
 
 	if (isUninstalled) {
 		return (
-			<section className="page narrow" aria-label="crew is uninstalled">
+			<section className="page" aria-label="crew is uninstalled">
 				<PageHead
 					title="crew is uninstalled"
 					lead="Its server is stopping, so this page stops answering. To come back, install crew again and run crew."

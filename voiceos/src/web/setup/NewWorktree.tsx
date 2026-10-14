@@ -31,7 +31,7 @@ export const NewWorktree = ({ ctx, workspace }: NewWorktreeProps) => {
 	};
 
 	return (
-		<section className="page narrow" aria-label={`New worktree in ${workspace}`}>
+		<section className="page" aria-label={`New worktree in ${workspace}`}>
 			<PageHead
 				title={`New worktree in ${workspace}`}
 				lead="A fresh copy of every project, on its own ports. It's done when every dev server answers."

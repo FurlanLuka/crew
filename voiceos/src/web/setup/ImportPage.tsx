@@ -614,7 +614,7 @@ export const ImportPage = ({ ctx }: { ctx: SetupContext }) => {
 	};
 
 	return (
-		<section className="page narrow move" aria-label="Import">
+		<section className="page move" aria-label="Import">
 			{step !== 'done' && <StepLine titles={STEPS} at={STEP_AT[step]} label="Import" isInline />}
 			<PageHead
 				title={step === 'choose' ? (loaded?.fileName ?? '') : TITLES[step]}
