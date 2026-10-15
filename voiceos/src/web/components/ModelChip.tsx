@@ -35,7 +35,7 @@ export const ModelChip = ({ state, sessionRef, send }: ModelChipProps) => {
 	};
 
 	return (
-		<div className="perm-wrap" ref={wrapRef}>
+		<div className="perm-wrap model-wrap" ref={wrapRef}>
 			<button
 				type="button"
 				className="perm-chip model-chip"

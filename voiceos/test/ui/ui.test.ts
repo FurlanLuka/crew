@@ -3725,7 +3725,7 @@ describe('slash commands', () => {
 		await context.close();
 	}, 20_000);
 
-	it('at phone width the chip and the box share one row', async () => {
+	it('at phone width the mode chip and the box share one row; the meter and the model chip are left out', async () => {
 		const { context, page } = await openWithCommands();
 
 		await page.setViewportSize({ width: 390, height: 800 });
@@ -3734,7 +3734,11 @@ describe('slash commands', () => {
 		await page.locator('.ctx-wrap').waitFor({ state: 'attached', timeout: 5000 });
 		expect(await page.locator('.ctx-wrap').isVisible()).toBe(false);
 		store.dispatch({ type: 'conversation_reset', ref: REF });
-		const chip = await page.locator('.perm-chip').boundingBox();
+		// So is the model chip: the permission mode is the one that stays.
+		store.dispatch({ type: 'session_model', ref: REF, model: 'claude-opus-5-5[1m]' });
+		await page.locator('.model-wrap').waitFor({ state: 'attached', timeout: 5000 });
+		expect(await page.locator('.model-wrap').isVisible()).toBe(false);
+		const chip = await page.locator('.perm-chip:not(.model-chip)').boundingBox();
 		const field = await fieldOf(page).boundingBox();
 
 		expect(chip && field).toBeTruthy();

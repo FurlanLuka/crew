@@ -1970,6 +1970,7 @@
 	.vo-discord,
 	.vo-route,
 	.ctx-wrap,
+	.model-wrap,
 	.mode-wrap {
 		display: none;
 	}
