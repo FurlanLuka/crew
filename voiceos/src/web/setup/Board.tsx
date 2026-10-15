@@ -1,6 +1,6 @@
 // A machine's board: the Setup with Claude card, the problems strip, then one table — every project
 // (install, dev servers, workspaces, state) or every workspace (projects, worktrees as pills).
-import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { LOCAL_MACHINE } from '../../shared/machine-ref.js';
 import type { BoardTab } from '../router.js';
 import { describeRefusal, useCrew } from './api.js';
@@ -9,15 +9,16 @@ import {
 	type Problem,
 	decideFirstRun,
 	decideOnboarding,
+	isCheckRef,
 	describeServer,
 	listProblems,
 	listWorkspacesOf,
 	readCheck,
 	summarizeList,
 } from './derive.js';
+import { ClaudeCard } from './ClaudeCard.js';
 import { EmptyBoard } from './EmptyBoard.js';
 import { WorkspacesTable } from './WorkspacesTable.js';
-import { isSetupBusy, setupRefFor } from './SetupShell.js';
 import type { CrewCheckStatus, CrewProject, CrewWorkspace, CrewWorktree } from './types.js';
 import { countOf } from '../count.js';
 
@@ -29,63 +30,6 @@ interface BoardProps {
 }
 
 const BOARD_POLL_MS = 5000;
-
-export const ClaudeCard = ({ ctx }: { ctx: SetupContext }) => {
-	const [text, setText] = useState('');
-	const ref = setupRefFor(ctx.machine);
-	const session = ctx.state.sessions[ref];
-	const isBusy = isSetupBusy(ctx.state, ref);
-	const hasAsk = ctx.state.asks.some((ask) => ask.ref === ref);
-
-	const submit = (event: FormEvent) => {
-		event.preventDefault();
-
-		if (text.trim()) {
-			ctx.askClaude(text.trim());
-		}
-	};
-
-	if (isBusy) {
-		return (
-			<div className="claude-card">
-				<div className="cc-head">
-					<span className={`dot ${hasAsk ? 'ask' : 'run'}`} />
-					<b>Setup with Claude</b>
-					<span className="m">{hasAsk ? 'waiting on you' : 'working'}</span>
-					<button type="button" className="btn sm primary" onClick={() => ctx.go({ page: 'chat' })}>
-						Open
-					</button>
-				</div>
-			</div>
-		);
-	}
-
-	return (
-		<div className="claude-card">
-			<div className="cc-head">
-				<span className={`dot ${session ? 'ok' : 'ring'}`} />
-				<b>Setup with Claude</b>
-				{!session && <span className="m">starts when you ask</span>}
-				<button type="button" className="btn sm ghost" onClick={() => ctx.go({ page: 'chat' })}>
-					Open
-				</button>
-			</div>
-			<form className="cc-input" onSubmit={submit}>
-				<input
-					type="text"
-					placeholder="Ask setup anything: add a project, fix a server, check this machine…"
-					aria-label="Ask setup"
-					autoComplete="off"
-					value={text}
-					onChange={(event) => setText(event.target.value)}
-				/>
-				<button type="submit" className="btn sm primary">
-					Ask
-				</button>
-			</form>
-		</div>
-	);
-};
 
 export const ProblemsStrip = ({ ctx, problems }: { ctx: SetupContext; problems: Problem[] }) => {
 	if (problems.length === 0) {
@@ -277,7 +221,11 @@ export const Board = ({ ctx, tab, onFirstRun }: BoardProps) => {
 					? 'The repos crew knows on this machine: how each installs and which dev servers it runs. Set once, used by every workspace.'
 					: 'Where you work. A workspace groups projects; each of its worktrees is a full working set, every project on its own branch and ports.'}
 			</p>
-			<ClaudeCard ctx={ctx} />
+			<ClaudeCard
+				ctx={ctx}
+				worktrees={worktreeRows.map((row) => row.ref).filter((ref) => !isCheckRef(ref))}
+				projects={projectRows.map((project) => project.name)}
+			/>
 			{failure && (
 				<p className="result-line bad" role="alert">
 					! {describeRefusal(failure)}

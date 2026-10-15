@@ -20,7 +20,7 @@ const refPattern = (ref: string): RegExp =>
 	new RegExp(`(?<![\\w./~-])${escapeRegExp(ref)}(?![\\w/-]|\\.\\w)`, 'g');
 
 // The last listed ref the text names, by where it is named.
-const lastRefIn = (text: string, refs: string[]): string | null => {
+export const findRefIn = (text: string, refs: string[]): string | null => {
 	let found: { ref: string; at: number } | null = null;
 
 	for (const ref of refs) {
@@ -54,7 +54,7 @@ const bareWorkspaceIn = (command: string, refs: string[]): string | null => {
 
 const readNamed = (item: StreamItem, refs: string[]): string | null => {
 	if (item.kind === 'user') {
-		return lastRefIn(item.text, refs);
+		return findRefIn(item.text, refs);
 	}
 
 	if (item.kind === 'tool' && item.name === 'Bash' && item.summary.startsWith('run ')) {
@@ -64,7 +64,7 @@ const readNamed = (item: StreamItem, refs: string[]): string | null => {
 			return null;
 		}
 
-		return lastRefIn(command, refs) ?? bareWorkspaceIn(command, refs);
+		return findRefIn(command, refs) ?? bareWorkspaceIn(command, refs);
 	}
 
 	return null;

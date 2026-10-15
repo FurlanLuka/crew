@@ -1009,6 +1009,29 @@ describe('Setup with Claude', () => {
 		await context.close();
 	}, 20_000);
 
+	it('"@" in the board\'s Setup with Claude box too; Ask → the chat with the name in it and the worktree beside', async () => {
+		await waitUntil(() => server.store.state.sessions.setup?.status === 'idle');
+		const { context, page } = await open('/setup');
+		const field = page.getByLabel('Ask setup');
+		const menu = page.getByRole('listbox', { name: 'Worktrees and projects' });
+
+		await field.pressSequentially('verify @store-front/m');
+		await menu.getByRole('option').first().waitFor({ timeout: 5000 });
+		expect(await menu.locator('.slash-name').allInnerTexts()).toEqual(['store-front/main']);
+
+		await field.press('Enter');
+		expect(await field.inputValue()).toBe('verify store-front/main ');
+		await menu.waitFor({ state: 'detached', timeout: 5000 });
+
+		await page.getByRole('button', { name: 'Ask' }).click();
+		await page.waitForURL('**/setup/chat');
+		expect(await page.getByLabel('Reply to setup').inputValue()).toBe('verify store-front/main');
+		await page
+			.getByRole('complementary', { name: 'store-front/main beside the chat' })
+			.waitFor({ timeout: 5000 });
+		await context.close();
+	}, 20_000);
+
 	describe("a remote machine's chat", () => {
 		const VM1 = { id: 'vm1', host: 'dev@vm1', name: 'Build box' };
 		const LOCAL_WORKTREES = [createWorktree('setup', true), createWorktree('store-front/main')];

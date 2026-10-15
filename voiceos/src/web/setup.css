@@ -423,8 +423,13 @@ body:has(.setup) {
 	margin-left: auto;
 }
 .cc-input {
+	position: relative;
 	display: flex;
 	gap: 8px;
+}
+.cc-input .slash-menu.below {
+	top: calc(100% + 8px);
+	bottom: auto;
 }
 .cc-input input,
 .reply input,

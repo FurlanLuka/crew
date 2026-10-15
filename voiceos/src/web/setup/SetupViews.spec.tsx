@@ -6,7 +6,8 @@ import { LOCAL_MACHINE } from '../../shared/machine-ref.js';
 import type { State } from '../../shared/protocol.js';
 import { createInitialState, createSession } from '../../state/reducer.js';
 import { FirstRun } from '../home/FirstRun.js';
-import { ClaudeCard, ProblemsStrip } from './Board.js';
+import { ProblemsStrip } from './Board.js';
+import { ClaudeCard } from './ClaudeCard.js';
 import type { SetupContext } from './common.js';
 import { listProblems } from './derive.js';
 
@@ -68,15 +69,19 @@ describe('ProblemsStrip', () => {
 
 describe('ClaudeCard', () => {
 	it('free → a field to ask anything', () =>
-		expect(renderToStaticMarkup(<ClaudeCard ctx={createCtx(withSetup())} />)).toContain(
-			'aria-label="Ask setup"',
-		));
+		expect(
+			renderToStaticMarkup(
+				<ClaudeCard ctx={createCtx(withSetup())} worktrees={[]} projects={[]} />,
+			),
+		).toContain('aria-label="Ask setup"'));
 
 	it('working or waiting on you → says so, with Open only', () => {
 		const state = withSetup({
 			asks: [{ id: 'a1', ref: 'setup', at: 1, kind: 'plan', input: {}, plan: 'p' }],
 		});
-		const html = renderToStaticMarkup(<ClaudeCard ctx={createCtx(state)} />);
+		const html = renderToStaticMarkup(
+			<ClaudeCard ctx={createCtx(state)} worktrees={[]} projects={[]} />,
+		);
 
 		expect(html).toContain('waiting on you');
 		expect(html).toContain('>Open</button>');

@@ -4,13 +4,19 @@ import type { Mentions } from './use-mentions.js';
 
 interface MentionMenuProps {
 	mentions: Mentions;
+	// Under the box, for one near the top of a page (the board's Setup with Claude box).
+	isBelow?: boolean;
 	// After a pick: the box takes the focus back.
 	onPicked: () => void;
 }
 
-export const MentionMenu = ({ mentions, onPicked }: MentionMenuProps) =>
+export const MentionMenu = ({ mentions, isBelow = false, onPicked }: MentionMenuProps) =>
 	mentions.entries.length === 0 ? null : (
-		<div className="slash-menu" role="listbox" aria-label="Worktrees and projects">
+		<div
+			className={`slash-menu ${isBelow ? 'below' : ''}`}
+			role="listbox"
+			aria-label="Worktrees and projects"
+		>
 			{mentions.entries.map((entry, index) => (
 				<div
 					key={`${entry.kind} ${entry.value}`}
