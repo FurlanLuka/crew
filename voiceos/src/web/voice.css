@@ -975,22 +975,236 @@
 	color: var(--good);
 	font: 12.5px / 1.5 var(--mono);
 }
-.aside {
-	margin: 4px 0 4px 2px;
-	padding-left: 14px;
-	box-shadow: inset 2px 0 0 rgba(255, 255, 255, 0.175);
+/* No overflow: hidden here: the stream is a grid, and a clipping item there may shrink to nothing
+   once the history outgrows the pane. min-width keeps a wide answer from widening the stream. */
+.pc {
+	min-width: 0;
+	margin: 10px 0;
+	max-width: 760px;
+	border-radius: 12px;
+	background: rgba(255, 255, 255, 0.035);
+	box-shadow: inset 0 0 0 1px var(--hair);
 }
-.aside .line.user {
+.pc-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+	padding: 9px 12px;
+	font-size: 13px;
+	color: var(--label-2);
+}
+.pc-head .lock-icon {
+	color: var(--amber);
+}
+.pc-who {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-weight: 600;
+	color: #fff;
+	white-space: nowrap;
+}
+.pc-ava {
+	width: 20px;
+	height: 20px;
+	flex: none;
+	display: inline-grid;
+	place-items: center;
+	border-radius: 6px;
+	background: var(--g);
+	color: #000;
+	font: 700 9.5px var(--mono);
+}
+.pc-pill {
+	margin-left: auto;
+	display: inline-flex;
+	align-items: center;
+	height: 20px;
+	padding: 0 8px;
+	border-radius: 6px;
+	font: 600 11px var(--mono);
+	white-space: nowrap;
+	background: var(--fill);
+	color: var(--label-2);
+}
+.pc-pill.ok {
+	background: var(--good-fill);
+	color: var(--good);
+}
+.pc-pill.wait,
+.pc-pill.needs {
+	background: var(--amber-fill);
+	color: var(--amber);
+}
+.pc-pill.bad {
+	background: var(--crit-fill);
+	color: var(--crit-text);
+}
+.pc-q {
+	padding: 0 12px 10px;
+	color: #fff;
 	font-weight: 500;
+	white-space: pre-wrap;
+	word-break: break-word;
 }
-/* Another session in the conversation: an amber rail where this one asked or was told; the card of
-   a copy answering for this session is dimmed, as its own conversation never saw it. */
-.aside.peer {
-	box-shadow: inset 2px 0 0 var(--amber);
+.pc-from .pc-q {
+	font-weight: 400;
+	white-space: normal;
 }
-.aside.peer.asked {
-	box-shadow: inset 2px 0 0 rgba(255, 255, 255, 0.175);
-	opacity: 0.8;
+.pc-foot {
+	padding: 10px 12px;
+	box-shadow: inset 0 1px 0 var(--hair);
+	color: var(--label);
+}
+.pc-col {
+	display: grid;
+	gap: 6px;
+}
+.pc-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+.pc-note,
+.pc-files {
+	color: var(--label-3);
+	font-size: 12.5px;
+}
+.pc-files {
+	display: inline-flex;
+	gap: 6px;
+	flex-wrap: wrap;
+	align-items: center;
+	min-width: 0;
+	word-break: break-all;
+}
+.pc-files code {
+	font-size: 11.5px;
+}
+.pc-answer {
+	min-width: 0;
+}
+.pc-link {
+	margin-left: auto;
+	padding: 0;
+	border: 0;
+	background: none;
+	color: var(--label-2);
+	font-size: 12.5px;
+	text-decoration: underline;
+	text-decoration-color: var(--label-4);
+	text-underline-offset: 3px;
+	cursor: pointer;
+}
+.pc-link:hover {
+	color: #fff;
+}
+.pc-wait {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	color: var(--label-3);
+	font-size: 13px;
+}
+.pc-step {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.pc-el {
+	margin-left: auto;
+	font: 11.5px var(--mono);
+	flex: none;
+}
+.pc-wait .pc-link {
+	margin-left: 10px;
+	flex: none;
+}
+.pc-spin {
+	width: 12px;
+	height: 12px;
+	flex: none;
+	border-radius: 50%;
+	border: 1.5px solid rgba(240, 160, 44, 0.25);
+	border-top-color: var(--amber);
+	animation: pc-spin 0.9s linear infinite;
+}
+@keyframes pc-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.pc-spin {
+		animation: none;
+	}
+}
+/* A side question to this session: its own grey bubble, no rail, no session's name. */
+.btw {
+	margin: 10px 0;
+	max-width: 760px;
+	display: grid;
+	gap: 4px;
+	padding: 9px 12px;
+	border-radius: 10px;
+	background: rgba(255, 255, 255, 0.035);
+}
+.btw-q {
+	color: var(--label-2);
+	font-size: 13px;
+}
+.btw-q b {
+	margin-right: 8px;
+	font: 700 10px var(--mono);
+	letter-spacing: 0.08em;
+	color: var(--label-3);
+}
+.btw-a {
+	color: var(--label);
+}
+/* Another session's request waiting on the developer. */
+.peer-dock {
+	display: grid;
+	gap: 10px;
+}
+.pd-route {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+	font-size: 13.5px;
+	color: var(--label-2);
+}
+.pd-route .lock-icon {
+	color: var(--amber);
+}
+.pd-task {
+	padding: 10px 12px;
+	border-radius: 9px;
+	background: #07090b;
+	box-shadow: inset 0 0 0 1px var(--hair);
+	color: #fff;
+	font: 13px / 1.5 var(--mono);
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+.pd-note {
+	margin: 0;
+	color: var(--label-2);
+	font-size: 13.5px;
+}
+.sd-note {
+	margin-right: auto;
+	color: var(--label-3);
+	font-size: 12.5px;
+}
+.subagent .lock-icon {
+	color: var(--amber);
+	vertical-align: -1px;
+	margin-right: 2px;
 }
 .diff {
 	margin: 4px 0;
@@ -1426,6 +1640,9 @@
 	color: var(--label-3);
 	text-transform: uppercase;
 	letter-spacing: 0.08em;
+}
+.qitem .qtext {
+	min-width: 0;
 }
 .qitem .btn:first-of-type {
 	margin-left: auto;

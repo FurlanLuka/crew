@@ -130,6 +130,12 @@ describe('toMainInput', () => {
 			files: [],
 			read: [],
 		},
+		{
+			type: 'session_fork_item',
+			ref: 'store/main',
+			id: 'r1',
+			item: { kind: 'tool', name: 'Read', summary: 'read src/retry.ts' },
+		},
 		{ type: 'secret_transferred', ref: 'store/main', id: 'r1', path: '/s/x' },
 		{ type: 'conversation_reset', ref: 'store/main' },
 		{ type: 'compacting', ref: 'store/main', isCompacting: true },
@@ -160,6 +166,21 @@ describe('toMainInput', () => {
 			expect(text).not.toContain('"ask-store/main-1"');
 		},
 	);
+
+	it("a copy's step → its ref prefixed, the request id as the main made it", () =>
+		expect(
+			toMainInput('vm1', {
+				type: 'session_fork_item',
+				ref: 'store/main',
+				id: 'r1',
+				item: { kind: 'text', text: 't' },
+			}),
+		).toEqual({
+			type: 'session_fork_item',
+			ref: 'vm1:store/main',
+			id: 'r1',
+			item: { kind: 'text', text: 't' },
+		}));
 
 	it('a report only the main makes → dropped', () => {
 		expect(

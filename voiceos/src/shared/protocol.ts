@@ -32,14 +32,19 @@ export type StreamItem = {
 			// Asked while its session was on screen: an answer the developer has left by then is held.
 			askedOnScreen?: true;
 	  }
-	// Another session asked this one (asked) or this one asked another (asker): one exchange, shown on both.
+	// This session asked, told or asked a secret of another: the exchange lives here, where its answer
+	// is. The asked session shows it as a PeerRun in its side panel, never in its conversation.
 	| {
 			kind: 'session_ask';
 			requestId: string;
-			role: 'asker' | 'asked';
 			request: PeerRequestKind;
 			// The other session's label.
 			peer: string;
+			// The other session's full ref: its PeerRun holds the copy's steps. Absent when no session
+			// was found by that name.
+			peerRef?: string;
+			// When it settled: an answer says how long the copy took.
+			settledAt?: number;
 			text: string;
 			status: PeerRequestStatus;
 			// The answer, or why it was refused or failed.
@@ -53,10 +58,13 @@ export type StreamItem = {
 // ask: answered by a read-only copy of the other session. tell: information queued for it.
 // secret: a value or file copied into a private temp file, only with the developer's OK.
 export type PeerRequestKind = 'ask' | 'tell' | 'secret';
+// queued → delivered: a tell, or work the developer allowed, waiting in the other session's queue
+// until it starts on it.
 export type PeerRequestStatus =
 	| 'asking'
 	| 'answered'
-	| 'sent'
+	| 'queued'
+	| 'delivered'
 	| 'needs_work'
 	| 'waiting_ok'
 	| 'refused'
@@ -90,6 +98,25 @@ export interface SubagentRun {
 	description: string;
 	startedAt: number;
 	items: SubagentItem[];
+}
+
+// Another session's ask or secret request, as the asked session shows it: a row in its side panel
+// whose steps (a read-only copy's Read, Grep and Glob) open like a sub-agent's. Its conversation never
+// saw it. Kept in memory only.
+export interface PeerRun {
+	requestId: string;
+	kind: 'ask' | 'secret';
+	fromRef: string;
+	fromLabel: string;
+	// The question, or the secret's name.
+	text: string;
+	status: PeerRequestStatus;
+	startedAt: number;
+	settledAt: number | null;
+	// The copy's latest tool call; null until it makes one, and once it settles.
+	step: string | null;
+	items: SubagentItem[];
+	answer: string | null;
 }
 
 // withdrawn: replaced by a continuation of the developer's words; it is never said or queued.
@@ -149,6 +176,8 @@ export interface QueuedMessage {
 export interface PeerFrom {
 	ref: string;
 	label: string;
+	// The tell or allowed work it carries: its delivery marks the asker's card.
+	requestId?: string;
 }
 
 export interface QuestionOption {
@@ -288,6 +317,8 @@ export interface Session {
 	subagents: Subagent[];
 	// The last few sub-agents' transcripts, newest last: running ones and ended ones.
 	subagentRuns: SubagentRun[];
+	// Other sessions' asks and secret requests of this one, newest last.
+	peerRuns: PeerRun[];
 	// The running turn handles an instruction: its end is reported aloud.
 	reportOwed: boolean;
 	// The session's own spoken lines already said this turn, so none is said twice.
@@ -901,6 +932,8 @@ export type Observation =
 			files: Attachment[];
 			read: string[];
 	  }
+	// One step of the copy answering an ask (ref: the asked session; id: the request), as it happens.
+	| { type: 'session_fork_item'; ref: string; id: string; item: SubagentItemContent }
 	// A secret the developer allowed was copied (or not) into a temp file on the asker's machine.
 	| { type: 'secret_transferred'; ref: string; id: string; path: string | null; reason?: string }
 	// /clear (or /reset, /new) started a new conversation in the same process.

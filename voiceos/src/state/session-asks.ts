@@ -1,6 +1,6 @@
 // One session asking, telling or requesting a secret from another. The main's reducer decides it
-// all — which session the name means, the limits, the cards on both pages — and the target's machine
-// does only what it is told: run a read-only copy, or copy a secret.
+// all — which session the name means, the limits, the asker's card and the asked session's row — and
+// the target's machine does only what it is told: run a read-only copy, or copy a secret.
 import { listActiveInOrder } from '../shared/active.js';
 import { readSessionLabel } from '../shared/machines.js';
 import { isSetupRef, readMachine } from '../shared/machine-ref.js';
@@ -12,16 +12,18 @@ import type {
 	PeerRequest,
 	PeerRequestKind,
 	PeerRequestStatus,
+	PeerRun,
 	Session,
 	Stamped,
 	State,
-	StreamItem,
 } from '../shared/protocol.js';
 import { readShownText } from '../shared/spoken-tags.js';
 import { findRefsByName } from '../router/refs.js';
 import { deliverSend } from './delivery.js';
 import { pushStreamItem, sayRef, updateSession, withoutEffects } from './helpers.js';
 import type { Effect, ReducerResult } from './reducer.js';
+import { type CardPatch, cardId, patchCard } from './peer-cards.js';
+import { patchPeerRun, settlePeerRun, settleRunsOf, startPeerRun } from './peer-runs.js';
 
 // A few per turn: a session that keeps asking is stuck, and every ask costs a model call.
 export const PEER_REQUESTS_PER_TURN = 3;
@@ -95,15 +97,13 @@ export const checkPeerLimits = ({ session, kind, to }: CheckLimitsParams): strin
 	return null;
 };
 
-const cardId = (id: string, role: 'asker' | 'asked'): string => `peer:${id}:${role}`;
-
 interface PushCardParams {
 	state: State;
 	ref: string;
 	id: string;
-	role: 'asker' | 'asked';
 	request: PeerRequestKind;
 	peer: string;
+	peerRef?: string;
 	text: string;
 	status: PeerRequestStatus;
 	answer?: string;
@@ -111,38 +111,34 @@ interface PushCardParams {
 	at: number;
 }
 
-const pushCard = ({ state, ref, id, role, at, files, answer, ...card }: PushCardParams): State =>
+const pushCard = ({ state, ref, id, at, files, answer, peerRef, ...card }: PushCardParams): State =>
 	updateSession(state, ref, (session) =>
 		pushStreamItem(session, {
-			id: cardId(id, role),
+			id: cardId(id),
 			at,
 			kind: 'session_ask',
 			requestId: id,
-			role,
 			...card,
+			...(peerRef ? { peerRef } : {}),
 			...(answer ? { answer } : {}),
 			...(files?.length ? { files } : {}),
 		}),
 	);
 
-type SessionAskCard = Extract<StreamItem, { kind: 'session_ask' }>;
-type CardUpdate = Partial<Pick<SessionAskCard, 'status' | 'answer' | 'files' | 'read'>>;
+interface SettleParams {
+	state: State;
+	// The asker, the asked session, and the request between them.
+	from: string;
+	to: string;
+	id: string;
+	card: CardPatch;
+	run: Pick<PeerRun, 'status'> & Partial<Pick<PeerRun, 'answer'>>;
+	at: number;
+}
 
-const updateCard = (state: State, ref: string, itemId: string, update: CardUpdate): State =>
-	updateSession(state, ref, (session) => ({
-		...session,
-		stream: session.stream.map((item) =>
-			item.id === itemId && item.kind === 'session_ask' ? { ...item, ...update } : item,
-		),
-	}));
-
-const updateCards = (state: State, request: PeerRequest, update: CardUpdate): State =>
-	updateCard(
-		updateCard(state, request.from, cardId(request.id, 'asker'), update),
-		request.to,
-		cardId(request.id, 'asked'),
-		update,
-	);
+// Every way a request ends: its card on the asking session and its row on the asked one, together.
+const settleRequest = ({ state, from, to, id, card, run, at }: SettleParams): State =>
+	settlePeerRun(patchCard(state, from, id, { ...card, settledAt: at }), to, id, run, at);
 
 const answerAsker = (ref: string, id: string, text: string, files: Attachment[] = []): Effect => ({
 	type: 'session_ask_answered',
@@ -175,7 +171,6 @@ const refuse = (state: State, input: Requested, reason: string, at: number): Red
 		state,
 		ref: input.ref,
 		id: input.id,
-		role: 'asker',
 		request: input.kind,
 		peer: input.session,
 		text: input.text,
@@ -234,8 +229,11 @@ export const reduceSessionAskRequested = (
 	const toLabel = readSessionLabel(state, to);
 	const counted = countRequest(state, input.ref);
 	const card = {
+		ref: input.ref,
 		id: input.id,
 		request: input.kind,
+		peer: toLabel,
+		peerRef: to,
 		text: input.text,
 		at: stamped.at,
 		...(input.files.length ? { files: input.files } : {}),
@@ -243,22 +241,16 @@ export const reduceSessionAskRequested = (
 
 	if (input.kind === 'tell') {
 		const isIdle = state.sessions[to]?.status === 'idle';
+		// Always queued here: its delivery, now or after the session's current work, marks it.
 		const delivered = deliverSend({
-			state: pushCard({
-				state: counted,
-				ref: input.ref,
-				role: 'asker',
-				peer: toLabel,
-				status: 'sent',
-				...card,
-			}),
+			state: pushCard({ state: counted, status: 'queued', ...card }),
 			ref: to,
 			text: input.text,
 			note: buildPeerNote(fromLabel),
 			...(input.files.length ? { attachments: input.files } : {}),
 			isSpoken: false,
 			stamped,
-			from: { ref: input.ref, label: fromLabel },
+			from: { ref: input.ref, label: fromLabel, requestId: input.id },
 		});
 
 		return {
@@ -274,16 +266,16 @@ export const reduceSessionAskRequested = (
 		};
 	}
 
+	const run = { requestId: input.id, fromRef: input.ref, fromLabel, text: input.text };
+
 	if (input.kind === 'secret') {
 		const opened = openPeerAsk({
-			state: pushCard({
-				state: counted,
-				ref: input.ref,
-				role: 'asker',
-				peer: toLabel,
-				status: 'waiting_ok',
-				...card,
-			}),
+			state: startPeerRun(
+				pushCard({ state: counted, status: 'waiting_ok', ...card }),
+				to,
+				{ ...run, kind: 'secret', status: 'waiting_ok' },
+				stamped.at,
+			),
 			ask: {
 				id: `${input.id}${PEER_ASK_SUFFIX}`,
 				ref: input.ref,
@@ -316,21 +308,12 @@ export const reduceSessionAskRequested = (
 		};
 	}
 
-	const asking = pushCard({
-		state: pushCard({
-			state: counted,
-			ref: input.ref,
-			role: 'asker',
-			peer: toLabel,
-			status: 'asking',
-			...card,
-		}),
-		ref: to,
-		role: 'asked',
-		peer: fromLabel,
-		status: 'asking',
-		...card,
-	});
+	const asking = startPeerRun(
+		pushCard({ state: counted, status: 'asking', ...card }),
+		to,
+		{ ...run, kind: 'ask', status: 'asking' },
+		stamped.at,
+	);
 
 	return {
 		state: withRequest(asking, { id: input.id, kind: 'ask', from: input.ref, to, at: stamped.at }),
@@ -361,14 +344,20 @@ export const reduceSessionForkSettled = (
 	const settled = withoutRequest(state, request.id);
 	const toLabel = readSessionLabel(state, request.to);
 	const fromLabel = readSessionLabel(state, request.from);
+	const ends = { from: request.from, to: request.to, id: request.id, at: stamped.at };
 
 	if (input.status === 'answered') {
 		return {
-			state: updateCards(settled, request, {
-				status: 'answered',
-				answer: input.answer,
-				...(input.files.length ? { files: input.files } : {}),
-				...(input.read.length ? { read: input.read } : {}),
+			state: settleRequest({
+				state: settled,
+				...ends,
+				card: {
+					status: 'answered',
+					answer: input.answer,
+					...(input.files.length ? { files: input.files } : {}),
+					...(input.read.length ? { read: input.read } : {}),
+				},
+				run: { status: 'answered', answer: input.answer },
 			}),
 			effects: [
 				answerAsker(
@@ -382,8 +371,15 @@ export const reduceSessionForkSettled = (
 	}
 
 	if (input.status === 'needs_work') {
+		// The copy is done, but the request waits on the developer: neither side has settled.
+		const waiting = patchPeerRun(
+			patchCard(settled, request.from, request.id, { status: 'needs_work', answer: input.answer }),
+			request.to,
+			request.id,
+			{ status: 'needs_work', answer: input.answer, step: null },
+		);
 		const opened = openPeerAsk({
-			state: updateCards(settled, request, { status: 'needs_work', answer: input.answer }),
+			state: waiting,
 			ask: {
 				id: `${request.id}${PEER_ASK_SUFFIX}`,
 				ref: request.from,
@@ -411,7 +407,12 @@ export const reduceSessionForkSettled = (
 	}
 
 	return {
-		state: updateCards(settled, request, { status: 'failed', answer: input.answer }),
+		state: settleRequest({
+			state: settled,
+			...ends,
+			card: { status: 'failed', answer: input.answer },
+			run: { status: 'failed', answer: input.answer },
+		}),
 		effects: [answerAsker(request.from, request.id, `No answer from ${toLabel}: ${input.answer}.`)],
 	};
 };
@@ -426,7 +427,7 @@ export const reducePeerRequestExpired = (
 	const request = state.peerRequests.find((pending) => pending.id === key);
 
 	if (!request) {
-		return reducePeerAskLapsed(state, key);
+		return reducePeerAskLapsed(state, key, stamped.at);
 	}
 
 	if (request.kind === 'secret') {
@@ -446,9 +447,14 @@ export const reducePeerRequestExpired = (
 	const toLabel = readSessionLabel(state, request.to);
 
 	return {
-		state: updateCards(withoutRequest(state, key), request, {
-			status: 'failed',
-			answer: 'no answer in time',
+		state: settleRequest({
+			state: withoutRequest(state, key),
+			from: request.from,
+			to: request.to,
+			id: request.id,
+			at: stamped.at,
+			card: { status: 'failed', answer: 'no answer in time' },
+			run: { status: 'failed', answer: 'no answer in time' },
 		}),
 		effects: [answerAsker(request.from, request.id, `No answer from ${toLabel} in time.`)],
 	};
@@ -464,30 +470,24 @@ const findPeerAsk = (state: State, askId: string): PeerAsk | undefined =>
 		(ask): ask is PeerAsk => ask.id === askId && (ask.kind === 'work' || ask.kind === 'secret'),
 	);
 
-const closePeerAsk = (
-	state: State,
-	ask: PeerAsk,
-	status: PeerRequestStatus,
-	answer: string,
-): State => {
-	return updateCard(
-		withoutRequest(withoutAsk(state, ask.id), ask.requestId),
-		ask.ref,
-		cardId(ask.requestId, 'asker'),
-		{
-			status,
-			answer,
-		},
-	);
-};
+const closePeerAsk = (state: State, ask: PeerAsk, answer: string, at: number): State =>
+	settleRequest({
+		state: withoutRequest(withoutAsk(state, ask.id), ask.requestId),
+		from: ask.ref,
+		to: ask.to,
+		id: ask.requestId,
+		at,
+		card: { status: 'refused', answer },
+		run: { status: 'refused', answer },
+	});
 
 // The developer's Allow ran out of time. Its request goes too, even when the ask itself went first
 // (its machine removed), so nothing waits on it forever.
-const reducePeerAskLapsed = (state: State, askId: string): ReducerResult => {
+const reducePeerAskLapsed = (state: State, askId: string, at: number): ReducerResult => {
 	const ask = findPeerAsk(state, askId);
 
 	if (ask) {
-		return withoutEffects(closePeerAsk(state, ask, 'refused', 'nobody allowed it in time'));
+		return withoutEffects(closePeerAsk(state, ask, 'nobody allowed it in time', at));
 	}
 
 	const requestId = askId.endsWith(PEER_ASK_SUFFIX)
@@ -497,12 +497,26 @@ const reducePeerAskLapsed = (state: State, askId: string): ReducerResult => {
 
 	return request
 		? withoutEffects(
-				updateCard(withoutRequest(state, request.id), request.from, cardId(request.id, 'asker'), {
-					status: 'refused',
-					answer: 'nobody allowed it in time',
+				settleRequest({
+					state: withoutRequest(state, request.id),
+					from: request.from,
+					to: request.to,
+					id: request.id,
+					at,
+					card: { status: 'refused', answer: 'nobody allowed it in time' },
+					run: { status: 'refused', answer: 'nobody allowed it in time' },
 				}),
 			)
-		: withoutEffects(state);
+		: withoutEffects(
+				requestId
+					? settleRunsOf(
+							state,
+							requestId,
+							{ status: 'refused', answer: 'nobody allowed it in time' },
+							at,
+						)
+					: state,
+			);
 };
 
 export const reduceAnswerPeer = (
@@ -517,15 +531,20 @@ export const reduceAnswerPeer = (
 	}
 
 	if (!input.isApproved) {
-		return withoutEffects(closePeerAsk(state, ask, 'refused', 'the developer said no'));
+		return withoutEffects(closePeerAsk(state, ask, 'the developer said no', stamped.at));
 	}
 
 	if (ask.kind === 'secret') {
+		// Copying now: the card and the row both read as under way until the copy lands.
+		const copying = patchPeerRun(
+			patchCard(withoutAsk(state, ask.id), ask.ref, ask.requestId, { status: 'asking' }),
+			ask.to,
+			ask.requestId,
+			{ status: 'asking' },
+		);
+
 		return {
-			state: updateCard(withoutAsk(state, ask.id), ask.ref, cardId(ask.requestId, 'asker'), {
-				status: 'asking',
-				answer: 'allowed: copying',
-			}),
+			state: copying,
 			effects: [
 				{ type: 'secret_transfer', ref: ask.to, id: ask.requestId, what: ask.what, toRef: ask.ref },
 				{ type: 'expire_peer', key: ask.requestId, ms: PEER_REQUEST_TTL_MS },
@@ -533,15 +552,25 @@ export const reduceAnswerPeer = (
 		};
 	}
 
-	const closed = closePeerAsk(state, ask, 'sent', `allowed: queued for ${ask.toLabel}`);
+	// Allowed: the work goes to the asked session's queue, and its card waits on the delivery.
+	const allowed = settlePeerRun(
+		patchCard(withoutRequest(withoutAsk(state, ask.id), ask.requestId), ask.ref, ask.requestId, {
+			status: 'queued',
+			answer: ask.text,
+		}),
+		ask.to,
+		ask.requestId,
+		{ status: 'queued' },
+		stamped.at,
+	);
 	const delivered = deliverSend({
-		state: closed,
+		state: allowed,
 		ref: ask.to,
 		text: ask.text,
 		note: buildWorkNote(ask.fromLabel),
 		isSpoken: false,
 		stamped,
-		from: { ref: ask.ref, label: ask.fromLabel },
+		from: { ref: ask.ref, label: ask.fromLabel, requestId: ask.requestId },
 		replyTo: ask.ref,
 	});
 
@@ -559,6 +588,9 @@ export const reduceAnswerPeer = (
 	};
 };
 
+// The secret's result reaches the asker as a message from Voice OS: the asked session never said it.
+const SECRET_SENDER = 'Voice OS';
+
 export const reduceSecretTransferred = (
 	state: State,
 	input: Extract<Input, { type: 'secret_transferred' }>,
@@ -570,24 +602,34 @@ export const reduceSecretTransferred = (
 		return withoutEffects(state);
 	}
 
-	const settled = withoutRequest(state, request.id);
 	const toLabel = readSessionLabel(state, request.to);
+	const reason = input.reason ?? 'unknown reason';
 	const text = input.path
 		? `The developer allowed a copy of ${toLabel}'s secret. It is in ${input.path} (readable only by you). Copy or source it from there; never print, echo or read its contents into this conversation.`
-		: `The secret from ${toLabel} could not be copied: ${input.reason ?? 'unknown reason'}.`;
-	const carded = updateCard(settled, request.from, cardId(request.id, 'asker'), {
-		status: input.path ? 'answered' : 'failed',
-		answer: input.path ? `copied to ${input.path}` : (input.reason ?? 'not copied'),
+		: `The secret from ${toLabel} could not be copied: ${reason}.`;
+	// The card keeps the file's path (never its contents); the asked side only that it went.
+	const settled = settleRequest({
+		state: withoutRequest(state, request.id),
+		from: request.from,
+		to: request.to,
+		id: request.id,
+		at: stamped.at,
+		card: input.path
+			? { status: 'answered', answer: input.path }
+			: { status: 'failed', answer: reason },
+		run: input.path ? { status: 'answered' } : { status: 'failed', answer: reason },
 	});
 
 	return deliverSend({
-		state: carded,
+		state: settled,
 		ref: request.from,
 		text,
 		note: buildPeerNote(toLabel),
 		isSpoken: false,
 		stamped,
-		from: { ref: request.to, label: toLabel },
+		// Its ref stays the asked session's, for the rule that a session never tells back the one
+		// whose message started its turn.
+		from: { ref: request.to, label: SECRET_SENDER },
 	});
 };
 

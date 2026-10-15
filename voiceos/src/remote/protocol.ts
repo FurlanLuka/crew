@@ -146,6 +146,7 @@ export const REMOTE_OBSERVATIONS = new Set<Observation['type']>([
 	'aside_settled',
 	'session_ask_requested',
 	'session_fork_settled',
+	'session_fork_item',
 	'secret_transferred',
 	'conversation_reset',
 	'compacting',

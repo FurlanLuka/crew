@@ -2,7 +2,7 @@
 // the compaction bar, kept at the end as it grows. Voice OS's session and Set up's chat both draw it;
 // what each adds (a line under an item, a note at the end) comes in through the slots.
 import type { ReactNode } from 'react';
-import type { Session, StreamItem } from '../../shared/protocol.js';
+import type { PeerRun, Session, StreamItem } from '../../shared/protocol.js';
 import { stripStreamingTag } from '../../shared/spoken-tags.js';
 import { useStickToBottom } from '../use-stick-to-bottom.js';
 import { CompactingLine } from './CompactingLine.js';
@@ -17,8 +17,11 @@ interface SessionStreamProps {
 	className: string;
 	// Drawn right under an item: Set up's "✓ recorded" line.
 	renderAfter?: (item: StreamItem) => ReactNode;
-	// What clicking an item opens, if anything: an Agent call's row opens its sub-agent's transcript.
+	// What clicking an item opens, if anything: an Agent call's row opens its sub-agent's transcript,
+	// an exchange with another session its copy's steps.
 	openFor?: (item: StreamItem) => (() => void) | null;
+	// The asked session's row for an exchange with another session: its live step.
+	peerRunFor?: (item: StreamItem) => PeerRun | null;
 	// Drawn after the stream: a note about the session's state.
 	children?: ReactNode;
 }
@@ -29,6 +32,7 @@ export const SessionStream = ({
 	className,
 	renderAfter,
 	openFor,
+	peerRunFor,
 	children,
 }: SessionStreamProps) => {
 	// The compaction bar is added at the end of the stream too: it comes into view like a line.
@@ -40,7 +44,8 @@ export const SessionStream = ({
 			{session?.stream.map((item) => {
 				const after = renderAfter?.(item);
 				const onOpen = openFor?.(item);
-				const opens = onOpen ? { onOpen } : {};
+				const peerRun = peerRunFor?.(item);
+				const opens = { ...(onOpen ? { onOpen } : {}), ...(peerRun ? { peerRun } : {}) };
 
 				return after ? (
 					<div key={item.id} className="stream-item">

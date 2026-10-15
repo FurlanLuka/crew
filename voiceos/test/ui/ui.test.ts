@@ -1553,7 +1553,7 @@ describe('voice os ui', () => {
 			status: 'answered',
 			answer: 'The **retry** file.',
 		});
-		await stream.locator('.aside strong', { hasText: 'retry' }).waitFor({ timeout: 5000 });
+		await stream.locator('.btw strong', { hasText: 'retry' }).waitFor({ timeout: 5000 });
 		store.dispatch({ type: 'turn_ended', ref: 'checkout-api/main', costUsd: 0, text: '' });
 		await context.close();
 	}, 20_000);
@@ -1766,7 +1766,7 @@ describe('voice os ui', () => {
 				: [],
 		);
 
-	it('sessions asking sessions: a card on both, the work request docked on the asker with Allow and No', async () => {
+	it('sessions asking sessions: a card on the asker with the live step and View steps, a side-panel row on the asked; the work request docked with Allow and No', async () => {
 		const { context, page } = await signIn();
 		const ASKER = 'store-front/main';
 		const ASKED = 'checkout-api/main';
@@ -1783,6 +1783,26 @@ describe('voice os ui', () => {
 			files: [],
 		});
 		store.dispatch({
+			type: 'session_fork_item',
+			ref: ASKED,
+			id: 'ui-peer-1',
+			item: { kind: 'tool', name: 'Grep', summary: 'search for /orders' },
+		});
+
+		const card = page.locator('.stream .pc[data-request="ask"]').last();
+
+		await card.getByText('search for /orders').waitFor({ timeout: 5000 });
+		expect(await card.locator('.pc-pill').textContent()).toBe('Waiting');
+
+		// View steps opens the copy's steps, live, from the asking side.
+		await card.getByRole('button', { name: 'View steps' }).click();
+		const steps = page.getByRole('dialog', { name: 'steps of a copy answering another session' });
+
+		await steps.getByText('search for /orders').waitFor({ timeout: 5000 });
+		await page.keyboard.press('Escape');
+		await steps.waitFor({ state: 'detached' });
+
+		store.dispatch({
 			type: 'session_fork_settled',
 			ref: ASKED,
 			id: 'ui-peer-1',
@@ -1791,16 +1811,12 @@ describe('voice os ui', () => {
 			files: [],
 			read: [],
 		});
-
-		const asker = page.locator('.stream .aside.peer.asker').last();
-
-		await asker.waitFor({ timeout: 5000 });
-		expect(await asker.textContent()).toContain(`asked ${ASKED}`);
-		expect(await asker.textContent()).toContain('would need work: asked you to allow it');
+		await card.getByText('Needs your OK').waitFor({ timeout: 5000 });
 
 		const dock = page.locator('section[aria-label="request from another session"]');
 
-		expect(await dock.textContent()).toContain('run the staging check for /orders');
+		expect(await dock.textContent()).toContain('to do this and report back');
+		expect(await dock.locator('.pd-task').textContent()).toBe('run the staging check for /orders');
 		await dock.getByRole('button', { name: /Allow/ }).click();
 		await waitUntil(() => listSentActions('answer_peer').length > 0);
 		expect(listSentActions('answer_peer').at(-1)).toEqual({
@@ -1809,15 +1825,167 @@ describe('voice os ui', () => {
 			isApproved: true,
 		});
 
+		// The asked session: no card in its conversation, a row in its side panel that opens the steps.
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: ASKED } });
-		const asked = page.locator('.stream .aside.peer.asked').last();
+		const row = page.locator(
+			'section[aria-label="asked by other sessions"] [data-request="ui-peer-1"]',
+		);
 
-		await asked.waitFor({ timeout: 5000 });
-		expect(await asked.textContent()).toContain(`${ASKER} asked`);
+		await row.waitFor({ timeout: 5000 });
+		expect(await page.locator('.stream .pc[data-request="ask"]').count()).toBe(0);
+		await row.click();
+		await steps.getByText('search for /orders').waitFor({ timeout: 5000 });
+		await page.keyboard.press('Escape');
 		await context.close();
 	}, 20_000);
 
-	// Debug note 45: a long plan scrolls in one box, with Approve still in view.
+	it('a tell → Delivered on the asker, a From card on the asked; a secret → the lock dock, Allow, then Copied with its file', async () => {
+		const { context, page } = await signIn();
+		const ASKER = 'store-front/main';
+		const ASKED = 'checkout-api/main';
+
+		await ensureIdle(ASKED);
+
+		// A history long enough to scroll: a card in a crowded grid must keep its height.
+		for (let index = 0; index < 60; index++) {
+			store.dispatch({ type: 'assistant_text', ref: ASKER, text: `earlier line ${index}` });
+		}
+
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: ASKER } });
+		store.dispatch({
+			type: 'session_ask_requested',
+			ref: ASKER,
+			id: 'ui-tell-1',
+			kind: 'tell',
+			session: ASKED,
+			text: 'totals.grand moves to totals.total',
+			files: [],
+		});
+
+		const told = page.locator('.stream .pc[data-request="tell"]').last();
+
+		await told.getByText('Delivered').waitFor({ timeout: 5000 });
+
+		store.dispatch({
+			type: 'session_ask_requested',
+			ref: ASKER,
+			id: 'ui-secret-1',
+			kind: 'secret',
+			session: ASKED,
+			text: 'STRIPE_KEY',
+			files: [],
+		});
+
+		const dock = page.locator('section[aria-label="request from another session"]');
+
+		await dock.getByText('wants a copy of').waitFor({ timeout: 5000 });
+		expect(await dock.textContent()).toContain('Neither session sees the value.');
+		await dock.getByRole('button', { name: /Allow/ }).click();
+		await waitUntil(
+			() =>
+				store.state.sessions[ASKER]?.stream.some(
+					(item) =>
+						item.kind === 'session_ask' &&
+						item.requestId === 'ui-secret-1' &&
+						item.status === 'asking',
+				) ?? false,
+		);
+		store.dispatch({
+			type: 'secret_transferred',
+			ref: ASKED,
+			id: 'ui-secret-1',
+			path: '/s/ui/STRIPE_KEY.env',
+		});
+
+		const secret = page.locator('.stream .pc[data-request="secret"]').last();
+
+		await secret.getByText('Copied').waitFor({ timeout: 5000 });
+		expect(await secret.textContent()).toContain('/s/ui/STRIPE_KEY.env');
+		// No card collapses to nothing, however long the history around it.
+		expect(
+			await page
+				.locator('.stream .pc')
+				.evaluateAll((cards) => cards.every((card) => card.getBoundingClientRect().height > 0)),
+		).toBe(true);
+
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: ASKED } });
+		await page
+			.locator('.stream .pc-from')
+			.getByText('totals.grand moves to totals.total')
+			.last()
+			.waitFor({ timeout: 5000 });
+		await page
+			.locator('section[aria-label="asked by other sessions"] [data-request="ui-secret-1"]')
+			.getByText('copied')
+			.waitFor({ timeout: 5000 });
+		// Both took a message: their turns end so the tests after find them idle, and the asker's last
+		// words no longer name the asked session (other screens' Elsewhere rows show them).
+		store.dispatch({ type: 'turn_ended', ref: ASKED, costUsd: 0, text: 'Done.' });
+		store.dispatch({ type: 'turn_ended', ref: ASKER, costUsd: 0, text: 'Done.' });
+		store.dispatch({ type: 'send', ref: ASKER, text: 'carry on' });
+		store.dispatch({ type: 'turn_ended', ref: ASKER, costUsd: 0, text: 'Done.' });
+		await context.close();
+	}, 20_000);
+
+	it('on a phone: an asking card with a wide answer, and the asked side panel, never scroll the page sideways', async () => {
+		const ASKER = 'store-front/main';
+		const ASKED = 'checkout-api/main';
+		const context = await browser.newContext({
+			permissions: ['microphone'],
+			viewport: { width: 390, height: 844 },
+			hasTouch: true,
+			isMobile: true,
+		});
+		const page = await context.newPage();
+		watchErrors(page);
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: ASKER } });
+		store.dispatch({
+			type: 'session_ask_requested',
+			ref: ASKER,
+			id: 'ui-phone-1',
+			kind: 'ask',
+			session: ASKED,
+			text: 'Which config files set the retry limit for the order totals endpoint in production?',
+			files: [],
+		});
+		store.dispatch({
+			type: 'session_fork_settled',
+			ref: ASKED,
+			id: 'ui-phone-1',
+			status: 'answered',
+			answer: `Here:\n\n\`\`\`\n${'config/production/order-totals/retry-limits.yaml '.repeat(4)}\n\`\`\``,
+			files: [],
+			read: ['config/production/order-totals/retry-limits.yaml'],
+		});
+
+		try {
+			await page.goto(`http://localhost:${gateway.port}/login?token=${TOKEN}`);
+			await page.goto(`http://localhost:${gateway.port}/voice`);
+			await page
+				.locator('.stream .pc[data-request="ask"]')
+				.last()
+				.getByText('View steps')
+				.waitFor({ timeout: 5000 });
+			expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+
+			// The steps window fits the phone too.
+			await page.locator('.stream .pc[data-request="ask"]').last().getByText('View steps').click();
+			await page
+				.getByRole('dialog', { name: 'steps of a copy answering another session' })
+				.waitFor({ timeout: 5000 });
+			expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+			await page.keyboard.press('Escape');
+
+			store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: ASKED } });
+			await page
+				.locator('section[aria-label="asked by other sessions"]')
+				.waitFor({ timeout: 5000 });
+			expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+		} finally {
+			await context.close();
+		}
+	}, 20_000);
+
 	it('a long plan → its text scrolls, Approve stays on screen', async () => {
 		const { context, page } = await signIn();
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });

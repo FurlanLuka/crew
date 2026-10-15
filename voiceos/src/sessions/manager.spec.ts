@@ -897,6 +897,51 @@ describe('sessions asking sessions', () => {
 		harness.manager.stopAll();
 	});
 
+	it("the copy's steps reach the main as they happen, for the asked session and the request, before it settles", async () => {
+		const harness = createPeerHarness([
+			{
+				type: 'assistant',
+				message: {
+					content: [
+						{ type: 'text', text: 'Looking.' },
+						{ type: 'tool_use', id: 't1', name: 'Grep', input: { pattern: 'MAX' } },
+					],
+				},
+			},
+			{ type: 'assistant', message: { content: [{ type: 'text', text: 'Five tries.' }] } },
+			{ type: 'result', subtype: 'success' },
+		]);
+		const seen: { type: string; ref?: string; id?: string }[] = [];
+
+		harness.store.subscribe((stamped) => {
+			if (
+				stamped.input.type === 'session_fork_item' ||
+				stamped.input.type === 'session_fork_settled'
+			) {
+				seen.push(stamped.input);
+			}
+		});
+		harness.store.dispatch({ type: 'activate', ref: CHECKOUT });
+		await waitTick();
+		harness.store.dispatch({ type: 'send', ref: CHECKOUT, text: 'work' });
+		await waitTick();
+		harness.manager.handle({
+			type: 'session_fork',
+			ref: CHECKOUT,
+			id: 'r1',
+			fromLabel: STORE,
+			question: 'q',
+		});
+		await waitTick();
+
+		expect(seen.map((input) => [input.type, input.ref, input.id])).toEqual([
+			['session_fork_item', CHECKOUT, 'r1'],
+			['session_fork_item', CHECKOUT, 'r1'],
+			['session_fork_settled', CHECKOUT, 'r1'],
+		]);
+		harness.manager.stopAll();
+	});
+
 	it('a target that is not running → failed at once, no copy', async () => {
 		const harness = createPeerHarness();
 		const settled: unknown[] = [];

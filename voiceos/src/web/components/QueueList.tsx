@@ -16,10 +16,15 @@ export const QueueList = ({ session, dispatch }: QueueListProps) => {
 		<section className="queue" aria-label="queued">
 			{session.queue.map((item, index) => (
 				<div key={item.id} className="qitem">
-					<span className="qtag">queued {index + 1}</span> {item.text}
-					{item.attachments?.length ? (
-						<span className="c-dim"> ·{describeCarried(item.attachments)}</span>
-					) : null}
+					<span className="qtag">queued {index + 1}</span>{' '}
+					{/* One flex item: who it is from reads as part of the line, never its own column. */}
+					<span className="qtext">
+						{item.from && <span className="c-amber">from {item.from.label} · </span>}
+						{item.text}
+						{item.attachments?.length ? (
+							<span className="c-dim"> ·{describeCarried(item.attachments)}</span>
+						) : null}
+					</span>
 					<button
 						type="button"
 						className="btn small"

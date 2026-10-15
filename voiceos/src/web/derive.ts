@@ -1,7 +1,12 @@
 import { readApprovalSummary } from '../shared/approval.js';
 import { stripStreamingTag } from '../shared/spoken-tags.js';
 import {
+	GROUP_COLORS,
 	isHeldAsk,
+	type GroupColor,
+	type PeerRequestStatus,
+	type PeerRun,
+	type StreamItem,
 	type PendingAsk,
 	type Session,
 	type State,
@@ -362,3 +367,137 @@ export const hasHiddenAlarm = (state: State, shown: string[]): boolean =>
 		state,
 		listActiveRefs(state).filter((ref) => !shown.includes(ref)),
 	).some((badge) => badge.isAlarm);
+
+// ── Sessions asking sessions ──
+
+type AskCard = Extract<StreamItem, { kind: 'session_ask' }>;
+
+export type PeerTone = 'ok' | 'wait' | 'needs' | 'muted' | 'bad';
+
+export interface PeerCardLook {
+	// The words around the other session's name: "Asked" checkout "for a secret".
+	verb: string;
+	after: string;
+	pill: { tone: PeerTone; label: string };
+	isWaiting: boolean;
+}
+
+const secondsBetween = (from: number, to: number): string =>
+	`${Math.max(1, Math.round((to - from) / 1000))}s`;
+
+const ASK_PILLS: Partial<Record<PeerRequestStatus, PeerCardLook['pill']>> = {
+	asking: { tone: 'wait', label: 'Waiting' },
+	needs_work: { tone: 'needs', label: 'Needs your OK' },
+	queued: { tone: 'muted', label: 'Allowed · queued' },
+	delivered: { tone: 'muted', label: 'Allowed · sent' },
+	refused: { tone: 'bad', label: 'Not asked' },
+	failed: { tone: 'bad', label: 'No answer' },
+};
+
+const TELL_PILLS: Partial<Record<PeerRequestStatus, PeerCardLook['pill']>> = {
+	queued: { tone: 'muted', label: 'Queued' },
+	delivered: { tone: 'ok', label: 'Delivered' },
+	refused: { tone: 'bad', label: 'Not sent' },
+	failed: { tone: 'bad', label: 'Not delivered' },
+};
+
+const SECRET_PILLS: Partial<Record<PeerRequestStatus, PeerCardLook['pill']>> = {
+	waiting_ok: { tone: 'needs', label: 'Needs your OK' },
+	asking: { tone: 'wait', label: 'Copying' },
+	answered: { tone: 'ok', label: 'Copied' },
+	refused: { tone: 'bad', label: 'Refused' },
+	failed: { tone: 'bad', label: 'Not copied' },
+};
+
+const FALLBACK_PILL: PeerCardLook['pill'] = { tone: 'muted', label: '…' };
+
+// One exchange as the asking session's card shows it.
+export const describePeerCard = (item: AskCard): PeerCardLook => {
+	if (item.request === 'tell') {
+		return {
+			verb: 'Told',
+			after: '',
+			pill: TELL_PILLS[item.status] ?? FALLBACK_PILL,
+			isWaiting: false,
+		};
+	}
+
+	if (item.request === 'secret') {
+		return {
+			verb: 'Asked',
+			after: 'for a secret',
+			pill: SECRET_PILLS[item.status] ?? FALLBACK_PILL,
+			isWaiting: item.status === 'asking',
+		};
+	}
+
+	const answered =
+		item.status === 'answered'
+			? {
+					tone: 'ok' as const,
+					label: item.settledAt
+						? `Answered · ${secondsBetween(item.at, item.settledAt)}`
+						: 'Answered',
+				}
+			: null;
+
+	// Refused with a session found: its copy ran and the developer did not allow the work it needed.
+	const notAllowed =
+		item.status === 'refused' && item.peerRef
+			? { tone: 'bad' as const, label: 'Not allowed' }
+			: null;
+
+	return {
+		verb: item.status === 'asking' ? 'Asking' : 'Asked',
+		after: '',
+		pill: answered ?? notAllowed ?? ASK_PILLS[item.status] ?? FALLBACK_PILL,
+		isWaiting: item.status === 'asking',
+	};
+};
+
+// A finished row stays this long in the asked session's side panel; the asker keeps the exchange.
+export const PEER_RUN_SHOWN_MS = 10 * 60_000;
+
+export const listShownRuns = (runs: PeerRun[], now: number): PeerRun[] =>
+	runs.filter((run) => run.settledAt === null || now - run.settledAt < PEER_RUN_SHOWN_MS);
+
+const RUN_STATUS: Partial<Record<PeerRequestStatus, string>> = {
+	asking: 'looking',
+	waiting_ok: 'waiting for your OK',
+	needs_work: 'needs your OK',
+	answered: 'answered',
+	queued: 'work allowed',
+	refused: 'not allowed',
+	failed: 'no answer',
+};
+
+const SECRET_RUN_STATUS: Partial<Record<PeerRequestStatus, string>> = {
+	waiting_ok: 'waiting for your OK',
+	asking: 'copying',
+	answered: 'copied',
+	refused: 'refused',
+	failed: 'not copied',
+};
+
+export const describePeerRunStatus = (run: PeerRun): string =>
+	(run.kind === 'secret' ? SECRET_RUN_STATUS : RUN_STATUS)[run.status] ?? run.status;
+
+// Two letters for a session's badge: store-front/main → SF, checkout → CH.
+export const readInitials = (label: string): string => {
+	const words = (label.split('/')[0] ?? label).split(/[-_\s.]+/).filter(Boolean);
+	const letters =
+		words.length > 1 ? words.map((word) => word[0]).join('') : (words[0] ?? '?').slice(0, 2);
+
+	return letters.slice(0, 2).toUpperCase();
+};
+
+// The same session always gets the same colour, from the group palette.
+export const readSessionColor = (ref: string): GroupColor => {
+	let hash = 0;
+
+	for (const char of ref) {
+		hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+	}
+
+	return GROUP_COLORS[hash % GROUP_COLORS.length] ?? 'blue';
+};

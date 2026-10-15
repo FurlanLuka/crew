@@ -1142,6 +1142,15 @@ describe('sessions asking sessions across the link', () => {
 
 	it('a session here asks one there → the copy runs there, the answer comes back to the asker', async () => {
 		const both = setupBoth([
+			{
+				type: 'assistant',
+				message: {
+					content: [
+						{ type: 'text', text: 'Let me check the limit.' },
+						{ type: 'tool_use', id: 't1', name: 'Grep', input: { pattern: 'MAX_RETRIES' } },
+					],
+				},
+			},
 			{ type: 'assistant', message: { content: [{ type: 'text', text: 'Five tries.' }] } },
 			{ type: 'result', subtype: 'success' },
 		]);
@@ -1165,9 +1174,22 @@ describe('sessions asking sessions across the link', () => {
 		);
 
 		expect(both.remote.fake.forks).toHaveLength(1);
+		// The asked session there never shows it in its conversation: a run in its side panel, with the
+		// copy's steps, crossed from the remote as they happened. The reply is the answer, not a step.
 		expect(
-			both.main.store.state.sessions[REF]?.stream.find((item) => item.kind === 'session_ask'),
-		).toMatchObject({ role: 'asked', status: 'answered', answer: 'Five tries.' });
+			both.main.store.state.sessions[REF]?.stream.some((item) => item.kind === 'session_ask'),
+		).toBe(false);
+		expect(both.main.store.state.sessions[REF]?.peerRuns).toMatchObject([
+			{
+				requestId: 'r1',
+				status: 'answered',
+				answer: 'Let me check the limit.\nFive tries.',
+				items: [
+					{ kind: 'text', text: 'Let me check the limit.' },
+					{ kind: 'tool', name: 'Grep' },
+				],
+			},
+		]);
 	});
 
 	it('a secret there, allowed → copied to the asker here; its value never enters the state', async () => {
@@ -1198,7 +1220,10 @@ describe('sessions asking sessions across the link', () => {
 
 		expect(both.delivered[0]?.toRef).toBe(ASKER);
 		expect(readFileSync(path, 'utf8')).toBe('STRIPE_KEY=sk_live_never_in_state\n');
-		expect(last).toMatchObject({ kind: 'user', from: 'store/main' });
+		expect(last).toMatchObject({ kind: 'user', from: 'Voice OS' });
+		expect(
+			both.main.store.state.sessions[ASKER]?.stream.find((item) => item.kind === 'session_ask'),
+		).toMatchObject({ status: 'answered', answer: path });
 		expect(both.seen.join('\n')).not.toContain('sk_live_never_in_state');
 		expect(effects.join('\n')).not.toContain('sk_live_never_in_state');
 		expect(readFileSync(logFile, 'utf8')).toContain('secret');

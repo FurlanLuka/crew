@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'bun:test';
+import type { SubagentItemContent } from '../shared/protocol.js';
 import type { RawMessage } from './events.js';
 import {
 	buildSessionAskPrompt,
 	classifySessionAsk,
+	createForkSteps,
 	createForkToolHook,
 	decideForkTool,
 	runSessionAskFork,
@@ -291,5 +293,191 @@ describe('runSessionAskFork', () => {
 				timeoutMs: 20,
 			}),
 		).toEqual({ status: 'failed', answer: 'it took too long', files: [], read: [] });
+	});
+});
+
+describe('createForkSteps', () => {
+	const assistant = (...content: Record<string, unknown>[]): RawMessage =>
+		({ type: 'assistant', message: { content } }) as RawMessage;
+	const results = (...content: Record<string, unknown>[]): RawMessage =>
+		({ type: 'user', message: { content } }) as RawMessage;
+
+	const stepsOf = (messages: RawMessage[]): SubagentItemContent[] => {
+		const items: SubagentItemContent[] = [];
+		const see = createForkSteps('/w/checkout', (item) => items.push(item));
+
+		for (const message of messages) {
+			see(message);
+		}
+
+		return items;
+	};
+
+	it('text before a call is a step; the text it ends on is the reply, never a step', () => {
+		expect(
+			stepsOf([
+				assistant(
+					{ type: 'text', text: 'Let me look.' },
+					{
+						type: 'tool_use',
+						id: 't1',
+						name: 'Read',
+						input: { file_path: '/w/checkout/src/retry.ts' },
+					},
+				),
+				results({ type: 'tool_result', tool_use_id: 't1', content: 'MAX = 5' }),
+				assistant({ type: 'text', text: 'Five.' }),
+			]),
+		).toEqual([
+			{ kind: 'text', text: 'Let me look.' },
+			{ kind: 'tool', name: 'Read', summary: expect.stringContaining('retry.ts') },
+		]);
+	});
+
+	it('a result shows only when it failed: what a file held never leaves the machine', () => {
+		const steps = stepsOf([
+			assistant({ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'ls' } }),
+			results({ type: 'tool_result', tool_use_id: 't1', content: 'refused', is_error: true }),
+			assistant({
+				type: 'tool_use',
+				id: 't2',
+				name: 'Read',
+				input: { file_path: '/w/checkout/a.ts' },
+			}),
+			results({ type: 'tool_result', tool_use_id: 't2', content: 'const secretish = 1' }),
+		]);
+
+		expect(steps.map((step) => step.kind)).toEqual(['tool', 'tool_result', 'tool']);
+		expect(JSON.stringify(steps)).not.toContain('secretish');
+	});
+
+	it('a call on a secret path, and its refusal naming it, are left out; so is a search inside one', () =>
+		expect(
+			stepsOf([
+				assistant({
+					type: 'tool_use',
+					id: 't1',
+					name: 'Read',
+					input: { file_path: '/w/checkout/.env' },
+				}),
+				results({
+					type: 'tool_result',
+					tool_use_id: 't1',
+					content: '/w/checkout/.env is a secret: it is never read here.',
+					is_error: true,
+				}),
+				assistant({
+					type: 'tool_use',
+					id: 't2',
+					name: 'Grep',
+					input: { pattern: 'KEY', path: '/w/checkout/.env.production' },
+				}),
+			]),
+		).toEqual([]));
+
+	it('a glob or a search filter that names a secret → left out too, as the hook refuses them', () =>
+		expect(
+			stepsOf([
+				assistant({ type: 'tool_use', id: 't1', name: 'Glob', input: { pattern: '**/.env*' } }),
+				assistant({
+					type: 'tool_use',
+					id: 't2',
+					name: 'Grep',
+					input: { pattern: 'KEY', glob: '*.pem' },
+				}),
+			]),
+		).toEqual([]));
+
+	it('a call on a secret path is left out; a sub-agent of the copy is not its step', () => {
+		expect(
+			stepsOf([
+				assistant({
+					type: 'tool_use',
+					id: 't1',
+					name: 'Read',
+					input: { file_path: '/w/checkout/.env' },
+				}),
+				{
+					type: 'assistant',
+					parent_tool_use_id: 'x',
+					message: {
+						content: [{ type: 'tool_use', id: 't2', name: 'Grep', input: { pattern: 'a' } }],
+					},
+				} as RawMessage,
+			]),
+		).toEqual([]);
+	});
+
+	it("the session's own spoken tag is left out of a step", () =>
+		expect(
+			stepsOf([
+				assistant(
+					{ type: 'text', text: '<spoken>Checking.</spoken>\nChecking the file.' },
+					{ type: 'tool_use', id: 't1', name: 'Glob', input: { pattern: 'src/*.ts' } },
+				),
+			])[0],
+		).toEqual({ kind: 'text', text: 'Checking the file.' }));
+});
+
+describe('runSessionAskFork steps', () => {
+	const launch: QueryLaunch = { cwd: '/w/checkout', dirs: [], env: {}, orientation: '' };
+
+	it('each step reported as it happens, before the answer', async () => {
+		const items: SubagentItemContent[] = [];
+		const runQuery = (() =>
+			(async function* () {
+				yield {
+					type: 'assistant',
+					message: {
+						content: [
+							{ type: 'text', text: 'Looking.' },
+							{ type: 'tool_use', id: 't1', name: 'Grep', input: { pattern: 'MAX' } },
+						],
+					},
+				};
+				yield { type: 'assistant', message: { content: [{ type: 'text', text: 'Five.' }] } };
+				yield { type: 'result', subtype: 'success' };
+			})()) as never;
+		const outcome = await runSessionAskFork({
+			launch,
+			sessionId: 's1',
+			fromLabel: 'a',
+			question: 'q',
+			onItem: (item) => items.push(item),
+			runQuery,
+		});
+
+		expect(items.map((item) => item.kind)).toEqual(['text', 'tool']);
+		expect(outcome).toMatchObject({ status: 'answered' });
+	});
+
+	it('a step that cannot be shown never costs the answer', async () => {
+		const runQuery = (() =>
+			(async function* () {
+				yield {
+					type: 'assistant',
+					message: {
+						content: [
+							{ type: 'text', text: 'Looking.' },
+							{ type: 'tool_use', id: 't1', name: 'Grep', input: { pattern: 'MAX' } },
+						],
+					},
+				};
+				yield { type: 'assistant', message: { content: [{ type: 'text', text: 'Five.' }] } };
+				yield { type: 'result', subtype: 'success' };
+			})()) as never;
+
+		expect(
+			await runSessionAskFork({
+				launch,
+				sessionId: 's1',
+				fromLabel: 'a',
+				question: 'q',
+				onItem: () => {
+					throw new Error('page gone');
+				},
+				runQuery,
+			}),
+		).toMatchObject({ status: 'answered' });
 	});
 });

@@ -707,11 +707,25 @@ it straight from one machine to the other into a temp file only you can read. Th
 gets the path and copies or sources it from there; neither Claude, the page, the voice log nor the
 log ever holds the value. The copy is deleted when that session stops, and after a day at the latest.
 
-On the page, the asking session shows a card where it asked, with the answer and any files, and the
-asked session shows the same exchange dimmed, since its own conversation never saw it. Voice stays
-quiet unless something needs your Allow. A session can make three requests to other sessions per
-turn, and a session told something by another cannot tell it back in the same turn, so two sessions
-never keep each other going while you are away.
+**On the page.** The asking session keeps the whole exchange, because the answer is in its own
+conversation. Each request is a card: who it went to, a pill for where it stands, the question, and
+what came back. An ask shows **Waiting** with what the copy is doing right now ("search for
+MAX_RETRIES") and a timer, then **Answered** with how long it took, the answer, the files it read
+and **View steps**. A tell goes **Queued** until the other session starts on it, then **Delivered**
+(or **Not delivered** if it left the queue unsent). A secret shows a lock and the name, then
+**Copied** with the private file it went to, never the value, or **Refused**.
+
+The asked session shows asks and secrets in its side panel, under **Asked by other sessions**, beside
+sub-agents: who asked, the question (or "copy of STRIPE_KEY"), and the step the copy is on. Its own
+conversation stays clean, since it never saw them. Click an ask's row, or **View steps** on the
+asking card, to see the copy's steps: every read and search, what it said along the way, and the
+answer that went back. A row fades ten minutes after it ends. A tell is the one that does show in the
+asked session's conversation, as a **From store front** card, because it really is a message to it.
+
+A "btw" question you ask a busy session shows as its own small grey bubble, not like another session
+talking. Voice stays quiet unless something needs your Allow. A session can make three requests to
+other sessions per turn, and a session told something by another cannot tell it back in the same
+turn, so two sessions never keep each other going while you are away.
 
 ## Context meter
 
