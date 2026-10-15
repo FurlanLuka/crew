@@ -5,7 +5,6 @@ import type { SetupCommand } from '../../crew/commands.js';
 import { LOCAL_MACHINE } from '../../shared/machine-ref.js';
 import { isValidHost } from '../../shared/machines.js';
 import { describeRefusal, isOk, useCrew, useCrewAction } from './api.js';
-import { CommandLine } from './CommandLine.js';
 import { Confirm, PageHead, ResultLine, type SetupContext } from './common.js';
 import { deriveProjectState } from './derive.js';
 import type { UpdateCheck } from './settings/settings.js';
@@ -75,9 +74,6 @@ export const MachinePage = ({ ctx }: { ctx: SetupContext }) => {
 					</button>
 				</form>
 			)}
-			{name?.trim() && (
-				<CommandLine commands={[{ type: 'machines_rename', id: ctx.machine, name: name.trim() }]} />
-			)}
 			<div className="label">On it</div>
 			<div className="box">
 				{(projects.data ?? []).map((project) => {
@@ -134,7 +130,7 @@ export const MachinePage = ({ ctx }: { ctx: SetupContext }) => {
 						actionLabel="Remove machine"
 						run={local.run}
 						onCancel={() => setIsRemoving(false)}
-						onDone={() => ctx.go({ page: 'board', tab: 'projects' })}
+						onDone={() => ctx.go({ page: 'board', tab: 'workspaces' })}
 					/>
 				) : (
 					<div className="row-actions">
@@ -160,12 +156,12 @@ export const AddMachine = ({ ctx }: { ctx: SetupContext }) => {
 		event.preventDefault();
 
 		if (command && isOk(await action.run(command))) {
-			ctx.go({ page: 'board', tab: 'projects' });
+			ctx.go({ page: 'board', tab: 'workspaces' });
 		}
 	};
 
 	return (
-		<section className="page narrow" aria-label="Add a machine">
+		<section className="page" aria-label="Add a machine">
 			<PageHead
 				title="Add a machine"
 				lead="Run projects on another computer or a VM and set them up from here."
@@ -200,7 +196,6 @@ export const AddMachine = ({ ctx }: { ctx: SetupContext }) => {
 						onChange={(event) => setName(event.target.value)}
 					/>
 				</label>
-				<CommandLine commands={[command]} />
 				<ResultLine reply={action.last && !isOk(action.last) ? action.last : null} />
 				<div className="form-actions">
 					<button
@@ -221,7 +216,7 @@ export const AddMachine = ({ ctx }: { ctx: SetupContext }) => {
 					<button
 						type="button"
 						className="btn ghost"
-						onClick={() => ctx.go({ page: 'board', tab: 'projects' })}
+						onClick={() => ctx.go({ page: 'board', tab: 'workspaces' })}
 					>
 						Cancel
 					</button>

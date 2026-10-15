@@ -6,7 +6,6 @@ import type { MachineStatus, State } from '../../shared/protocol.js';
 import { readAlwaysVoice, writeAlwaysVoice } from '../home/prefs.js';
 import { INPUT_MODES, type InputMode } from '../listen-mode.js';
 import { isOk, readCrewLine, runCrew, useCrew } from '../setup/api.js';
-import { CommandLine } from '../setup/CommandLine.js';
 import type { Dispatch } from '../types.js';
 import { isKeyMissing, type KeyName } from './BeforeYouTalk.js';
 import { MODE_COPY } from './ModeMenu.js';
@@ -90,9 +89,6 @@ const KeyRow = ({
 							Cancel
 						</button>
 					</form>
-				)}
-				{value !== null && (
-					<CommandLine commands={[{ type: 'keys_set', name, value: value || '-' }]} />
 				)}
 			</span>
 			{value === null && (

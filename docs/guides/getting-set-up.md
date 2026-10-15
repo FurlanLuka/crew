@@ -5,7 +5,7 @@ commands. The quickest way is the browser instead: `crew` opens crew's page, whe
 has a form for each step and a Claude that runs them for you. The example is a store with an API
 and a web app; use your own repos.
 
-![The page way: the first run lists the git checkouts crew found in your code folders, each ticked, with the crew add project commands it will run](../images/setup/first-run.png)
+![The page way: the first run lists the git checkouts crew found in your code folders, each ticked, each cloned from its remote](../images/setup/first-run.png)
 
 ## 1. Install
 
@@ -98,9 +98,9 @@ to an existing workspace later with `crew add workspace store-front checkout-api
 ## Or do it all in the browser
 
 `crew` opens crew's page; **Set up** is every step above as a form — it starts from the repos
-already on your machine (`crew add project --scan` is the same list), shows the command each
-form runs, previews a binding's value in every worktree before you save it, and says what a
-removal would cost before it removes anything. Each machine has a **Setup with Claude** chat
+already on your machine (`crew add project --scan` is the same list), previews a binding's value
+in every worktree before you save it, and says what a removal would cost before it removes
+anything. Each machine has a **Setup with Claude** chat
 there too: "make a worktree in store front for the search fix". [The Set up guide](setup.md)
 walks every page. In the terminal, `crew launch` picks a worktree and opens Claude or your editor
 on it.

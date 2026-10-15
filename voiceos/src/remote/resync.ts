@@ -48,6 +48,10 @@ export const planResync = (state: State, machine: string, snapshot: Snapshot): R
 			inputs.push({ type: 'context_usage', ref, ...remote.context });
 		}
 
+		if (remote.model) {
+			inputs.push({ type: 'session_model', ref, model: remote.model });
+		}
+
 		if (remote.status === 'running') {
 			if (!wasWorking) {
 				inputs.push({ type: 'turn_started', ref });

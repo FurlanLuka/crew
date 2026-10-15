@@ -939,7 +939,18 @@ func WatchSetup(ref Ref, every time.Duration, look func(Status)) (Status, error)
 // SetupLogs is the last n lines of a project's runner log — the steps and
 // what its install printed — live while it runs, kept afterwards.
 func SetupLogs(ref Ref, proj string, n int) (string, error) {
-	data, err := os.ReadFile(RunnerLogFile(ref, proj))
+	return tailFile(RunnerLogFile(ref, proj), n)
+}
+
+// SmokeLogs is the last n lines one server printed while its runner tried
+// it (setup or verify) — kept after the smoke stopped it, so a stopped
+// worktree still shows why a server died.
+func SmokeLogs(ref Ref, proj, server string, n int) (string, error) {
+	return tailFile(smokeLogFile(ref.Slug(), proj, server), n)
+}
+
+func tailFile(path string, n int) (string, error) {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
 	}

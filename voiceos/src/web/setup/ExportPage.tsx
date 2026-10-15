@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { countOf } from '../count.js';
 import { isOk, readCrewLine, runCrew, useCrew } from './api.js';
-import { CommandLine } from './CommandLine.js';
 import { PageHead, type SetupContext } from './common.js';
 import { exportCommand, listExported, listLoose, membersOf } from './export.js';
 import { TickRow, toggle } from './flow.js';
@@ -62,7 +61,7 @@ export const ExportPage = ({ ctx }: { ctx: SetupContext }) => {
 	};
 
 	return (
-		<section className="page narrow move" aria-label="Export">
+		<section className="page move" aria-label="Export">
 			<PageHead
 				title="Export to another machine"
 				lead="Pick workspaces and the projects in them come along. The other machine clones each project from its git remote, so nothing here is copied but the setup."
@@ -142,7 +141,6 @@ export const ExportPage = ({ ctx }: { ctx: SetupContext }) => {
 					</span>
 				</div>
 			</div>
-			<CommandLine commands={[command]} />
 			<div className="fr-actions">
 				<span className="m">
 					{exported.length

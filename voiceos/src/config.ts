@@ -23,6 +23,7 @@ export interface Paths {
 	groupsFile: string;
 	modesFile: string;
 	voiceOffFile: string;
+	onboardedFile: string;
 	keysDir: string;
 }
 
@@ -55,6 +56,7 @@ export const resolvePaths = (env: Record<string, string | undefined> = process.e
 		groupsFile: join(voiceDir, 'groups.json'),
 		modesFile: join(voiceDir, 'modes.json'),
 		voiceOffFile: join(voiceDir, 'voice-off.json'),
+		onboardedFile: join(voiceDir, 'onboarded.json'),
 		keysDir: env.VOICEOS_KEYS_DIR || join(home, '.config', 'crew-voiceos'),
 	};
 };

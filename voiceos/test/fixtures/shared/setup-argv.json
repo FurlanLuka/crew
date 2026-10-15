@@ -388,6 +388,10 @@
 		"argv": ["env", "store-front/main", "store-front", "--json"]
 	},
 	{
+		"type": "setup_logs",
+		"argv": ["setup", "logs", "store-front/wrk1", "store-api/api", "--lines=200", "--json"]
+	},
+	{
 		"type": "dev_add",
 		"argv": ["dev", "add", "store-api", "--name=http", "--rename=api", "--port=0"]
 	}

@@ -32,6 +32,11 @@ describe('matchRoute', () => {
 		[
 			'/setup',
 			'',
+			{ half: 'setup', machine: LOCAL_MACHINE, page: { page: 'board', tab: 'workspaces' } },
+		],
+		[
+			'/setup/projects',
+			'',
 			{ half: 'setup', machine: LOCAL_MACHINE, page: { page: 'board', tab: 'projects' } },
 		],
 		[
@@ -47,7 +52,20 @@ describe('matchRoute', () => {
 		[
 			'/setup/worktree/store-front/main/logs',
 			'',
-			{ half: 'setup', machine: LOCAL_MACHINE, page: { page: 'logs', ref: 'store-front/main' } },
+			{
+				half: 'setup',
+				machine: LOCAL_MACHINE,
+				page: { page: 'worktree', ref: 'store-front/main' },
+			},
+		],
+		[
+			'/setup/worktree/store-front/main/progress',
+			'',
+			{
+				half: 'setup',
+				machine: LOCAL_MACHINE,
+				page: { page: 'worktree', ref: 'store-front/main' },
+			},
 		],
 		[
 			'/setup/workspace/store-front/new-worktree',
@@ -70,10 +88,11 @@ describe('buildPath', () => {
 		{ half: 'voice', view: { kind: 'settings' } },
 		{ half: 'setup', machine: LOCAL_MACHINE, page: { page: 'board', tab: 'projects' } },
 		{ half: 'setup', machine: 'vm1', page: { page: 'project', name: 'infra-ops' } },
+		{ half: 'setup', machine: LOCAL_MACHINE, page: { page: 'board', tab: 'workspaces' } },
 		{
 			half: 'setup',
 			machine: LOCAL_MACHINE,
-			page: { page: 'progress', ref: 'store-front/search' },
+			page: { page: 'rename', ref: 'store-front/search' },
 		},
 		{ half: 'setup', machine: LOCAL_MACHINE, page: { page: 'import' } },
 		{ half: 'setup', machine: LOCAL_MACHINE, page: { page: 'machine-new' } },

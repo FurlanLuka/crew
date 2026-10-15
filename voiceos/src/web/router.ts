@@ -18,8 +18,6 @@ export type SetupPage =
 	| { page: 'workspace-edit'; name: string }
 	| { page: 'worktree'; ref: string }
 	| { page: 'worktree-new'; workspace: string }
-	| { page: 'progress'; ref: string }
-	| { page: 'logs'; ref: string }
 	| { page: 'rename'; ref: string }
 	| { page: 'duplicate'; ref: string }
 	| { page: 'machine' }
@@ -41,7 +39,9 @@ export type Route =
 	| { half: 'setup'; machine: string; page: SetupPage };
 
 export const HOME_ROUTE: Route = { half: 'home' };
-export const BOARD: SetupPage = { page: 'board', tab: 'projects' };
+// Workspaces are where the work is: the board opens on them.
+export const BOARD: SetupPage = { page: 'board', tab: 'workspaces' };
+export const PROJECTS_BOARD: SetupPage = { page: 'board', tab: 'projects' };
 
 const decode = (segment: string): string => {
 	try {
@@ -83,10 +83,10 @@ const matchSetup = (parts: string[]): SetupPage => {
 		// The first run moved to Home; an old link to it lands on the board, which sends a first run
 		// there.
 		case 'welcome':
-		case 'projects':
-			return second === 'new' ? { page: 'project-new' } : BOARD;
 		case 'workspaces':
-			return second === 'new' ? { page: 'workspace-new' } : { page: 'board', tab: 'workspaces' };
+			return second === 'new' ? { page: 'workspace-new' } : BOARD;
+		case 'projects':
+			return second === 'new' ? { page: 'project-new' } : PROJECTS_BOARD;
 		case 'chat':
 		case 'machine':
 		case 'settings':
@@ -97,7 +97,7 @@ const matchSetup = (parts: string[]): SetupPage => {
 			return second === 'new' ? { page: 'machine-new' } : { page: 'machine' };
 		case 'project':
 			if (!second) {
-				return BOARD;
+				return PROJECTS_BOARD;
 			}
 
 			return third === 'edit'
@@ -107,7 +107,7 @@ const matchSetup = (parts: string[]): SetupPage => {
 					: { page: 'project', name: second };
 		case 'workspace':
 			if (!second) {
-				return { page: 'board', tab: 'workspaces' };
+				return BOARD;
 			}
 
 			return third === 'edit'
@@ -117,14 +117,13 @@ const matchSetup = (parts: string[]): SetupPage => {
 					: { page: 'workspace', name: second };
 		case 'worktree': {
 			if (!second || !third) {
-				return { page: 'board', tab: 'workspaces' };
+				return BOARD;
 			}
 
 			const ref = `${second}/${third}`;
 
+			// Its progress and its logs were pages of their own: both are on the worktree's page now.
 			switch (fourth) {
-				case 'progress':
-				case 'logs':
 				case 'rename':
 				case 'duplicate':
 					return { page: fourth, ref };
@@ -159,7 +158,7 @@ export const matchRoute = (pathname: string, search = ''): Route => {
 const setupPath = (page: SetupPage): string => {
 	switch (page.page) {
 		case 'board':
-			return page.tab === 'workspaces' ? '/setup/workspaces' : '/setup';
+			return page.tab === 'projects' ? '/setup/projects' : '/setup';
 		case 'chat':
 		case 'machine':
 		case 'settings':
@@ -186,8 +185,6 @@ const setupPath = (page: SetupPage): string => {
 			return `/setup/workspace/${encode(page.workspace)}/new-worktree`;
 		case 'worktree':
 			return `/setup/worktree/${encodeRef(page.ref)}`;
-		case 'progress':
-		case 'logs':
 		case 'rename':
 		case 'duplicate':
 			return `/setup/worktree/${encodeRef(page.ref)}/${page.page}`;

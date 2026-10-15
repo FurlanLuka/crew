@@ -832,8 +832,8 @@ const SHOTS: Shot[] = [
 		},
 		around: ['.vo-top'],
 	},
-	{ name: 'board', dir: 'setup', path: '/setup' },
-	{ name: 'workspaces', dir: 'setup', path: '/setup/workspaces' },
+	{ name: 'board', dir: 'setup', path: '/setup/projects' },
+	{ name: 'workspaces', dir: 'setup', path: '/setup' },
 	{ name: 'project', dir: 'setup', path: '/setup/project/store-api' },
 	{ name: 'project-form', dir: 'setup', path: '/setup/project/store-front/edit' },
 	{ name: 'worktree', dir: 'setup', path: '/setup/worktree/store-front/wrk1' },
@@ -845,13 +845,23 @@ const SHOTS: Shot[] = [
 	{
 		name: 'logs',
 		dir: 'setup',
-		path: '/setup/worktree/store-front/wrk1/logs',
+		// A server's log opens beside the servers card's list.
+		path: '/setup/worktree/store-front/main',
 		crewSetup: (crew) => crew.setDevLogs('web', WEB_LOG),
+		prepare: async (page) => {
+			await page.locator('.srv-line[data-server="web"]').click();
+			await page.getByRole('region', { name: 'web log' }).getByText('$ pnpm dev').waitFor();
+		},
 		height: 620,
 	},
 	{ name: 'machines', dir: 'setup', path: '/setup/machine', height: 360 },
 	{ name: 'first-run', dir: 'setup', path: '/setup', crew: 'empty' },
-	{ name: 'board-phone', dir: 'setup', path: '/setup', viewport: { width: 390, height: 844 } },
+	{
+		name: 'board-phone',
+		dir: 'setup',
+		path: '/setup/projects',
+		viewport: { width: 390, height: 844 },
+	},
 	{
 		name: 'hero',
 		view: { kind: 'session', ref: `${REMOTE}:store-front/wrk2` },

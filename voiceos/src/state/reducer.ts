@@ -235,6 +235,7 @@ export const createInitialState = (): State => ({
 	modes: {},
 	attachments: {},
 	voiceOff: false,
+	onboarded: false,
 	discord: null,
 	pendingActivations: [],
 });
@@ -256,6 +257,7 @@ export const createSession = (info: WorktreeInfo): Session => ({
 	subagentRuns: [],
 	compactingSince: null,
 	context: null,
+	model: null,
 	reportOwed: false,
 	turnFrom: null,
 	replyOwed: null,
@@ -1092,6 +1094,13 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 			);
 		}
 
+		case 'session_model':
+			return state.sessions[input.ref]?.model === input.model
+				? withoutEffects(state)
+				: withoutEffects(
+						updateSession(state, input.ref, (session) => ({ ...session, model: input.model })),
+					);
+
 		case 'compacting': {
 			const isStarting = input.isCompacting && state.sessions[input.ref]?.compactingSince === null;
 			const next = updateSession(state, input.ref, (session) => ({
@@ -1151,6 +1160,11 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				voiceOff: input.voiceOff,
 				...(input.voiceOff ? {} : { meanwhile: [] }),
 			});
+
+		case 'set_onboarded':
+			return input.onboarded === state.onboarded
+				? withoutEffects(state)
+				: withoutEffects({ ...state, onboarded: input.onboarded });
 
 		// followSends (sends.ts) owns these.
 		case 'offer_switch':

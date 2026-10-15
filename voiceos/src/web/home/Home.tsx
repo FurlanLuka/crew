@@ -6,7 +6,12 @@ import { LOCAL_MACHINE } from '../../shared/machine-ref.js';
 import { listWaitingRefs } from '../../shared/machines.js';
 import type { State } from '../../shared/protocol.js';
 import { useCrew } from '../setup/api.js';
-import { type FirstRunDecision, decideFirstRun, describeSetupMeta } from '../setup/derive.js';
+import {
+	type OnboardingDecision,
+	decideFirstRun,
+	decideOnboarding,
+	describeSetupMeta,
+} from '../setup/derive.js';
 import type { CrewProject, CrewWorktree } from '../setup/types.js';
 import { FirstRun } from './FirstRun.js';
 import { type Half, readAlwaysVoice, readLastHalf, writeAlwaysVoice } from './prefs.js';
@@ -20,6 +25,9 @@ interface HomeProps {
 	openVoice: (ref: string) => void;
 	askClaude: (prompt: string) => void;
 	goSetup: () => void;
+	goImport: () => void;
+	// The first run is over on this Mac: finished, skipped, or crew already had worktrees.
+	markOnboarded: () => void;
 }
 
 const describeVoiceMeta = (state: State): string => {
@@ -31,13 +39,22 @@ const describeVoiceMeta = (state: State): string => {
 		.join(' · ');
 };
 
-export const Home = ({ state, onPick, onStage, openVoice, askClaude, goSetup }: HomeProps) => {
+export const Home = ({
+	state,
+	onPick,
+	onStage,
+	openVoice,
+	askClaude,
+	goSetup,
+	goImport,
+	markOnboarded,
+}: HomeProps) => {
 	const projects = useCrew<CrewProject[]>(LOCAL_MACHINE, { type: 'ls_projects' });
 	const worktrees = useCrew<CrewWorktree[]>(LOCAL_MACHINE, { type: 'ls_worktrees' });
 	// Decided once per visit: the first run makes a worktree, and must not be swapped for the
 	// launcher under the developer while it does.
-	const [decision, setDecision] = useState<FirstRunDecision | null>(null);
-	const read = decideFirstRun(projects.data, worktrees.data);
+	const [decision, setDecision] = useState<OnboardingDecision | null>(null);
+	const read = decideOnboarding(state.onboarded, decideFirstRun(projects.data, worktrees.data));
 
 	useEffect(() => {
 		if (decision || !read) {
@@ -45,20 +62,26 @@ export const Home = ({ state, onPick, onStage, openVoice, askClaude, goSetup }: 
 		}
 
 		setDecision(read);
-		onStage?.(read.isFirstRun);
+		onStage?.(read.show !== null);
+
+		if (read.markDone) {
+			markOnboarded();
+		}
 	}, [decision, read]);
 
 	if (!decision) {
 		return <main className="launcher" aria-label="Home" aria-busy="true" />;
 	}
 
-	if (decision.isFirstRun) {
+	if (decision.show) {
 		return (
 			<FirstRun
-				resume={decision.installing}
+				resume={decision.show.installing}
 				openVoice={openVoice}
 				askClaude={askClaude}
 				goSetup={goSetup}
+				goImport={goImport}
+				markOnboarded={markOnboarded}
 			/>
 		);
 	}

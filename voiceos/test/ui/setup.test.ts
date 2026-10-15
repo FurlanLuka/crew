@@ -65,6 +65,8 @@ beforeEach(() => {
 	server.crew.reset('golden');
 	server.crew.calls.length = 0;
 	server.latency.worktreesMs = 0;
+	// Set up as it is past the first run; the first run's own tests turn it back.
+	server.store.dispatch({ type: 'set_onboarded', onboarded: true });
 });
 
 afterEach(() => {
@@ -78,7 +80,7 @@ afterAll(async () => {
 
 describe('the board', () => {
 	it("a machine's projects with their state, the problems strip above, the workspaces with their worktrees as pills", async () => {
-		const { context, page } = await open('/setup');
+		const { context, page } = await open('/setup/projects');
 		const table = page.locator('.matrix');
 		await table.locator('tr[data-project="store-api"]').waitFor({ timeout: 5000 });
 
@@ -109,7 +111,7 @@ describe('the board', () => {
 		expect(await members.getAttribute('title')).toBe('store-front, admin');
 
 		await page.getByRole('tab', { name: 'Workspaces' }).click();
-		await page.waitForURL('**/setup/workspaces');
+		await page.waitForURL((url) => url.pathname === '/setup');
 		const row = page.locator('tr[data-workspace="store-front"]');
 		await row.waitFor({ timeout: 5000 });
 		expect(await row.locator('.srv button.down').innerText()).toContain('wrk1');
@@ -147,7 +149,7 @@ describe('the board', () => {
 			{ width: 1440, height: 900 },
 			{ width: 1024, height: 768 },
 		]) {
-			const { context, page } = await open('/setup', viewport);
+			const { context, page } = await open('/setup/projects', viewport);
 			const table = page.locator('.matrix');
 			const long = table.locator('tr[data-project="checkout-api-with-a-rather-long-name"]');
 			await long.getByRole('button', { name: 'Check', exact: true }).waitFor({ timeout: 5000 });
@@ -180,7 +182,7 @@ describe('the board', () => {
 	}, 30_000);
 
 	it('a whole row opens its page; a control inside it does only its own thing', async () => {
-		const { context, page } = await open('/setup');
+		const { context, page } = await open('/setup/projects');
 		const row = page.locator('tr[data-project="store-front"]');
 		await row.waitFor({ timeout: 5000 });
 
@@ -193,7 +195,7 @@ describe('the board', () => {
 			.click();
 		await page.waitForURL('**/setup/project/signals/check');
 
-		await page.goto(server.url('/setup/workspaces'));
+		await page.goto(server.url('/setup'));
 		const pill = page.locator('tr[data-workspace="admin"] .srv button', { hasText: 'main' });
 		await pill.click();
 		await page.waitForURL('**/setup/worktree/admin/main');
@@ -201,16 +203,10 @@ describe('the board', () => {
 		await page.locator('tr[data-workspace="admin"] td').nth(1).click();
 		await page.waitForURL('**/setup/workspace/admin');
 
-		const member = page.locator('[data-project="store-front"].row-link');
-		await member.getByRole('button', { name: /Take store-front out/ }).click();
-		await page
-			.getByRole('dialog', { name: 'Take store-front out of admin?' })
-			.waitFor({ timeout: 5000 });
-		expect(page.url()).toContain('/setup/workspace/admin');
-		// Anywhere else on the row: its name's button covers it.
-		const note = await member.locator('.m').boundingBox();
-		await page.mouse.click((note?.x ?? 0) + 4, (note?.y ?? 0) + 4);
-		await page.waitForURL('**/setup/project/store-front');
+		// A worktree's card: its name opens its page; Open in Voice OS stays out of Set up's way.
+		const card = page.locator('.wt-card[data-ref="admin/main"]');
+		await card.getByRole('button', { name: 'main', exact: true }).click();
+		await page.waitForURL('**/setup/worktree/admin/main');
 		await context.close();
 	}, 20_000);
 
@@ -297,7 +293,7 @@ describe('the board', () => {
 });
 
 describe('a project', () => {
-	it('the form: a server renamed in place, a new one added; the command line follows; Save runs it and the check decides', async () => {
+	it('the form: a server renamed in place, a new one added; Save runs exactly those and the check decides', async () => {
 		const { context, page } = await open('/setup/project/store-api/edit');
 		const row = page.locator('.srv-row[data-server="api"]');
 		await row.waitFor({ timeout: 5000 });
@@ -307,14 +303,7 @@ describe('a project', () => {
 		const added = page.locator('.srv-row[data-server="new"]');
 		await added.getByLabel('name').fill('cron');
 		await added.getByLabel('command').fill('make cron');
-		const runs = page.locator('.runs pre');
-		expect(await runs.innerText()).toContain(
-			"crew dev add store-api --name=http --rename=api --port=4000 --cmd='make dev'",
-		);
-		expect(await runs.innerText()).toContain(
-			"crew dev add store-api --name=cron --cmd='make cron'",
-		);
-		expect(await runs.innerText()).toContain('crew check project store-api');
+		expect(commandsOf('dev_add')).toEqual([]);
 
 		await page.getByRole('button', { name: 'Save and check' }).click();
 		await page.waitForURL('**/setup/project/store-api/check');
@@ -330,13 +319,13 @@ describe('a project', () => {
 			},
 			{ type: 'dev_add', project: 'store-api', name: 'cron', cmd: 'make cron' },
 		]);
-		expect(commandsOf('check_project')).toHaveLength(1);
+		expect(commandsOf('check_project')).toEqual([{ type: 'check_project', project: 'store-api' }]);
 		// store-api is in store-front already: no "Put it in a workspace".
 		expect(await page.getByRole('button', { name: 'Put it in a workspace' }).count()).toBe(0);
 		await context.close();
 	}, 30_000);
 
-	it('the check page: title and lead outside, the steps and the command in one box', async () => {
+	it('the check page: title and lead outside, the steps in one box', async () => {
 		const { context, page } = await open('/setup/project/store-front/check');
 		const box = page.locator('.progress-box');
 		await box.locator('.pg[data-state="wait"]').first().waitFor({ timeout: 5000 });
@@ -346,16 +335,16 @@ describe('a project', () => {
 
 			return {
 				outside: [...(section?.children ?? [])].map((child) => child.className),
-				lastInBox: document.querySelector('.progress-box')?.lastElementChild?.className,
 				rowCells: document.querySelector('.progress-box .pg')?.children.length,
 			};
 		});
 		expect(layout).toEqual({
 			outside: ['head-row', 'box progress-box'],
-			lastInBox: 'runs',
 			rowCells: 3,
 		});
-		expect(await box.locator('.runs pre').innerText()).toBe('crew check project store-front');
+		expect(commandsOf('check_project')).toEqual([
+			{ type: 'check_project', project: 'store-front' },
+		]);
 		await page.getByText('store-front is ready.').waitFor({ timeout: 10_000 });
 		expect(await box.locator('.pg[data-state="ok"]').count()).toBeGreaterThan(1);
 		await context.close();
@@ -438,9 +427,6 @@ describe('a project', () => {
 		await preview.getByText('in store-front/main: API_URL=').waitFor({ timeout: 5000 });
 		expect(await preview.innerText()).toContain('http://localhost:54012');
 		expect(await preview.innerText()).toContain('store-api is not in this workspace');
-		expect(await page.locator('.runs pre').innerText()).toContain(
-			'crew add binding store-front --var=API_URL',
-		);
 		await context.close();
 	}, 20_000);
 
@@ -466,26 +452,21 @@ describe('a project', () => {
 });
 
 describe('worktrees', () => {
-	it('new worktree: the bases, then progress read from crew until it is done', async () => {
+	it('new worktree: the bases, then its page follows the install read from crew until it is done', async () => {
 		const { context, page } = await open('/setup/workspace/store-front/new-worktree');
 		await page
 			.locator('.bases [data-project="store-front"]')
 			.getByText('main · 3 behind')
 			.waitFor({ timeout: 5000 });
 		await page.getByRole('textbox').first().fill('search');
-		expect(await page.locator('.runs pre').innerText()).toContain(
-			'crew add worktree store-front/search --pull',
-		);
 
 		await page.getByRole('button', { name: 'Create worktree' }).click();
-		await page.waitForURL('**/setup/worktree/store-front/search/progress');
-		await page.locator('.pg[data-state="wait"]').first().waitFor({ timeout: 5000 });
-		await page.getByRole('button', { name: 'Open in Voice OS' }).waitFor({ timeout: 10_000 });
-		expect(await page.locator('.progress-box .pg[data-state="ok"]').count()).toBeGreaterThan(2);
-		expect(await page.locator('.progress-box > .runs').count()).toBe(1);
-		expect(
-			server.crew.calls.filter((call) => call.command.type === 'setup_status').length,
-		).toBeGreaterThan(1);
+		await page.waitForURL((url) => url.pathname === '/setup/worktree/store-front/search');
+		expect(commandsOf('add_worktree')).toEqual([
+			{ type: 'add_worktree', ref: 'store-front/search', pull: true },
+		]);
+		await page.locator('section.srv-card[data-mode="stopped"]').waitFor({ timeout: 15_000 });
+		expect(commandsOf('setup_status').length).toBeGreaterThan(0);
 		await context.close();
 	}, 30_000);
 
@@ -500,9 +481,6 @@ describe('worktrees', () => {
 		await Bun.sleep(300);
 		expect(commandsOf('rm_worktree_dry_run')).toHaveLength(1);
 		expect(await confirm.getByText('your own checkout: left alone').count()).toBe(1);
-		expect(await confirm.locator('.runs pre').innerText()).toBe(
-			'crew rm worktree store-front/wrk1',
-		);
 		expect(commandsOf('rm_worktree')).toEqual([]);
 
 		await confirm.getByRole('button', { name: 'Remove worktree' }).click();
@@ -513,32 +491,43 @@ describe('worktrees', () => {
 		await context.close();
 	}, 20_000);
 
-	it('Environment: values set for this worktree say what they replace; the form shows its command, then the one it runs', async () => {
+	it('Environment, one card: values set for this worktree say what they replace; the form sets one for a project', async () => {
 		const { context, page } = await open('/setup/worktree/store-front/main');
-		const form = page.getByRole('form', { name: 'Set a value for this worktree' });
+		const card = page.locator('.env-card');
+		const form = card.getByRole('form', { name: 'Set a value for this worktree' });
 		await form.waitFor({ timeout: 5000 });
-		const runs = page.locator('form.ov-add + .runs pre');
-		const override = page.locator('[data-override="STORE_API_URL"]');
+		const override = card.locator('[data-override="STORE_API_URL"]');
 		await override.waitFor({ timeout: 5000 });
 
 		expect(await override.innerText()).toContain('set for this worktree');
 		expect(await override.innerText()).toContain(
 			"instead of store-front's value: store-api api's URL",
 		);
+		expect(await card.locator('details.env-all summary').innerText()).toContain(
+			'What each server gets',
+		);
 		expect(await page.locator('.label', { hasText: 'Environment' }).count()).toBe(1);
 		expect((await page.locator('section.page').innerText()).toLowerCase()).not.toContain('pinned');
 
-		expect(await runs.innerText()).toBe('crew add override store-front/main VAR=value');
 		await form.getByLabel('Variable and value').fill('STRIPE_KEY=sk_test_1');
 		await form.getByLabel('Which project').selectOption('store-api');
-		expect(await runs.innerText()).toBe(
-			'crew add override store-front/main store-api.STRIPE_KEY=sk_test_1',
+		await form.getByRole('button', { name: 'Set value' }).click();
+		await waitUntil(() => commandsOf('add_override').length === 1);
+		expect(commandsOf('add_override')).toEqual([
+			{
+				type: 'add_override',
+				ref: 'store-front/main',
+				var: 'store-api.STRIPE_KEY',
+				value: 'sk_test_1',
+			},
+		]);
+		expect(server.crew.calls.find((call) => call.command.type === 'add_override')?.machine).toBe(
+			'local',
 		);
-		expect(await page.locator('form.ov-add + .runs .label').innerText()).toMatch(/This Mac/i);
 		await context.close();
 	}, 20_000);
 
-	it('the header: rename and duplicate beside the name, Open in Voice OS alone on the right; server actions in Dev servers', async () => {
+	it('the header: rename and duplicate beside the name, Open in Voice OS alone on the right; server actions in the servers card', async () => {
 		const { context, page } = await open('/setup/worktree/store-front/main');
 		const title = page.locator('.title-row');
 		await title.getByRole('button', { name: 'Rename' }).waitFor({ timeout: 5000 });
@@ -550,11 +539,16 @@ describe('worktrees', () => {
 		expect(await page.locator('.head-row > .row-actions button').allInnerTexts()).toEqual([
 			'Open in Voice OS',
 		]);
-		const servers = page.getByRole('region', { name: 'Dev servers' });
-		const actions = servers.locator('.section-head button');
-		await servers.getByRole('button', { name: 'Verify' }).waitFor({ timeout: 5000 });
+		// store-api's api died (crew's dev check says so): Fix with Claude leads.
+		const servers = page.locator('section.srv-card[data-mode="died"]');
+		await servers.waitFor({ timeout: 5000 });
 
-		expect(await actions.allInnerTexts()).toEqual(['Stop servers', 'Restart', 'Verify', 'Logs']);
+		expect(await servers.locator('.srv-card-head button').allInnerTexts()).toEqual([
+			'Fix with Claude',
+			'Stop',
+			'Restart',
+			'Verify',
+		]);
 
 		await title.getByRole('button', { name: 'Rename' }).click();
 		await page.waitForURL('**/setup/worktree/store-front/main/rename');
@@ -564,29 +558,181 @@ describe('worktrees', () => {
 		await context.close();
 	}, 20_000);
 
-	it("a server's log: crew's clean lines, as text", async () => {
-		const { context, page } = await open('/setup/worktree/store-front/main/logs');
-		const log = page.locator('pre.log');
-		await log.getByText('GET / 200 4 ms').waitFor({ timeout: 5000 });
+	it("a server's line opens its log beside the list: crew's clean lines, as text", async () => {
+		const { context, page } = await open('/setup/worktree/store-front/main');
+		// The server that died opens by itself.
+		await page.getByRole('region', { name: 'api log' }).waitFor({ timeout: 5000 });
+		await page.locator('.srv-line[data-server="web"]').click({ timeout: 5000 });
+		const pane = page.getByRole('region', { name: 'web log' });
+		await pane.getByText('GET / 200 4 ms').waitFor({ timeout: 5000 });
 
-		expect(await log.innerText()).toBe('$ web\nlistening\nGET / 200 4 ms');
-		expect(commandsOf('dev_logs')[0]).toMatchObject({ type: 'dev_logs', server: 'web' });
+		expect(await pane.locator('.log-pane-lines').innerText()).toBe(
+			'$ web\nlistening\nGET / 200 4 ms',
+		);
+		expect(commandsOf('dev_logs')).toContainEqual({
+			type: 'dev_logs',
+			ref: 'store-front/main',
+			server: 'web',
+			lines: 200,
+		});
+
+		await pane.getByRole('button', { name: 'Close the log' }).click();
+		await pane.waitFor({ state: 'detached', timeout: 5000 });
 		await context.close();
 	}, 20_000);
 
-	it('Esc goes up one breadcrumb: logs → the worktree → its workspace → the board', async () => {
-		const { context, page } = await open('/setup/worktree/store-front/main/logs');
-		await page.locator('.crumbs .here', { hasText: 'Logs' }).waitFor({ timeout: 5000 });
+	it('Verify on running servers asks first: Stop and verify runs dev stop, then verify; Cancel runs nothing', async () => {
+		const { context, page } = await open('/setup/worktree/store-front/main');
+		const card = page.locator('section.srv-card[data-mode="died"]');
+		await card.getByRole('button', { name: 'Verify' }).click({ timeout: 5000 });
+		const confirm = card.locator('.srv-confirm');
+		await confirm.waitFor({ timeout: 5000 });
+
+		await confirm.getByRole('button', { name: 'Cancel' }).click();
+		await confirm.waitFor({ state: 'detached', timeout: 5000 });
+		await Bun.sleep(200);
+		expect([...commandsOf('dev_stop'), ...commandsOf('verify')]).toEqual([]);
+
+		await card.getByRole('button', { name: 'Verify' }).click();
+		await confirm.getByRole('button', { name: 'Stop and verify' }).click();
+		await waitUntil(() => commandsOf('verify').length === 1);
+		expect(
+			server.crew.calls
+				.map((call) => call.command)
+				.filter((command) => command.type === 'dev_stop' || command.type === 'verify'),
+		).toEqual([
+			{ type: 'dev_stop', ref: 'store-front/main' },
+			{ type: 'verify', ref: 'store-front/main' },
+		]);
+		await context.close();
+	}, 20_000);
+
+	it('Stop and verify where crew refuses the stop → no verify on top of running servers', async () => {
+		server.crew.refuseCommand('dev_stop', 'Error: tmux is not answering');
+		const { context, page } = await open('/setup/worktree/store-front/main');
+		const card = page.locator('section.srv-card[data-mode="died"]');
+		await card.getByRole('button', { name: 'Verify' }).click({ timeout: 5000 });
+		await card.locator('.srv-confirm').getByRole('button', { name: 'Stop and verify' }).click();
+		await waitUntil(() => commandsOf('dev_stop').length === 1);
+		await card.locator('.result-line.bad').waitFor({ timeout: 5000 });
+		await Bun.sleep(200);
+		expect(commandsOf('verify')).toEqual([]);
+		await context.close();
+	}, 20_000);
+
+	it('Verify on stopped servers asks nothing: only verify runs', async () => {
+		server.crew.machines.local!.worktrees.find(
+			(row) => row.ref === 'store-front/main',
+		)!.devRunning = false;
+		const { context, page } = await open('/setup/worktree/store-front/main');
+		const card = page.locator('section.srv-card[data-mode="stopped"]');
+		await card.getByRole('button', { name: 'Verify' }).click({ timeout: 5000 });
+		await waitUntil(() => commandsOf('verify').length === 1);
+		expect(await card.locator('.srv-confirm').count()).toBe(0);
+		expect(commandsOf('dev_stop')).toEqual([]);
+		expect(commandsOf('verify')).toEqual([{ type: 'verify', ref: 'store-front/main' }]);
+		await context.close();
+	}, 20_000);
+
+	it('a failed install: its project listed with its install log open; Install again re-runs it once', async () => {
+		const { context, page } = await open('/setup/worktree/store-front/wrk1');
+		const card = page.locator('section.srv-card[data-mode="setup-failed"]');
+		await card.locator('section.log-pane').waitFor({ timeout: 5000 });
+		expect(
+			await card.locator('.srv-line[data-project="store-api"]').getAttribute('data-state'),
+		).toBe('failed');
+		expect(commandsOf('setup_logs')).toContainEqual({
+			type: 'setup_logs',
+			ref: 'store-front/wrk1',
+			project: 'store-api',
+			lines: 200,
+		});
+
+		await card.getByRole('button', { name: 'Install again' }).click();
+		await waitUntil(() => commandsOf('setup_rerun').length === 1);
+		expect(commandsOf('setup_rerun')).toEqual([
+			{ type: 'setup_rerun', ref: 'store-front/wrk1', projects: ['store-api', 'store-front'] },
+		]);
+		await context.close();
+	}, 20_000);
+
+	it("a failed verify, nothing running: the server's try is the log, read with its server", async () => {
+		const wrk1 = server.crew.machines.local!.worktrees.find(
+			(row) => row.ref === 'store-front/wrk1',
+		)!;
+		wrk1.issues = (wrk1.issues ?? []).filter((issue) => issue.stage === 'smoke');
+		const { context, page } = await open('/setup/worktree/store-front/wrk1');
+		const card = page.locator('section.srv-card[data-mode="verify-failed"]');
+		const pane = card.locator('section.log-pane');
+		await pane.getByText('web tried by the runner').waitFor({ timeout: 5000 });
+		expect(commandsOf('setup_logs')).toContainEqual({
+			type: 'setup_logs',
+			ref: 'store-front/wrk1',
+			project: 'store-front',
+			server: 'web',
+			lines: 200,
+		});
+		await context.close();
+	}, 20_000);
+
+	it('the old progress and logs links open the worktree page', async () => {
+		for (const path of [
+			'/setup/worktree/store-front/main/progress',
+			'/setup/worktree/store-front/main/logs',
+		]) {
+			const { context, page } = await open(path);
+			await page.locator('section.srv-card').waitFor({ timeout: 5000 });
+			expect(await page.locator('.title-row h1').innerText()).toBe('store-front/main');
+			await context.close();
+		}
+	}, 20_000);
+
+	it('Esc goes up one breadcrumb: the worktree → its workspace → the board', async () => {
+		const { context, page } = await open('/setup/worktree/store-front/main');
+		await page.locator('.crumbs .here', { hasText: 'main' }).waitFor({ timeout: 5000 });
 		expect(await page.locator('.crumbs').innerText()).toMatch(
-			/This Mac\s*›\s*Workspaces\s*›\s*store-front\s*›\s*main\s*›\s*Logs/,
+			/This Mac\s*›\s*Workspaces\s*›\s*store-front\s*›\s*main/,
 		);
 
 		await page.keyboard.press('Escape');
-		await page.waitForURL('**/setup/worktree/store-front/main');
-		await page.keyboard.press('Escape');
 		await page.waitForURL('**/setup/workspace/store-front');
 		await page.keyboard.press('Escape');
-		await page.waitForURL('**/setup/workspaces');
+		await page.waitForURL((url) => url.pathname === '/setup');
+		await context.close();
+	}, 20_000);
+
+	it('a workspace: "Reading worktrees…" until crew answers, then a card per worktree with its servers', async () => {
+		const release = server.crew.holdCommand('ls_worktrees');
+		const { context, page } = await open('/setup/workspace/store-front');
+		const reading = page.getByText('Reading worktrees…');
+		await reading.waitFor({ timeout: 5000 });
+		expect(await page.locator('.wt-card').count()).toBe(0);
+
+		release();
+		const main = page.locator('.wt-card[data-ref="store-front/main"]');
+		await main.waitFor({ timeout: 5000 });
+		expect(await reading.count()).toBe(0);
+		expect(await main.getAttribute('data-state')).toBe('running');
+		expect(
+			await page.locator('.wt-card[data-ref="store-front/wrk1"]').getAttribute('data-state'),
+		).toBe('issue');
+		await main.locator('.wt-pill[data-server="web"]').waitFor({ timeout: 5000 });
+		const reads = commandsOf('ls_worktrees').filter(
+			(command) => command.type === 'ls_worktrees' && command.workspace === 'store-front',
+		);
+		expect(reads).toContainEqual({ type: 'ls_worktrees', workspace: 'store-front' });
+		expect(reads).toContainEqual({ type: 'ls_worktrees', workspace: 'store-front', size: true });
+		await context.close();
+	}, 20_000);
+
+	it("a workspace's settings: its projects, and Remove workspace at the bottom", async () => {
+		const { context, page } = await open('/setup/workspace/admin');
+		await page.getByRole('button', { name: 'Workspace settings' }).click({ timeout: 5000 });
+		await page.waitForURL('**/setup/workspace/admin/edit');
+		await page.locator('h1', { hasText: 'admin settings' }).waitFor({ timeout: 5000 });
+		await page.locator('.remove-row').getByRole('button', { name: 'Remove workspace' }).waitFor({
+			timeout: 5000,
+		});
 		await context.close();
 	}, 20_000);
 
@@ -818,6 +964,84 @@ describe('Setup with Claude', () => {
 		await context.close();
 	}, 20_000);
 
+	it("a crew command Claude runs on a worktree → that worktree's servers beside the chat; × closes it", async () => {
+		await waitUntil(() => server.store.state.sessions.setup?.status === 'idle');
+		server.store.dispatch({
+			type: 'tool',
+			ref: 'setup',
+			name: 'Bash',
+			summary: 'run crew dev check store-front/main',
+		});
+		const { context, page } = await open('/setup/chat');
+		const panel = page.getByRole('complementary', { name: 'store-front/main beside the chat' });
+		await panel.locator('section.srv-card').waitFor({ timeout: 5000 });
+		expect(await panel.locator('.srv-line[data-server="web"]').count()).toBe(1);
+
+		await panel.getByRole('button', { name: 'Close the panel' }).click();
+		await panel.waitFor({ state: 'detached', timeout: 5000 });
+		await context.close();
+	}, 20_000);
+
+	it('"@" in the chat → this machine\'s worktrees and projects; Enter puts in the name', async () => {
+		await waitUntil(() => server.store.state.sessions.setup?.status === 'idle');
+		const { context, page } = await open('/setup/chat');
+		const field = page.getByLabel('Reply to setup');
+		const menu = page.getByRole('listbox', { name: 'Worktrees and projects' });
+
+		await field.pressSequentially('restart @store');
+		await menu.getByRole('option').first().waitFor({ timeout: 5000 });
+		const entries = await menu.locator('.slash-name').allInnerTexts();
+		expect(entries).toContain('store-front/main');
+		expect(entries).toContain('store-api');
+		expect(entries[0]).toBe('store-front/main');
+
+		await field.press('Enter');
+		expect(await field.inputValue()).toBe('restart store-front/main ');
+		await menu.waitFor({ state: 'detached', timeout: 5000 });
+		expect(
+			server.received.some(
+				(entry) =>
+					entry.message.type === 'action' &&
+					entry.message.action.type === 'send' &&
+					entry.message.action.text.includes('restart store-front'),
+			),
+		).toBe(false);
+		await context.close();
+	}, 20_000);
+
+	it('"@" in the board\'s Setup with Claude box too; Enter sends it at once and opens the chat with the worktree beside', async () => {
+		await waitUntil(() => server.store.state.sessions.setup?.status === 'idle');
+		const { context, page } = await open('/setup');
+		const field = page.getByLabel('Ask setup');
+		const menu = page.getByRole('listbox', { name: 'Worktrees and projects' });
+
+		await field.pressSequentially('verify @store-front/m');
+		await menu.getByRole('option').first().waitFor({ timeout: 5000 });
+		expect(await menu.locator('.slash-name').allInnerTexts()).toEqual(['store-front/main']);
+
+		await field.press('Enter');
+		expect(await field.inputValue()).toBe('verify store-front/main ');
+		await menu.waitFor({ state: 'detached', timeout: 5000 });
+
+		await field.press('Enter');
+		await page.waitForURL('**/setup/chat');
+		// Sent with the one Enter: nothing left to send again in the chat.
+		await waitUntil(() =>
+			server.received.some(
+				(entry) =>
+					entry.message.type === 'action' &&
+					entry.message.action.type === 'send' &&
+					entry.message.action.ref === 'setup' &&
+					entry.message.action.text === 'verify store-front/main',
+			),
+		);
+		expect(await page.getByLabel('Reply to setup').inputValue()).toBe('');
+		await page
+			.getByRole('complementary', { name: 'store-front/main beside the chat' })
+			.waitFor({ timeout: 5000 });
+		await context.close();
+	}, 20_000);
+
 	describe("a remote machine's chat", () => {
 		const VM1 = { id: 'vm1', host: 'dev@vm1', name: 'Build box' };
 		const LOCAL_WORKTREES = [createWorktree('setup', true), createWorktree('store-front/main')];
@@ -924,19 +1148,15 @@ describe('moving to another machine', () => {
 		return writeBundle(JSON.parse(text));
 	};
 
-	it('Export: workspaces bring their projects; the command follows the picks; the file is saved', async () => {
+	it('Export: workspaces bring their projects; the picks decide the export; the file is saved', async () => {
 		const { context, page } = await open('/setup/settings');
 		await page.getByRole('button', { name: 'Export…' }).click();
 		await page.waitForURL('**/setup/export');
 		const exportPage = page.locator('section[aria-label="Export"]');
 		await exportPage.locator('[data-row="admin"]').waitFor({ timeout: 5000 });
 		expect(await exportPage.locator('[data-member="signals"]').innerText()).toContain('setup only');
-		expect(await exportPage.locator('.runs pre').innerText()).toContain('crew export --all');
 
 		await exportPage.locator('[data-row="admin"]').click();
-		expect(await exportPage.locator('.runs pre').innerText()).toMatch(
-			/^crew export .*--projects=store-front,store-api,signals --workspaces=store-front/,
-		);
 		await exportPage.locator('[data-row="store-front"]').click();
 		expect(
 			await exportPage.getByRole('button', { name: 'Save crew-export.json' }).isDisabled(),
@@ -969,12 +1189,11 @@ describe('moving to another machine', () => {
 		const importPage = page.locator('section[aria-label="Import"]');
 		await importPage.getByLabel('Export file').setInputFiles(file);
 		const storeFront = importPage.locator('[data-project="store-front"]');
-		await storeFront.getByText('already checked out at /Users/dev/code/store-front').waitFor({
-			timeout: 5000,
-		});
-		expect(
-			await storeFront.getByRole('button', { name: 'Use mine' }).getAttribute('aria-pressed'),
-		).toBe('true');
+		// Found checked out here: cloned all the same, the developer's checkout left as it is.
+		await storeFront
+			.getByText('clone from its remote (yours at /Users/dev/code/store-front stays as it is)')
+			.waitFor({ timeout: 5000 });
+		expect(await storeFront.getByRole('button', { name: 'Use mine' }).count()).toBe(0);
 		expect(await importPage.locator('[aria-current="step"]').innerText()).toBe('Choose');
 		const go = importPage.getByRole('button', { name: /choice left|Import \d/ });
 		expect(await go.innerText()).toBe('1 choice left');
@@ -992,16 +1211,13 @@ describe('moving to another machine', () => {
 
 		await signals.getByRole('button', { name: 'Point at a folder' }).click();
 		await signals.getByLabel('Folder for signals').fill('/Users/dev/code/signals');
-		expect(await importPage.locator('.runs pre').innerText()).toContain(
-			'crew import - project store-front --path=/Users/dev/code/store-front',
-		);
 		await importPage.getByRole('button', { name: 'Import 5 items' }).click();
 
 		await importPage.getByRole('heading', { name: 'Imported' }).waitFor({ timeout: 15_000 });
 		expect(await importPage.getByText('3 projects and 2 workspaces came in.').count()).toBe(1);
 		expect(
 			commandsOf('import_project').map((command) => ('path' in command ? command.path : 'clone')),
-		).toEqual(['/Users/dev/code/store-front', 'clone', '/Users/dev/code/signals']);
+		).toEqual(['clone', 'clone', '/Users/dev/code/signals']);
 		expect(
 			commandsOf('import_workspace').map((command) => 'name' in command && command.name),
 		).toEqual(['store-front', 'admin']);
@@ -1043,6 +1259,9 @@ describe('moving to another machine', () => {
 		]);
 		await importPage.getByRole('button', { name: /Go to the board/ }).waitFor();
 		expect(await importPage.getByRole('button', { name: /Open Voice OS/ }).isDisabled()).toBe(true);
+		await importPage.getByRole('button', { name: /Go to the board/ }).click();
+		await page.waitForURL((url) => url.pathname === '/setup');
+		await page.locator('tr[data-workspace="store-front"]').waitFor({ timeout: 5000 });
 		await context.close();
 	}, 30_000);
 
@@ -1070,12 +1289,22 @@ describe('moving to another machine', () => {
 });
 
 describe('first run', () => {
-	// The first run is Home on a Mac with no worktree yet: the opening, then its steps under the
-	// wordmark.
+	// Never finished or skipped on this Mac: the first run is for these.
+	beforeEach(() => {
+		server.store.dispatch({ type: 'set_onboarded', onboarded: false });
+	});
+
+	const onboardedSent = () =>
+		server.received.filter(
+			(entry) => entry.message.type === 'action' && entry.message.action.type === 'set_onboarded',
+		);
+
+	// The first run is Home on a Mac with no worktree yet: the opening and its three ways in, then
+	// its steps under the wordmark.
 	const startFirstRun = async (path = '/', viewport?: { width: number; height: number }) => {
 		const opened = await open(path, viewport);
 		const flow = opened.page.locator('main[aria-label="First run"]');
-		await flow.getByRole('button', { name: 'Get started' }).click({ timeout: 5000 });
+		await flow.getByRole('button', { name: /Set it up step by step/ }).click({ timeout: 5000 });
 
 		return { ...opened, flow };
 	};
@@ -1111,21 +1340,30 @@ describe('first run', () => {
 		expect(await flow.getByText('Import from another machine').count()).toBe(0);
 
 		await makeWorkspace(flow);
-		expect(commandsOf('add_project').map((command) => 'name' in command && command.name)).toEqual([
-			'store-front',
-			'checkout-api',
-			'infra-ops',
+		// Found checkouts come in by their remote (crew clones its own); one with none, by its folder.
+		expect(commandsOf('add_project')).toEqual([
+			{ type: 'add_project', name: 'store-front', url: 'git@github.com:example/store-front.git' },
+			{
+				type: 'add_project',
+				name: 'checkout-api',
+				url: 'https://github.com/example/checkout-api.git',
+			},
+			{ type: 'add_project', name: 'infra-ops', path: '/Users/dev/repos/infra-ops' },
 		]);
 		expect(await currentStep(flow).innerText()).toBe('Workspace');
 		expect(await flow.getByText('your session: store-front/main').count()).toBe(1);
-		expect(await flow.locator('.runs pre').innerText()).toContain(
-			'crew add workspace store-front store-front checkout-api infra-ops',
-		);
 
 		await flow.getByRole('button', { name: 'Create store-front' }).click();
 		await flow
 			.getByRole('heading', { name: 'Getting store-front/main ready' })
 			.waitFor({ timeout: 5000 });
+		expect(commandsOf('add_workspace')).toEqual([
+			{
+				type: 'add_workspace',
+				name: 'store-front',
+				projects: ['store-front', 'checkout-api', 'infra-ops'],
+			},
+		]);
 		expect(await currentStep(flow).innerText()).toBe('Getting it ready');
 		const fail = flow.locator('.fail');
 		await fail.getByText(/infra-ops: install failed/).waitFor({ timeout: 10_000 });
@@ -1136,6 +1374,8 @@ describe('first run', () => {
 			.getByRole('heading', { name: 'store-front/main is ready' })
 			.waitFor({ timeout: 10_000 });
 		expect(await flow.getByText('3 projects checked out and installed.').count()).toBe(1);
+		// Reaching the last step is the first run done: it never opens again.
+		await waitUntil(() => server.store.state.onboarded);
 		expect(commandsOf('setup_rerun')).toEqual([
 			{ type: 'setup_rerun', ref: 'store-front/main', projects: ['infra-ops'] },
 		]);
@@ -1240,9 +1480,6 @@ describe('first run', () => {
 		await flow
 			.getByRole('textbox', { name: 'Git URL' })
 			.fill('https://github.com/acme/payments.git');
-		expect(await flow.locator('.fr-adder .runs pre').innerText()).toContain(
-			'crew add project payments https://github.com/acme/payments.git',
-		);
 		await flow.getByRole('button', { name: 'Add payments' }).click();
 		await flow.locator('[data-row="payments"]').waitFor({ timeout: 5000 });
 
@@ -1282,13 +1519,9 @@ describe('first run', () => {
 		// The step reads crew's workspaces as it opens: back and forward again reads them.
 		await flow.getByRole('button', { name: 'Back' }).click();
 		await flow.getByRole('button', { name: 'Continue' }).click();
-		await flow
-			.locator('.runs pre', { hasText: 'crew add worktree store-front/main' })
-			.waitFor({ timeout: 5000 });
-		expect(await flow.locator('.runs pre').innerText()).toContain(
-			'crew add workspace store-front checkout-api infra-ops',
-		);
+		await flow.getByRole('heading', { name: 'Make a workspace' }).waitFor({ timeout: 5000 });
 
+		// Create waits for crew's workspaces, so it knows to join the one there.
 		await flow.getByRole('button', { name: 'Create store-front' }).click();
 		await flow
 			.getByRole('heading', { name: 'Getting store-front/main ready' })
@@ -1324,7 +1557,7 @@ describe('first run', () => {
 		await flow
 			.getByRole('heading', { name: 'Getting store-front/main ready' })
 			.waitFor({ timeout: 5000 });
-		expect(await flow.getByRole('button', { name: 'Get started' }).count()).toBe(0);
+		expect(await flow.locator('.fr-ways').count()).toBe(0);
 
 		if (run) {
 			run.startedAt = 0;
@@ -1340,7 +1573,71 @@ describe('first run', () => {
 		server.crew.reset('empty');
 		const { context, page } = await open('/setup');
 		await page.waitForURL((url) => url.pathname === '/', { timeout: 5000 });
-		await page.getByRole('button', { name: 'Get started' }).waitFor({ timeout: 5000 });
+		await page.getByRole('button', { name: /Set it up step by step/ }).waitFor({ timeout: 5000 });
+		await context.close();
+	}, 20_000);
+
+	it('the opening: three ways in; Skip → the empty board; a reload of / → Home, never the first run again', async () => {
+		server.crew.reset('empty');
+		const { context, page } = await open('/');
+		const flow = page.locator('main[aria-label="First run"]');
+		const ways = flow.locator('.launch-choice');
+		await flow.getByRole('button', { name: /Set it up step by step/ }).waitFor({ timeout: 5000 });
+
+		expect(await ways.locator('b').allInnerTexts()).toEqual([
+			'Import',
+			'Set it up step by step',
+			'Skip',
+		]);
+		await flow.getByRole('button', { name: /Skip/ }).click();
+		await page.waitForURL((url) => url.pathname === '/setup');
+		const empty = page.locator('section.empty-board');
+		await empty.waitFor({ timeout: 5000 });
+		expect(await empty.locator('.empty-way b').allInnerTexts()).toEqual([
+			'New workspace',
+			'Import',
+			'Ask Claude',
+		]);
+		expect(server.store.state.onboarded).toBe(true);
+
+		// Onboarded with nothing set up: the board stays empty, it never sends back to the first run.
+		await page.reload();
+		await empty.waitFor({ timeout: 5000 });
+		await Bun.sleep(300);
+		expect(new URL(page.url()).pathname).toBe('/setup');
+
+		await page.goto(server.url('/'));
+		await page.locator('main[aria-label="Home"] .launch-choices').waitFor({ timeout: 5000 });
+		expect(await page.locator('main[aria-label="First run"]').count()).toBe(0);
+		await context.close();
+	}, 20_000);
+
+	it("Import from the opening → Set up's import, the first run done", async () => {
+		server.crew.reset('empty');
+		const { context, page } = await open('/');
+		await page
+			.locator('main[aria-label="First run"]')
+			.getByRole('button', { name: /^Import/ })
+			.click({ timeout: 5000 });
+		await page.waitForURL('**/setup/import');
+		await page.locator('section[aria-label="Import"]').waitFor({ timeout: 5000 });
+		await waitUntil(() => server.store.state.onboarded);
+		await context.close();
+	}, 20_000);
+
+	it('a Mac crew already set up, never marked → Home, marked onboarded exactly once', async () => {
+		const before = onboardedSent().length;
+		const { context, page } = await open('/');
+		await page.locator('main[aria-label="Home"] .launch-choices').waitFor({ timeout: 5000 });
+		await waitUntil(() => server.store.state.onboarded);
+		await Bun.sleep(300);
+
+		expect(onboardedSent().slice(before)).toEqual([
+			expect.objectContaining({
+				message: { type: 'action', action: { type: 'set_onboarded', onboarded: true } },
+			}),
+		]);
+		expect(await page.locator('main[aria-label="First run"]').count()).toBe(0);
 		await context.close();
 	}, 20_000);
 
@@ -1399,7 +1696,7 @@ describe('first run', () => {
 		await context.close();
 	}, 30_000);
 
-	it('with motion: the opening dissolves onto the first run, Get started takes it on', async () => {
+	it('with motion: the opening dissolves onto the first run, step by step takes it on', async () => {
 		server.crew.reset('empty');
 		const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
 		const page = await context.newPage();
@@ -1407,7 +1704,7 @@ describe('first run', () => {
 		await page.goto(server.loginUrl());
 		await page.goto(server.url('/'));
 		await page.locator('.intro').waitFor({ state: 'detached', timeout: 6000 });
-		await page.getByRole('button', { name: 'Get started' }).click();
+		await page.getByRole('button', { name: /Set it up step by step/ }).click();
 		await page.getByRole('heading', { name: 'Pick your projects' }).waitFor({ timeout: 5000 });
 		await context.close();
 	}, 20_000);
@@ -1478,12 +1775,16 @@ const REMOVALS: RemovalCase[] = [
 		type: 'rm_project',
 		command: { type: 'rm_project', name: 'signals', confirm: true },
 		action: 'Remove project',
-		after: (page) => page.waitForURL('**/setup'),
+		after: (page) => page.waitForURL('**/setup/projects'),
 	},
 	{
 		name: 'rm workspace <p>',
-		path: '/setup/workspace/store-front',
-		open: (page) => page.getByLabel('Take store-api out of store-front').click(),
+		path: '/setup/workspace/store-front/edit',
+		// Untick it in the workspace's settings; Save asks before anything runs.
+		open: async (page) => {
+			await page.locator('label.pick', { hasText: 'store-api' }).getByRole('checkbox').uncheck();
+			await page.getByRole('button', { name: 'Save' }).click();
+		},
 		dialog: 'Take store-api out of store-front?',
 		cost: '1 uncommitted file',
 		type: 'rm_workspace_project',
@@ -1494,10 +1795,7 @@ const REMOVALS: RemovalCase[] = [
 			confirm: true,
 		},
 		action: 'Take it out',
-		after: (page) =>
-			page.getByRole('dialog', { name: 'Take store-api out of store-front?' }).waitFor({
-				state: 'detached',
-			}),
+		after: (page) => page.waitForURL((url) => url.pathname === '/setup/workspace/store-front'),
 	},
 	{
 		name: "the workspace's last worktree",
@@ -1508,7 +1806,7 @@ const REMOVALS: RemovalCase[] = [
 		type: 'rm_workspace',
 		command: { type: 'rm_workspace', workspace: 'admin', confirm: true },
 		action: 'Remove worktree',
-		after: (page) => page.waitForURL('**/setup/workspaces'),
+		after: (page) => page.waitForURL((url) => url.pathname === '/setup'),
 	},
 	{
 		name: 'trash empty',
@@ -1655,9 +1953,6 @@ describe('machines and settings', () => {
 		const { context, page } = await open('/setup/machine?on=vm1');
 		await page.getByRole('button', { name: 'Rename' }).click();
 		await page.getByLabel('Machine name').fill('Build server');
-		expect(await page.locator('.runs pre').innerText()).toContain(
-			"crew server machines rename vm1 'Build server'",
-		);
 		await page.locator('form.inline-form').getByRole('button', { name: 'Rename' }).click();
 		await waitUntil(() => commandsOf('machines_rename').length === 1);
 		expect(commandsOf('machines_rename')).toEqual([
@@ -1735,9 +2030,6 @@ describe('machines and settings', () => {
 		expect(await https.getAttribute('placeholder')).toBe('443 (default)');
 		expect(await page.getByRole('textbox', { name: 'HTTP port' }).inputValue()).toBe('80');
 		await ip.fill('10.0.0.9');
-		expect(await page.locator('.cfg-sec .runs pre').first().innerText()).toBe(
-			'crew config set server_ip 10.0.0.9',
-		);
 		await page.getByRole('button', { name: 'Save' }).click();
 		await waitUntil(() => commandsOf('config_set').length === 1);
 		expect(commandsOf('config_set')).toEqual([
@@ -1845,8 +2137,9 @@ describe('"Always open Voice OS"', () => {
 
 	it('a first run → Home stays, and Home is the first run', async () => {
 		server.crew.reset('empty');
+		server.store.dispatch({ type: 'set_onboarded', onboarded: false });
 		const { context, page } = await open('/', undefined, ALWAYS);
-		await page.getByRole('button', { name: 'Get started' }).waitFor({ timeout: 5000 });
+		await page.getByRole('button', { name: /Set it up step by step/ }).waitFor({ timeout: 5000 });
 		await Bun.sleep(300);
 		expect(new URL(page.url()).pathname).toBe('/');
 		await context.close();
@@ -1873,7 +2166,7 @@ describe('"Always open Voice OS"', () => {
 
 describe('at phone width', () => {
 	it('the board fits 390 wide: the table scrolls inside its box, the page never sideways', async () => {
-		const { context, page } = await open('/setup', { width: 390, height: 844 });
+		const { context, page } = await open('/setup/projects', { width: 390, height: 844 });
 		await page.locator('tr[data-project="store-api"]').waitFor({ timeout: 5000 });
 
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);

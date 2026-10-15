@@ -19,6 +19,7 @@ export interface HostSession {
 	lastTurn: LastTurn | null;
 	commands?: SessionCommand[];
 	context?: ContextUsage;
+	model?: string;
 }
 
 export interface HostState {
@@ -129,6 +130,19 @@ export const trackObservation = (state: HostState, observation: Observation): Ho
 				},
 			};
 		}
+		case 'session_model':
+			return {
+				...state,
+				sessions: {
+					...state.sessions,
+					[observation.ref]: {
+						...state.sessions[observation.ref],
+						status: state.sessions[observation.ref]?.status ?? 'idle',
+						lastTurn: state.sessions[observation.ref]?.lastTurn ?? null,
+						model: observation.model,
+					},
+				},
+			};
 		case 'worker_exited':
 			return {
 				...setStatus(state, observation.ref, 'stopped'),
@@ -167,6 +181,7 @@ export const buildSnapshot = (state: HostState, worktrees: WorktreeInfo[]): Snap
 				lastTurn: session.lastTurn,
 				...(session.commands ? { commands: session.commands } : {}),
 				...(session.context ? { context: session.context } : {}),
+				...(session.model ? { model: session.model } : {}),
 			}),
 		),
 	asks: state.asks,

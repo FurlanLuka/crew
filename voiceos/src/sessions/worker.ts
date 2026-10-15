@@ -154,7 +154,7 @@ interface WorkerBriefing {
 	onBriefed: () => void;
 }
 
-type InitMessage = RawMessage & { session_id?: string };
+type InitMessage = RawMessage & { session_id?: string; model?: string };
 
 export interface WorkerOptions {
 	ref: string;
@@ -396,6 +396,7 @@ export class Worker {
 		try {
 			await query.setModel(model);
 			emit({ type: 'session_notice', ref, text: `Model: ${model}.` });
+			emit({ type: 'session_model', ref, model });
 		} catch (error) {
 			log.warn('set model failed', { ref, model, error: String(error) });
 			emit({ type: 'session_notice', ref, text: `Could not switch to ${model}: ${String(error)}` });
@@ -475,6 +476,11 @@ export class Worker {
 		// the CLI's next init names the transcript that resumes, so that is the one followed.
 		if (raw.type !== 'system' || raw.subtype !== 'init' || !raw.session_id) {
 			return;
+		}
+
+		// Every init names the model: the session's start, and a /clear's new conversation.
+		if (raw.model) {
+			this.options.emit({ type: 'session_model', ref: this.options.ref, model: raw.model });
 		}
 
 		if (raw.session_id !== this.sessionId) {

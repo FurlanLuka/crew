@@ -1,11 +1,29 @@
-// A workspace: its projects (each with its mode) and its worktrees (with their servers).
-// WorkspaceForm.tsx makes one or changes its projects.
-import { useState } from 'react';
+// A workspace: its worktrees, each with its state, size and servers. Its projects are in its
+// settings (WorkspaceForm.tsx), with the workspace's removal.
+import type { SetupCommand } from '../../crew/commands.js';
+import { refOn } from '../../shared/machine-ref.js';
+import { GearIcon } from '../components/GearIcon.js';
 import { isOk, useCrew, useCrewAction } from './api.js';
-import { Confirm, PageHead, ResultLine, type SetupContext, describeSize } from './common.js';
-import { describeIssue } from './derive.js';
+import { LoadingRow, PageHead, ResultLine, type SetupContext, describeSize } from './common.js';
 import type { CrewProject, CrewWorkspace, CrewWorktree } from './types.js';
+import { type PillState, type WorktreeCard, listWorktreeCards } from './workspace.js';
 import { countOf } from '../count.js';
+
+const POLL_MS = 4000;
+
+const CARD_DOT: Record<WorktreeCard['state'], string> = {
+	issue: 'ask',
+	installing: 'run',
+	running: 'ok',
+	stopped: 'ring',
+};
+
+const PILL_DOT: Record<PillState, string> = {
+	up: 'ok',
+	died: 'ask',
+	wait: 'run',
+	stopped: 'ring',
+};
 
 interface WorkspacePageProps {
 	ctx: SetupContext;
@@ -14,17 +32,33 @@ interface WorkspacePageProps {
 
 export const WorkspacePage = ({ ctx, name }: WorkspacePageProps) => {
 	const workspaces = useCrew<CrewWorkspace[]>(ctx.machine, { type: 'ls_workspaces' });
+	// The list is read fast and often; sizes walk every checkout, so they come once, later.
 	const worktrees = useCrew<CrewWorktree[]>(
 		ctx.machine,
-		{ type: 'ls_worktrees', workspace: name, size: true },
-		{ pollMs: 4000 },
+		{ type: 'ls_worktrees', workspace: name },
+		{ pollMs: POLL_MS },
 	);
+	const sizes = useCrew<CrewWorktree[]>(ctx.machine, {
+		type: 'ls_worktrees',
+		workspace: name,
+		size: true,
+	});
 	const projects = useCrew<CrewProject[]>(ctx.machine, { type: 'ls_projects' });
 	const action = useCrewAction(ctx.machine);
-	const [removing, setRemoving] = useState<string | null>(null);
-	const [isRemovingAll, setIsRemovingAll] = useState(false);
 	const workspace = workspaces.data?.find((row) => row.name === name);
-	const rows = (worktrees.data ?? []).filter((row) => row.ref.startsWith(`${name}/`));
+	const members = (workspace?.projects ?? []).map((member) => member.name);
+	const cards = listWorktreeCards({
+		workspace: name,
+		rows: worktrees.data ?? [],
+		sizes: sizes.data ?? [],
+		members,
+		projects: projects.data ?? [],
+	});
+
+	const run = async (command: SetupCommand) => {
+		await action.run(command);
+		worktrees.refresh();
+	};
 
 	if (workspaces.data && !workspace) {
 		return (
@@ -41,16 +75,22 @@ export const WorkspacePage = ({ ctx, name }: WorkspacePageProps) => {
 				lead={
 					workspace?.flat
 						? 'From before crew 2.0: migrate it in Settings before adding worktrees.'
-						: 'Projects worked on together. Each worktree gets a copy of every one, wired to each other.'
+						: members.length
+							? `${members.join(', ')}. Each worktree has every one of them, on its own branch and ports.`
+							: ' '
+				}
+				titleActions={
+					<button
+						type="button"
+						className="icon-btn"
+						title="Workspace settings"
+						aria-label="Workspace settings"
+						onClick={() => ctx.go({ page: 'workspace-edit', name })}
+					>
+						<GearIcon size={16} />
+					</button>
 				}
 			>
-				<button
-					type="button"
-					className="btn"
-					onClick={() => ctx.go({ page: 'workspace-edit', name })}
-				>
-					Add or remove projects
-				</button>
 				<button
 					type="button"
 					className="btn primary"
@@ -59,162 +99,80 @@ export const WorkspacePage = ({ ctx, name }: WorkspacePageProps) => {
 					New worktree
 				</button>
 			</PageHead>
-			<div className="label">Projects</div>
-			<div className="box">
-				{(workspace?.projects ?? []).map((member) => {
-					const project = projects.data?.find((row) => row.name === member.name);
-					const said = [
-						`${member.mode} mode`,
-						...(project?.dev_servers ?? []).map((server) => server.name),
-					].join(' · ');
-
-					return (
-						<div
-							key={member.name}
-							className="box-row one-line row-link"
-							data-project={member.name}
-							title={`${member.name} · ${said}`}
-						>
-							<span className="dot idle" />
+			<div className="label">
+				Worktrees{' '}
+				<span className="m label-note">
+					{worktrees.data ? `${countOf(cards.length, 'worktree')} on ${ctx.machineTitle}` : ''}
+				</span>
+			</div>
+			<div className="wt-cards">
+				{worktrees.data === null && <LoadingRow text="Reading worktrees…" />}
+				{worktrees.data && cards.length === 0 && (
+					<div className="box">
+						<div className="box-row">
+							<span className="dot ring" />
 							<span className="sub">
-								<button
-									type="button"
-									className="rowname"
-									onClick={() => ctx.go({ page: 'project', name: member.name })}
-								>
-									<b>{member.name}</b>
-								</button>
-								<span className="m">{said}</span>
-							</span>
-							<span className="row-actions">
-								<button
-									type="button"
-									className="x"
-									aria-label={`Take ${member.name} out of ${name}`}
-									onClick={() => setRemoving(member.name)}
-								>
-									×
-								</button>
+								<b>No worktrees yet</b>
+								<span className="m">
+									New worktree checks out every project on its own branch and ports.
+								</span>
 							</span>
 						</div>
-					);
-				})}
-			</div>
-			{removing && (
-				<Confirm
-					title={`Take ${removing} out of ${name}?`}
-					why={
-						<p className="fail-why">
-							Every worktree of {name} loses its {removing} copy
-							{rows.length ? `: ${rows.map((row) => row.ref.split('/')[1]).join(', ')}` : ''}. Their
-							checkouts go to the trash; commits not on the base stay in git's reflog.
-						</p>
-					}
-					command={{
-						type: 'rm_workspace_project',
-						workspace: name,
-						project: removing,
-						confirm: true,
-					}}
-					dryRun={{ type: 'rm_workspace_project_dry_run', workspace: name, project: removing }}
-					machine={ctx.machine}
-					actionLabel="Take it out"
-					run={action.run}
-					onCancel={() => setRemoving(null)}
-					onDone={() => {
-						setRemoving(null);
-						workspaces.refresh();
-						worktrees.refresh();
-					}}
-				/>
-			)}
-			<div className="label">Worktrees</div>
-			<div className="box">
-				{rows.length === 0 && (
-					<div className="box-row">
-						<span className="dot ring" />
-						<span className="sub">
-							<b>No worktrees yet</b>
-							<span className="m">
-								New worktree checks out every project on its own branch and ports.
-							</span>
-						</span>
 					</div>
 				)}
-				{rows.map((row) => {
-					const issue = row.issues?.[0];
-					const short = row.ref.split('/')[1] ?? row.ref;
-					const size = describeSize(row.size_bytes);
-					const status = issue
-						? describeIssue(issue)
-						: row.installing
-							? 'installing…'
-							: row.dev_running
-								? 'servers running'
-								: 'stopped';
-
-					return (
-						<button
-							type="button"
-							key={row.ref}
-							className="box-row as-link"
-							data-ref={row.ref}
-							onClick={() =>
-								ctx.go(
-									row.installing
-										? { page: 'progress', ref: row.ref }
-										: { page: 'worktree', ref: row.ref },
-								)
-							}
-						>
-							<span
-								className={`dot ${issue ? 'ask' : row.installing || row.dev_running ? 'run' : 'ring'}`}
-							/>
-							<span className="sub">
-								<b>{short}</b>
-								<span className="m">{[status, size].filter(Boolean).join(' · ')}</span>
-							</span>
-							<span
-								className={`chip ${issue ? 'ask' : row.installing ? 'run' : row.dev_running ? 'ok' : ''}`}
+				{cards.map((card) => (
+					<div key={card.ref} className="wt-card" data-ref={card.ref} data-state={card.state}>
+						<div className="wt-card-head">
+							<span className={`dot ${CARD_DOT[card.state]}`} />
+							<button
+								type="button"
+								className="rowname"
+								onClick={() => ctx.go({ page: 'worktree', ref: card.ref })}
 							>
-								{issue
-									? 'needs you'
-									: row.installing
-										? 'installing'
-										: row.dev_running
-											? 'running'
-											: 'stopped'}
+								<b>{card.name}</b>
+							</button>
+							<span className="m wt-card-status">
+								{[card.status, describeSize(card.sizeBytes)].filter(Boolean).join(' · ')}
 							</span>
-						</button>
-					);
-				})}
+							{card.state === 'issue' && <span className="chip ask">needs you</span>}
+							{card.state === 'stopped' && (
+								<button
+									type="button"
+									className="btn sm"
+									disabled={action.isBusy}
+									onClick={() => void run({ type: 'dev_start', ref: card.ref })}
+								>
+									Start
+								</button>
+							)}
+							<button
+								type="button"
+								className="btn sm"
+								onClick={() => ctx.openVoice(refOn(ctx.machine, card.ref))}
+							>
+								Open in Voice OS
+							</button>
+						</div>
+						{card.servers.length > 0 && (
+							<div className="wt-pills">
+								{card.servers.map((server) => (
+									<span
+										key={`${server.project} ${server.name}`}
+										className="wt-pill"
+										data-server={server.name}
+										data-state={server.state}
+									>
+										<span className={`dot ${PILL_DOT[server.state]}`} />
+										{server.name}
+										{server.state === 'died' ? ' died' : ''}
+									</span>
+								))}
+							</div>
+						)}
+					</div>
+				))}
 			</div>
 			<ResultLine reply={action.last && !isOk(action.last) ? action.last : null} />
-			{isRemovingAll ? (
-				<Confirm
-					title={`Remove ${name}?`}
-					why={
-						<p className="fail-why">
-							{rows.length
-								? `Its ${countOf(rows.length, 'worktree goes', 'worktrees go')} to the trash; commits not on the base stay in git's reflog.`
-								: 'It has no worktrees.'}{' '}
-							The projects stay on {ctx.machineTitle}.
-						</p>
-					}
-					command={{ type: 'rm_workspace', workspace: name, confirm: true }}
-					machine={ctx.machine}
-					actionLabel="Remove workspace"
-					run={action.run}
-					onCancel={() => setIsRemovingAll(false)}
-					onDone={() => ctx.go({ page: 'board', tab: 'workspaces' })}
-				/>
-			) : (
-				<div className="row-actions">
-					<button type="button" className="btn danger" onClick={() => setIsRemovingAll(true)}>
-						Remove workspace
-					</button>
-				</div>
-			)}
 		</section>
 	);
 };

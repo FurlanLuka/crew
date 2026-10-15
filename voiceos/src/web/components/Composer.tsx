@@ -16,6 +16,7 @@ import { describeListening, isListeningMode } from '../listen-mode.js';
 import { AttachButton } from './AttachmentChips.js';
 import { SlashMenu } from './SlashMenu.js';
 import { ModeChip } from './ModeChip.js';
+import { ModelChip } from './ModelChip.js';
 import { ContextMeter } from './ContextMeter.js';
 import { readScreenRef } from '../../state/helpers.js';
 import { useSlashCommands } from '../use-slash-commands.js';
@@ -224,6 +225,7 @@ export const Composer = ({
 		>
 			<SlashMenu slash={slash} onPicked={() => fieldRef.current?.focus()} />
 			{screenRef ? <ModeChip state={state} sessionRef={screenRef} send={send} /> : null}
+			{screenRef ? <ModelChip state={state} sessionRef={screenRef} send={send} /> : null}
 			<textarea
 				ref={fieldRef}
 				rows={1}

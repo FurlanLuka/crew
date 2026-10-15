@@ -1,6 +1,6 @@
 // A machine's board: the Setup with Claude card, the problems strip, then one table — every project
 // (install, dev servers, workspaces, state) or every workspace (projects, worktrees as pills).
-import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { LOCAL_MACHINE } from '../../shared/machine-ref.js';
 import type { BoardTab } from '../router.js';
 import { describeRefusal, useCrew } from './api.js';
@@ -8,14 +8,17 @@ import { type SetupContext, followRow } from './common.js';
 import {
 	type Problem,
 	decideFirstRun,
-	describeIssue,
+	decideOnboarding,
+	isCheckRef,
 	describeServer,
 	listProblems,
 	listWorkspacesOf,
 	readCheck,
 	summarizeList,
 } from './derive.js';
-import { isSetupBusy, setupRefFor } from './SetupShell.js';
+import { ClaudeCard } from './ClaudeCard.js';
+import { EmptyBoard } from './EmptyBoard.js';
+import { WorkspacesTable } from './WorkspacesTable.js';
 import type { CrewCheckStatus, CrewProject, CrewWorkspace, CrewWorktree } from './types.js';
 import { countOf } from '../count.js';
 
@@ -27,63 +30,6 @@ interface BoardProps {
 }
 
 const BOARD_POLL_MS = 5000;
-
-export const ClaudeCard = ({ ctx }: { ctx: SetupContext }) => {
-	const [text, setText] = useState('');
-	const ref = setupRefFor(ctx.machine);
-	const session = ctx.state.sessions[ref];
-	const isBusy = isSetupBusy(ctx.state, ref);
-	const hasAsk = ctx.state.asks.some((ask) => ask.ref === ref);
-
-	const submit = (event: FormEvent) => {
-		event.preventDefault();
-
-		if (text.trim()) {
-			ctx.askClaude(text.trim());
-		}
-	};
-
-	if (isBusy) {
-		return (
-			<div className="claude-card">
-				<div className="cc-head">
-					<span className={`dot ${hasAsk ? 'ask' : 'run'}`} />
-					<b>Setup with Claude</b>
-					<span className="m">{hasAsk ? 'waiting on you' : 'working'}</span>
-					<button type="button" className="btn sm primary" onClick={() => ctx.go({ page: 'chat' })}>
-						Open
-					</button>
-				</div>
-			</div>
-		);
-	}
-
-	return (
-		<div className="claude-card">
-			<div className="cc-head">
-				<span className={`dot ${session ? 'ok' : 'ring'}`} />
-				<b>Setup with Claude</b>
-				{!session && <span className="m">starts when you ask</span>}
-				<button type="button" className="btn sm ghost" onClick={() => ctx.go({ page: 'chat' })}>
-					Open
-				</button>
-			</div>
-			<form className="cc-input" onSubmit={submit}>
-				<input
-					type="text"
-					placeholder="Ask setup anything: add a project, fix a server, check this machine…"
-					aria-label="Ask setup"
-					autoComplete="off"
-					value={text}
-					onChange={(event) => setText(event.target.value)}
-				/>
-				<button type="submit" className="btn sm primary">
-					Ask
-				</button>
-			</form>
-		</div>
-	);
-};
 
 export const ProblemsStrip = ({ ctx, problems }: { ctx: SetupContext; problems: Problem[] }) => {
 	if (problems.length === 0) {
@@ -101,7 +47,16 @@ export const ProblemsStrip = ({ ctx, problems }: { ctx: SetupContext; problems: 
 						<button type="button" className="btn sm" onClick={() => ctx.go(problem.fix)}>
 							Fix
 						</button>
-						<button type="button" className="btn sm" onClick={() => ctx.askClaude(problem.ask)}>
+						<button
+							type="button"
+							className="btn sm"
+							onClick={() =>
+								ctx.askClaude(
+									problem.ask,
+									problem.fix.page === 'worktree' ? problem.fix.ref : undefined,
+								)
+							}
+						>
 							Fix with Claude
 						</button>
 					</span>
@@ -114,8 +69,6 @@ export const ProblemsStrip = ({ ctx, problems }: { ctx: SetupContext; problems: 
 // Shown before "+N" in a cell: what fits one line beside the other columns.
 const SERVERS_SHOWN = 2;
 const WORKSPACES_SHOWN = 1;
-const MEMBERS_SHOWN = 3;
-const WORKTREES_SHOWN = 3;
 
 const describeLead = (
 	projects: CrewProject[],
@@ -197,19 +150,22 @@ export const Board = ({ ctx, tab, onFirstRun }: BoardProps) => {
 	// This Mac's board on a first run: the first run is Home. Decided once per visit, so a board
 	// opened after the first run made its worktree stays.
 	const hasDecided = useRef(false);
-	const firstRun = decideFirstRun(projects.data, worktrees.data);
+	const onboarding = decideOnboarding(
+		ctx.state.onboarded,
+		decideFirstRun(projects.data, worktrees.data),
+	);
 
 	useEffect(() => {
-		if (hasDecided.current || !firstRun) {
+		if (hasDecided.current || !onboarding) {
 			return;
 		}
 
 		hasDecided.current = true;
 
-		if (ctx.machine === LOCAL_MACHINE && firstRun.isFirstRun) {
+		if (ctx.machine === LOCAL_MACHINE && onboarding.show) {
 			onFirstRun();
 		}
-	}, [firstRun, ctx.machine]);
+	}, [onboarding, ctx.machine]);
 
 	const projectRows = projects.data ?? [];
 	const worktreeRows = worktrees.data ?? [];
@@ -233,18 +189,18 @@ export const Board = ({ ctx, tab, onFirstRun }: BoardProps) => {
 					<button
 						type="button"
 						role="tab"
-						aria-selected={isProjects}
-						onClick={() => ctx.go({ page: 'board', tab: 'projects' }, { replace: true })}
-					>
-						Projects
-					</button>
-					<button
-						type="button"
-						role="tab"
 						aria-selected={!isProjects}
 						onClick={() => ctx.go({ page: 'board', tab: 'workspaces' }, { replace: true })}
 					>
 						Workspaces
+					</button>
+					<button
+						type="button"
+						role="tab"
+						aria-selected={isProjects}
+						onClick={() => ctx.go({ page: 'board', tab: 'projects' }, { replace: true })}
+					>
+						Projects
 					</button>
 				</div>
 				<button
@@ -260,7 +216,16 @@ export const Board = ({ ctx, tab, onFirstRun }: BoardProps) => {
 						: `${countOf(workspaceRows.length, 'workspace')} on ${ctx.machineTitle}`}
 				</span>
 			</div>
-			<ClaudeCard ctx={ctx} />
+			<p className="tab-note">
+				{isProjects
+					? 'The repos crew knows on this machine: how each installs and which dev servers it runs. Set once, used by every workspace.'
+					: 'Where you work. A workspace groups projects; each of its worktrees is a full working set, every project on its own branch and ports.'}
+			</p>
+			<ClaudeCard
+				ctx={ctx}
+				worktrees={worktreeRows.map((row) => row.ref).filter((ref) => !isCheckRef(ref))}
+				projects={projectRows.map((project) => project.name)}
+			/>
 			{failure && (
 				<p className="result-line bad" role="alert">
 					! {describeRefusal(failure)}
@@ -328,112 +293,10 @@ export const Board = ({ ctx, tab, onFirstRun }: BoardProps) => {
 						</tbody>
 					</table>
 				</div>
+			) : workspaces.data && workspaceRows.length === 0 ? (
+				<EmptyBoard ctx={ctx} />
 			) : (
-				<div className="matrix-wrap">
-					<table className="matrix workspaces">
-						<colgroup>
-							<col className="c-name" />
-							<col className="c-members" />
-							<col className="c-worktrees" />
-						</colgroup>
-						<thead>
-							<tr>
-								<th>Workspace</th>
-								<th>Projects</th>
-								<th>Worktrees</th>
-							</tr>
-						</thead>
-						<tbody>
-							{workspaceRows.map((workspace) => {
-								const members = (workspace.projects ?? []).map((member) => member.name);
-								const hidden = workspace.worktrees.length - WORKTREES_SHOWN;
-
-								return (
-									<tr
-										key={workspace.name}
-										className="row-link"
-										data-workspace={workspace.name}
-										onClick={followRow(() => ctx.go({ page: 'workspace', name: workspace.name }))}
-									>
-										<td>
-											<button
-												type="button"
-												className="rowname"
-												title={workspace.name}
-												onClick={() => ctx.go({ page: 'workspace', name: workspace.name })}
-											>
-												<b>{workspace.name}</b>
-											</button>
-										</td>
-										<td className="m" title={members.join(' · ') || undefined}>
-											{members.length
-												? summarizeList(members, MEMBERS_SHOWN)
-												: countOf(workspace.project_count, 'project')}
-										</td>
-										<td>
-											<span className="srv">
-												{workspace.worktrees.slice(0, WORKTREES_SHOWN).map((name) => {
-													const ref = `${workspace.name}/${name}`;
-													const row = worktreeRows.find((worktree) => worktree.ref === ref);
-													const issue = row?.issues?.[0];
-													const cls = issue
-														? 'down'
-														: row?.installing
-															? 'wait'
-															: row?.dev_running
-																? 'up'
-																: '';
-
-													return (
-														<button
-															key={name}
-															type="button"
-															className={cls}
-															title={issue ? describeIssue(issue) : undefined}
-															onClick={() => ctx.go({ page: 'worktree', ref })}
-														>
-															{name}
-															{issue
-																? ` · ${issue.server ?? issue.project} ${issue.stage === 'smoke' ? 'died' : 'failed'}`
-																: row?.installing
-																	? ' · installing'
-																	: ''}
-														</button>
-													);
-												})}
-												{hidden > 0 && (
-													<button
-														type="button"
-														title={workspace.worktrees.slice(WORKTREES_SHOWN).join(', ')}
-														onClick={() =>
-															ctx.go({
-																page: 'workspace',
-																name: workspace.name,
-															})
-														}
-													>
-														+{hidden}
-													</button>
-												)}
-												<button
-													type="button"
-													onClick={() =>
-														ctx.go({
-															page: 'worktree-new',
-															workspace: workspace.name,
-														})
-													}
-												>
-													+ new
-												</button>
-											</span>
-										</td>
-									</tr>
-								);
-							})}
-						</tbody>
-					</table>
-				</div>
+				<WorkspacesTable ctx={ctx} workspaces={workspaceRows} worktrees={worktreeRows} />
 			)}
 		</section>
 	);

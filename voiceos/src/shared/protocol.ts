@@ -310,6 +310,9 @@ export interface Session {
 	// How full its context is, as Claude Code last reported it; null before the first reading and
 	// right after a clear.
 	context: ContextUsage | null;
+	// The model it runs on, as Claude Code reports it (an id, "claude-opus-5-5[1m]"); null before its
+	// first report.
+	model: string | null;
 	// When its latest spoken line came, if nothing but a question or plan has come since: such a line
 	// asked it, and Voice OS does not ask it again.
 	lineBeforeAsk: { at: number; text: string } | null;
@@ -616,6 +619,9 @@ export interface State {
 	// Voice off (the top bar's "voice"): nothing listens or speaks, Discord's bot leaves its channel;
 	// typing and the page go on. Kept across restarts.
 	voiceOff: boolean;
+	// This Mac went through Set up's first run, or skipped it: it never opens again, even with no
+	// worktree. Kept across restarts.
+	onboarded: boolean;
 	// The Discord voice channel (crew server discord setup), when set up; null otherwise.
 	discord: DiscordPresence | null;
 	// Activations of worktrees crew has made but Voice OS has not listed yet (Set up's "Open Voice
@@ -743,6 +749,8 @@ export type Action =
 	| { type: 'rename_session'; ref: string; name: string }
 	// The top bar's "voice" (and loaded at boot).
 	| { type: 'set_voice_off'; voiceOff: boolean }
+	// The first run finished or skipped, or crew already had worktrees (and loaded at boot).
+	| { type: 'set_onboarded'; onboarded: boolean }
 	// "What did I miss?", or the quiet came: the waiting updates are said as one line.
 	| { type: 'play_meanwhile' }
 	// A status update said aloud covered these sessions: their waiting updates are heard.
@@ -802,6 +810,8 @@ export type Observation =
 	| { type: 'session_started'; ref: string }
 	// How full its context is now: after each turn, a compaction, a clear, or a start.
 	| { type: 'context_usage'; ref: string; used: number; max: number; compactAt?: number }
+	// The model it runs on: at its start, after a /clear and after a switch.
+	| { type: 'session_model'; ref: string; model: string }
 	// A worker could not run the mode it was asked for (Skip as root: Claude Code refuses it); kept is
 	// the mode it runs instead.
 	| { type: 'mode_refused'; ref: string; mode: SdkMode; kept: SdkMode; reason: 'root' }

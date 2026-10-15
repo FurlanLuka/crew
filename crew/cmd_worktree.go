@@ -490,14 +490,15 @@ func cmdSetupStatus() {
 }
 
 // cmdSetupLogs tails one runner's log: its steps and what its install
-// printed — live while it runs.
+// printed — live while it runs. <project>/<server> is what that server
+// printed while the runner tried it.
 func cmdSetupLogs() {
 	if len(os.Args) < 5 {
-		fmt.Fprintf(os.Stderr, "Usage: crew setup logs <workspace>[/<worktree>] <project> [--lines=N]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew setup logs <workspace>[/<worktree>] <project>[/<server>] [--lines=N]\n")
 		os.Exit(1)
 	}
 	ref := mustSetupRef(os.Args[3])
-	proj := os.Args[4]
+	proj, server, _ := strings.Cut(os.Args[4], "/")
 	lines := 50
 	for _, arg := range os.Args[5:] {
 		switch {
@@ -514,22 +515,38 @@ func cmdSetupLogs() {
 	if jsonOutput {
 		n = 0
 	}
-	text, err := workspace.SetupLogs(ref, proj, n)
+	text, err := readSetupLog(ref, proj, server, n)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: no runner log for %s on %s — crew setup status %s\n", proj, ref, ref)
+		if server != "" {
+			fmt.Fprintf(os.Stderr, "Error: no log for %s/%s on %s — a server has one once setup or verify tried it\n", proj, server, ref)
+		} else {
+			fmt.Fprintf(os.Stderr, "Error: no runner log for %s on %s — crew setup status %s\n", proj, ref, ref)
+		}
 		os.Exit(1)
 	}
 	if jsonOutput {
-		printJSON(logsDoc(ref, proj, text, lines))
+		printJSON(logsDoc(ref, proj, server, text, lines))
 		return
 	}
 	fmt.Println(text)
 }
 
+func readSetupLog(ref workspace.Ref, proj, server string, n int) (string, error) {
+	if server != "" {
+		return workspace.SmokeLogs(ref, proj, server, n)
+	}
+	return workspace.SetupLogs(ref, proj, n)
+}
+
 // logsDoc is `setup logs --json`: the last n lines as a list, cleaned the
-// way `dev logs --json` cleans them, never null. Pure.
-func logsDoc(ref workspace.Ref, proj, text string, n int) map[string]any {
-	return map[string]any{"ref": ref.String(), "project": proj, "lines": cleanTail(text, n)}
+// way `dev logs --json` cleans them, never null. server is there only for
+// a server's log. Pure.
+func logsDoc(ref workspace.Ref, proj, server, text string, n int) map[string]any {
+	doc := map[string]any{"ref": ref.String(), "project": proj, "lines": cleanTail(text, n)}
+	if server != "" {
+		doc["server"] = server
+	}
+	return doc
 }
 
 // printSmokeTails shows the last log lines of each server that died, and

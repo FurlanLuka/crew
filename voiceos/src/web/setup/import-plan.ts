@@ -4,7 +4,7 @@ import type { SetupCommand } from '../../crew/commands.js';
 import { countOf } from '../count.js';
 import type { PlanRow } from './readers.js';
 
-export type ChoiceKind = 'keep' | 'clone' | 'mine' | 'folder' | 'rename' | 'replace' | 'skip';
+export type ChoiceKind = 'keep' | 'clone' | 'folder' | 'rename' | 'replace' | 'skip';
 
 export interface Choice {
 	kind: ChoiceKind | null;
@@ -19,10 +19,11 @@ export const optionsFor = (row: PlanRow): { options: ChoiceKind[]; start: Choice
 	switch (row.status) {
 		case 'exists':
 			return { options: ['keep', 'replace'], start: 'keep' };
+		// A checkout of it found on this Mac is never adopted: crew keeps its own clone, so its
+		// branches never land in the developer's repo.
 		case 'clone':
-			return { options: ['clone'], start: 'clone' };
 		case 'found':
-			return { options: ['mine', 'clone'], start: 'mine' };
+			return { options: ['clone'], start: 'clone' };
 		case 'missing':
 			return { options: ['folder', 'skip'], start: null };
 		case 'other remote':
@@ -51,7 +52,6 @@ export const startChoices = (rows: PlanRow[]): Record<string, Choice> =>
 export const CHOICE_LABELS: Record<ChoiceKind, string> = {
 	keep: 'Keep mine',
 	clone: 'Clone',
-	mine: 'Use mine',
 	folder: 'Point at a folder',
 	rename: 'Import as',
 	replace: 'Replace mine',
@@ -130,8 +130,6 @@ export const projectCommand = (
 	switch (choice.kind) {
 		case 'clone':
 			return base;
-		case 'mine':
-			return { ...base, path: row.detail };
 		case 'folder':
 			return { ...base, path: choice.path.trim() };
 		case 'rename':
@@ -177,7 +175,6 @@ export const describeSummary = (
 	const open = countOpen(rows, choices);
 	const projects = rows.filter((row) => row.kind === 'project');
 	const clones = projects.filter((row) => choices[row.name]?.kind === 'clone').length;
-	const mine = projects.filter((row) => choices[row.name]?.kind === 'mine').length;
 	const here = projects.filter((row) => row.status === 'exists').length;
 
 	return [
@@ -185,7 +182,6 @@ export const describeSummary = (
 			? { text: `${countOf(open, 'project')} need${open === 1 ? 's' : ''} a choice`, tone: 'ask' }
 			: { text: 'every choice made', tone: 'ok' },
 		...(clones ? [{ text: countOf(clones, 'clone'), tone: '' as const }] : []),
-		...(mine ? [{ text: `${mine} already checked out`, tone: '' as const }] : []),
 		{ text: countOf(ticked.length, 'workspace'), tone: '' },
 		...(here ? [{ text: `${here} already here`, tone: '' as const }] : []),
 	];

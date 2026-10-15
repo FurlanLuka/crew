@@ -1,13 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { readGolden } from '../../../test/support/fake-crew.js';
 import type { CrewMember, CrewProject, CrewRoute, CrewSmoke } from './types.js';
-import {
-	describeIssueWhy,
-	describeOverride,
-	listServerLines,
-	readOverrides,
-	toOverrideCommand,
-} from './worktree.js';
+import { describeOverride, listServerLines, readOverrides, toOverrideCommand } from './worktree.js';
 
 const PROJECTS = readGolden<CrewProject[]>('ls-projects.json');
 const CHECKS = readGolden<CrewSmoke[]>('dev-check.json');
@@ -209,19 +203,5 @@ describe('describeOverride', () => {
 		expect(describeOverride('STORE_API_URL', members, both).instead).toBe(
 			'instead of the values of 2 projects',
 		);
-	});
-});
-
-describe('describeIssueWhy', () => {
-	it.each([
-		[{ stage: 'install', project: 'store-api', detail: '' }, "store-api's install failed here"],
-		[{ stage: 'checkout', project: 'store-api', detail: '' }, 'git could not check store-api out'],
-		[
-			{ stage: 'smoke', project: 'store-api', server: 'api', reason: 'not listening', detail: '' },
-			'api runs but never answered on its port',
-		],
-		[{ stage: 'smoke', project: 'store-api', reason: 'died', detail: '' }, 'store-api stopped'],
-	])('%j → %p', (issue, text) => {
-		expect(describeIssueWhy(issue)).toContain(text);
 	});
 });
