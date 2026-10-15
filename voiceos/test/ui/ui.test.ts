@@ -11,7 +11,7 @@ import { startGateway, type Gateway } from '../../src/gateway/server.js';
 import { attachFileTo } from '../../src/gateway/attach.js';
 import { storeAttachment } from '../../src/sessions/attachments.js';
 import { configureLog } from '../../src/log.js';
-import type { Action, ClientMessage, WorktreeInfo } from '../../src/shared/protocol.js';
+import type { Action, ClientMessage, PendingAsk, WorktreeInfo } from '../../src/shared/protocol.js';
 import { isActive } from '../../src/shared/active.js';
 import { Store } from '../../src/state/store.js';
 import { createFakeCrew } from '../support/fake-crew.js';
@@ -287,8 +287,10 @@ describe('voice os ui', () => {
 				suggestions: [],
 			},
 		});
-		await page.getByText('store-front/main wants to run git push.').waitFor({ timeout: 5000 });
-		await page.getByRole('button', { name: /Yes/ }).click();
+		const sheet = page.locator('section[aria-label="permission"]');
+		await sheet.getByText('Run this command?').waitFor({ timeout: 5000 });
+		expect(await sheet.locator('.sh-cmd').innerText()).toBe('$git push');
+		await sheet.getByRole('button', { name: 'Allow', exact: true }).click();
 
 		await waitUntil(() => store.state.asks.length === 0);
 		const answer = received
@@ -1309,7 +1311,7 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
-	it('a held /clear → a confirm card; Yes approves it, No declines it', async () => {
+	it('a held /clear → a confirm sheet; Keep it declines it, Compact approves it', async () => {
 		const { context, page } = await signIn();
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
 		await ensureIdle('store-front/main');
@@ -1322,14 +1324,16 @@ describe('voice os ui', () => {
 
 		store.dispatch({ type: 'send', ref: 'store-front/main', text: '/clear' });
 		const card = page.locator('section[aria-label="confirm"]');
-		await card.getByText("Clear store-front/main's context?").waitFor({ timeout: 5000 });
-		await card.getByRole('button', { name: /No/ }).click();
+		await card.getByText('Clear the conversation?').waitFor({ timeout: 5000 });
+		// The bare command says nothing the title does not: not shown again.
+		expect(await card.locator('.sh-quote').count()).toBe(0);
+		await card.getByRole('button', { name: 'Keep it', exact: true }).click();
 		await card.waitFor({ state: 'detached', timeout: 5000 });
 		await page.getByText('Cancelled /clear.').waitFor({ timeout: 5000 });
 
 		store.dispatch({ type: 'send', ref: 'store-front/main', text: '/compact keep the notes' });
 		await card.getByText('/compact keep the notes').waitFor({ timeout: 5000 });
-		await card.getByRole('button', { name: /Yes/ }).click();
+		await card.getByRole('button', { name: 'Compact', exact: true }).click();
 		await card.waitFor({ state: 'detached', timeout: 5000 });
 
 		expect(listCommandAnswers().map((action) => action.isApproved)).toEqual([false, true]);
@@ -1662,7 +1666,7 @@ describe('voice os ui', () => {
 		);
 		expect(await page.locator('.vs-state').count()).toBe(0);
 
-		await page.getByRole('button', { name: /Yes/ }).click();
+		await dock.getByRole('button', { name: 'Allow', exact: true }).click();
 		await waitUntil(() => store.state.asks.every((ask) => ask.id !== 'ui-dock'));
 		await context.close();
 	}, 20_000);
@@ -1691,6 +1695,10 @@ describe('voice os ui', () => {
 		const card = page.locator('section[aria-label="question"]');
 		await card.waitFor({ timeout: 5000 });
 
+		// Measured once the sheet has risen into place.
+		await page.evaluate(() =>
+			Promise.all(document.getAnimations().map((animation) => animation.finished)),
+		);
 		const layout = await page.evaluate(() => {
 			const dock = document.querySelector('section[aria-label="question"]') as HTMLElement;
 			const bar = document.querySelector('.vo-bar') as HTMLElement;
@@ -1700,7 +1708,8 @@ describe('voice os ui', () => {
 			return {
 				isFirstInBar: bar.firstElementChild === dock,
 				belowStream: dock.getBoundingClientRect().top >= stream.getBoundingClientRect().bottom - 1,
-				flushOnNext: Math.round(
+				// A raised sheet: a small gap, then what comes next in the bar.
+				gapToNext: Math.round(
 					below.getBoundingClientRect().top - dock.getBoundingClientRect().bottom,
 				),
 				barBottom: Math.round(bar.getBoundingClientRect().bottom),
@@ -1712,7 +1721,7 @@ describe('voice os ui', () => {
 		expect(layout).toEqual({
 			isFirstInBar: true,
 			belowStream: true,
-			flushOnNext: 0,
+			gapToNext: 2,
 			barBottom: 900,
 			pageScrolls: false,
 		});
@@ -1816,7 +1825,7 @@ describe('voice os ui', () => {
 		const dock = page.locator('section[aria-label="request from another session"]');
 
 		expect(await dock.textContent()).toContain('to do this and report back');
-		expect(await dock.locator('.pd-task').textContent()).toBe('run the staging check for /orders');
+		expect(await dock.locator('.sh-task').textContent()).toBe('run the staging check for /orders');
 		await dock.getByRole('button', { name: /Allow/ }).click();
 		await waitUntil(() => listSentActions('answer_peer').length > 0);
 		expect(listSentActions('answer_peer').at(-1)).toEqual({
@@ -2003,14 +2012,32 @@ describe('voice os ui', () => {
 			},
 		});
 		const dock = page.locator('section[aria-label="plan"]');
-		const quote = dock.locator('.quote');
-		await quote.waitFor({ timeout: 5000 });
-
-		expect(await quote.evaluate((node) => node.scrollHeight > node.clientHeight)).toBe(true);
-		const approve = await dock.getByRole('button', { name: /Approve/ }).boundingBox();
+		const plan = dock.locator('.sh-plan');
+		await plan.waitFor({ timeout: 5000 });
 		const viewport = page.viewportSize();
-		expect(approve && viewport ? approve.y + approve.height <= viewport.height : false).toBe(true);
+
+		const isApproveInView = async () => {
+			const approve = await dock
+				.getByRole('button', { name: 'Approve', exact: true })
+				.boundingBox();
+
+			return approve && viewport ? approve.y + approve.height <= viewport.height : false;
+		};
+
+		expect(await plan.evaluate((node) => node.scrollHeight > node.clientHeight)).toBe(true);
+		expect(await isApproveInView()).toBe(true);
 		expect(await dock.evaluate((node) => node.scrollHeight <= node.clientHeight + 1)).toBe(true);
+
+		// Read it all: as tall as the sheet allows, still its own scroller, Approve still in view.
+		const collapsed = (await plan.boundingBox())?.height ?? 0;
+		await dock.getByRole('button', { name: 'Read it all' }).click();
+		await dock.getByRole('button', { name: 'Show less' }).waitFor({ timeout: 5000 });
+		expect((await plan.boundingBox())?.height ?? 0).toBeGreaterThan(collapsed);
+		expect(await plan.evaluate((node) => node.scrollHeight > node.clientHeight)).toBe(true);
+		expect(await isApproveInView()).toBe(true);
+		await dock.getByRole('button', { name: 'Show less' }).click();
+		await dock.getByRole('button', { name: 'Read it all' }).waitFor({ timeout: 5000 });
+		expect(Math.round((await plan.boundingBox())?.height ?? 0)).toBe(Math.round(collapsed));
 		store.dispatch({ type: 'ask_closed', askId: 'ui-plan-long' });
 		await context.close();
 	}, 20_000);
@@ -2030,7 +2057,7 @@ describe('voice os ui', () => {
 			},
 		});
 		const dock = page.locator('section[aria-label="plan"]');
-		await dock.getByRole('button', { name: /Approve/ }).click();
+		await dock.getByRole('button', { name: 'Approve', exact: true }).click();
 		await waitUntil(() => listSentActions('answer_plan').length > 0);
 		expect(listSentActions('answer_plan').at(-1)).toEqual({
 			type: 'answer_plan',
@@ -2050,7 +2077,12 @@ describe('voice os ui', () => {
 			},
 		});
 		await dock.getByText('Drop the orders table.').waitFor({ timeout: 5000 });
-		await dock.getByLabel('Change the plan…').fill('keep the orders table');
+		await dock.getByRole('button', { name: 'Change the plan…' }).click();
+		const field = dock.getByLabel('What should change? It plans again with your words');
+		// Opened, the field has the keyboard, and Send waits for words.
+		expect(await field.evaluate((node) => node === document.activeElement)).toBe(true);
+		expect(await dock.getByRole('button', { name: 'Send' }).isDisabled()).toBe(true);
+		await field.fill('keep the orders table');
 		await dock.getByRole('button', { name: 'Send' }).click();
 		await waitUntil(() =>
 			listSentActions('answer_plan').some(
@@ -2080,7 +2112,7 @@ describe('voice os ui', () => {
 				plan: '## Steps\n\n1. **Add** an events table\n2. Backfill it',
 			},
 		});
-		const quote = page.locator('section[aria-label="plan"] .quote');
+		const quote = page.locator('section[aria-label="plan"] .sh-plan');
 		await quote.locator('ol li strong', { hasText: 'Add' }).waitFor({ timeout: 5000 });
 		expect(await quote.locator('h2', { hasText: 'Steps' }).isVisible()).toBe(true);
 		expect(await quote.getByText('## Steps').count()).toBe(0);
@@ -2091,7 +2123,7 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
-	it('a blocked call, docked above the text box → "Allow it" lets it through once; "Leave it blocked" dismisses it', async () => {
+	it('a blocked call, docked above the text box → "Allow once" lets it through; "Leave it blocked" dismisses it', async () => {
 		const { context, page } = await signIn();
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
 		store.dispatch({
@@ -2102,7 +2134,7 @@ describe('voice os ui', () => {
 		});
 		// Docked above the text box with the other things a session waits on, not under its header.
 		const dock = page.locator('.vo-bar section[aria-label="denied"]');
-		await dock.getByRole('button', { name: /Allow it/ }).click();
+		await dock.getByRole('button', { name: 'Allow once' }).click();
 		await waitUntil(() => listSentActions('allow_denied').length > 0);
 
 		store.dispatch({
@@ -2118,7 +2150,7 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
-	it('"Allow it" on an idle session → the stream shows "Allowed once" in its own style, not as your words', async () => {
+	it('"Allow once" on an idle session → the stream shows "Allowed once" in its own style, not as your words', async () => {
 		const { context, page } = await signIn();
 		await ensureIdle('checkout-api/main');
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'checkout-api/main' } });
@@ -2130,7 +2162,7 @@ describe('voice os ui', () => {
 		});
 		await page
 			.locator('section[aria-label="denied"]')
-			.getByRole('button', { name: /Allow it/ })
+			.getByRole('button', { name: 'Allow once' })
 			.click();
 		const stream = page.locator('.stream');
 		const approval = stream.locator('.line.approval');
@@ -2142,7 +2174,365 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
-	it('queued message → its x cancels exactly that one; the spoken line shows what Voice OS last said', async () => {
+	const openPermission = (
+		id: string,
+		patch: Partial<Extract<PendingAsk, { kind: 'permission' }>> = {},
+	) =>
+		store.dispatch({
+			type: 'ask_opened',
+			ask: {
+				id,
+				ref: 'store-front/main',
+				at: 1,
+				kind: 'permission',
+				toolName: 'Bash',
+				summary: 'run bun test && git push',
+				input: { command: 'bun test && git push', description: 'Run the tests, then push' },
+				suggestions: [
+					{
+						type: 'addRules',
+						behavior: 'allow',
+						destination: 'localSettings',
+						rules: [{ toolName: 'Bash', ruleContent: 'bun test:*' }],
+					},
+				],
+				...patch,
+			},
+		});
+
+	it('permission sheet → Always remembers; Deny denies; "Deny and say why…" sends the reason, Esc backs out', async () => {
+		const { context, page } = await signIn();
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
+		const sheet = page.locator('section[aria-label="permission"]');
+		const lastAnswer = () =>
+			listSentActions('answer_permission').at(-1) as
+				| Extract<Action, { type: 'answer_permission' }>
+				| undefined;
+
+		openPermission('ui-perm-always');
+		await sheet.getByRole('button', { name: 'Always allow bun test' }).click();
+		await waitUntil(() => lastAnswer()?.askId === 'ui-perm-always');
+		expect(lastAnswer()).toEqual({
+			type: 'answer_permission',
+			askId: 'ui-perm-always',
+			decision: 'always',
+		});
+
+		openPermission('ui-perm-deny');
+		await sheet.getByRole('button', { name: 'Deny', exact: true }).click();
+		await waitUntil(() => lastAnswer()?.askId === 'ui-perm-deny');
+		expect(lastAnswer()).toEqual({
+			type: 'answer_permission',
+			askId: 'ui-perm-deny',
+			decision: 'deny',
+		});
+
+		openPermission('ui-perm-why');
+		const why = sheet.getByRole('button', { name: 'Deny and say why…' });
+		await why.click();
+		const field = sheet.getByLabel('What should it do instead?');
+		expect(await field.evaluate((node) => node === document.activeElement)).toBe(true);
+		expect(await sheet.getByRole('button', { name: 'Deny and send' }).isDisabled()).toBe(true);
+		// Enter on an empty field sends nothing.
+		await field.press('Enter');
+		// Esc backs out of the field only: the session stays on screen, focus back where it was.
+		await field.press('Escape');
+		await why.waitFor({ timeout: 5000 });
+		expect(await why.evaluate((node) => node === document.activeElement)).toBe(true);
+		// A page Esc that leaked would have sent its switch_view by now.
+		await Bun.sleep(300);
+		expect(store.state.view).toMatchObject({ kind: 'session', ref: 'store-front/main' });
+		expect(lastAnswer()?.askId).toBe('ui-perm-deny');
+
+		await why.click();
+		await field.fill('use the staging remote');
+		await field.press('Enter');
+		await waitUntil(() => lastAnswer()?.askId === 'ui-perm-why');
+		expect(lastAnswer()).toEqual({
+			type: 'answer_permission',
+			askId: 'ui-perm-why',
+			decision: 'deny',
+			message: 'use the staging remote',
+		});
+		await context.close();
+	}, 20_000);
+
+	it('a field left open on one ask → closed on the next: its answers are back', async () => {
+		const { context, page } = await signIn();
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
+		const sheet = page.locator('section[aria-label="permission"]');
+
+		// Both wait at once: closing the first puts the second on screen in the same render, so only
+		// the sheet's key can take the open field away.
+		openPermission('ui-perm-a');
+		openPermission('ui-perm-b', { input: { command: 'git status' } });
+		await sheet.getByRole('button', { name: 'Deny and say why…' }).click();
+		await sheet.getByLabel('What should it do instead?').fill('half a thought');
+		store.dispatch({ type: 'ask_closed', askId: 'ui-perm-a' });
+		await sheet.locator('.sh-cmd', { hasText: 'git status' }).waitFor({ timeout: 5000 });
+
+		expect(await sheet.getByLabel('What should it do instead?').count()).toBe(0);
+		expect(await sheet.getByRole('button', { name: 'Allow', exact: true }).isVisible()).toBe(true);
+		store.dispatch({ type: 'ask_closed', askId: 'ui-perm-b' });
+		await context.close();
+	}, 20_000);
+
+	it('question sheet → "Something else…" answers in your words; a multi-select sends every pick; the next question starts closed', async () => {
+		const { context, page } = await signIn();
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
+		const sheet = page.locator('section[aria-label="question"]');
+		const lastAnswer = () =>
+			listSentActions('answer_question').at(-1) as
+				| Extract<Action, { type: 'answer_question' }>
+				| undefined;
+		store.dispatch({
+			type: 'ask_opened',
+			ask: {
+				id: 'ui-q-own',
+				ref: 'store-front/main',
+				at: 1,
+				kind: 'question',
+				input: {},
+				questions: [
+					{
+						question: 'Where should the retry happen?',
+						multiSelect: false,
+						options: [{ label: 'In the test' }, { label: 'In the client' }],
+					},
+					{
+						question: 'Which suites?',
+						multiSelect: true,
+						options: [{ label: 'unit' }, { label: 'e2e' }, { label: 'lint' }],
+					},
+				],
+			},
+		});
+
+		await sheet.getByRole('button', { name: 'Something else…' }).click();
+		await sheet.getByLabel('Your own answer').fill('only on 502s');
+		await sheet.getByRole('button', { name: 'Answer', exact: true }).click();
+		await waitUntil(() => lastAnswer()?.askId === 'ui-q-own');
+		expect(lastAnswer()).toEqual({
+			type: 'answer_question',
+			askId: 'ui-q-own',
+			answers: { 'Where should the retry happen?': 'only on 502s' },
+		});
+
+		// Recorded, the sheet moves on to the second question, its field closed.
+		await sheet.getByText('Which suites?').waitFor({ timeout: 5000 });
+		expect(await sheet.getByLabel('Your own answer').count()).toBe(0);
+		expect(await sheet.locator('.sh-steps').innerText()).toContain('2 of 2');
+
+		const send = sheet.getByRole('button', { name: 'Send', exact: true });
+		expect(await send.isDisabled()).toBe(true);
+		// Picked, then unpicked: Send waits again.
+		await sheet.getByRole('button', { name: /e2e/ }).click();
+		expect(await send.isDisabled()).toBe(false);
+		await sheet.getByRole('button', { name: /e2e/ }).click();
+		expect(await send.isDisabled()).toBe(true);
+		await sheet.getByRole('button', { name: /lint/ }).click();
+		await sheet.getByRole('button', { name: /unit/ }).click();
+		expect(await sheet.getByRole('button', { name: /unit/ }).getAttribute('aria-pressed')).toBe(
+			'true',
+		);
+		await send.click();
+		await waitUntil(() => listSentActions('answer_question').length >= 2);
+		// In the order listed, whatever order they were picked in.
+		expect(lastAnswer()).toEqual({
+			type: 'answer_question',
+			askId: 'ui-q-own',
+			answers: { 'Which suites?': 'unit, lint' },
+		});
+		store.dispatch({ type: 'ask_closed', askId: 'ui-q-own' });
+		await context.close();
+	}, 20_000);
+
+	it('switch sheet → After this keeps your words for later; Switch now stops the work for them', async () => {
+		const { context, page } = await signIn();
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
+		const sheet = page.locator('section[aria-label="switch"]');
+		const openRedirect = (id: string) =>
+			store.dispatch({
+				type: 'ask_opened',
+				ask: {
+					id,
+					ref: 'store-front/main',
+					at: 1,
+					kind: 'redirect',
+					text: 'check the totals on mobile',
+					target: null,
+				},
+			});
+
+		openRedirect('ui-switch-after');
+		await sheet.getByText('check the totals on mobile').waitFor({ timeout: 5000 });
+		await sheet.getByRole('button', { name: 'After this', exact: true }).click();
+		await waitUntil(() => listSentActions('answer_redirect').length > 0);
+		expect(listSentActions('answer_redirect').at(-1)).toEqual({
+			type: 'answer_redirect',
+			askId: 'ui-switch-after',
+			isApproved: false,
+		});
+		await sheet.waitFor({ state: 'detached', timeout: 5000 });
+
+		openRedirect('ui-switch-now');
+		await sheet.getByRole('button', { name: 'Switch now', exact: true }).click();
+		await waitUntil(() => listSentActions('answer_redirect').length > 1);
+		expect(listSentActions('answer_redirect').at(-1)).toEqual({
+			type: 'answer_redirect',
+			askId: 'ui-switch-now',
+			isApproved: true,
+		});
+		await sheet.waitFor({ state: 'detached', timeout: 5000 });
+		await ensureIdle('store-front/main');
+		await context.close();
+	}, 20_000);
+
+	it("Space on a sheet's own button → clicks it, never starts the mic", async () => {
+		const { context, page, client } = await openMicTab();
+		// The mic tab's own Esc leaves whatever screen it opened on: the session comes after.
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
+		openPermission('ui-perm-space');
+		const allow = page
+			.locator('section[aria-label="permission"]')
+			.getByRole('button', { name: 'Allow', exact: true });
+		await allow.waitFor({ timeout: 5000 });
+		const starts = listFromClient(client, 'ptt_start').length;
+
+		await allow.focus();
+		await page.keyboard.press('Space');
+		await waitUntil(() =>
+			listSentActions('answer_permission').some(
+				(action) => 'askId' in action && action.askId === 'ui-perm-space',
+			),
+		);
+		expect(listSentActions('answer_permission').at(-1)).toEqual({
+			type: 'answer_permission',
+			askId: 'ui-perm-space',
+			decision: 'allow',
+		});
+		await Bun.sleep(300);
+		expect(listFromClient(client, 'ptt_start')).toHaveLength(starts);
+		await context.close();
+	}, 20_000);
+
+	it('the mode menu → Esc closes it and stays on the session', async () => {
+		const { context, page } = await signIn();
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
+		await page.locator('.perm-chip').click();
+		const menu = page.locator('.perm-menu');
+		await menu.waitFor({ timeout: 5000 });
+		await page.keyboard.press('Escape');
+		await menu.waitFor({ state: 'detached', timeout: 5000 });
+		await Bun.sleep(300);
+		expect(store.state.view).toMatchObject({ kind: 'session', ref: 'store-front/main' });
+		await context.close();
+	}, 20_000);
+
+	it('on a phone: a long command, its open field, a long question and a whole plan → nothing scrolls sideways, the answers stay on screen', async () => {
+		const context = await browser.newContext({
+			permissions: ['microphone'],
+			viewport: { width: 390, height: 844 },
+			hasTouch: true,
+			isMobile: true,
+		});
+		const page = await context.newPage();
+		watchErrors(page);
+		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
+		// The page never scrolls sideways, and no sheet is cut off at the screen's edge either.
+		const isSheetInside = () =>
+			page.evaluate(() =>
+				[...document.querySelectorAll('.vo-bar > *')].every(
+					(node) => node.getBoundingClientRect().right <= window.innerWidth,
+				),
+			);
+
+		const isInView = async (name: string) => {
+			const box = await page.getByRole('button', { name, exact: true }).boundingBox();
+
+			return box ? box.y + box.height <= 844 && box.x + box.width <= 390 : false;
+		};
+
+		try {
+			await page.goto(`http://localhost:${gateway.port}/login?token=${TOKEN}`);
+			await page.goto(`http://localhost:${gateway.port}/voice`);
+			openPermission('ui-phone-perm', {
+				input: {
+					command: `pnpm --filter @store/checkout-web exec playwright test ${'e2e/checkout/totals-retry.spec.ts '.repeat(6)}&& git push origin crew/store-front/main`,
+				},
+			});
+			const sheet = page.locator('section[aria-label="permission"]');
+			await sheet.waitFor({ timeout: 5000 });
+			expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+			expect(await isInView('Allow')).toBe(true);
+			await sheet.getByRole('button', { name: 'Deny and say why…' }).click();
+			await sheet.getByLabel('What should it do instead?').waitFor({ timeout: 5000 });
+			expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+			expect(await isInView('Deny and send')).toBe(true);
+			expect(await isSheetInside()).toBe(true);
+			store.dispatch({ type: 'ask_closed', askId: 'ui-phone-perm' });
+
+			store.dispatch({
+				type: 'ask_opened',
+				ask: {
+					id: 'ui-phone-q',
+					ref: 'store-front/main',
+					at: 1,
+					kind: 'question',
+					input: {},
+					questions: [
+						{
+							question:
+								'Which of these should the retry wrap, given the totals request can time out?',
+							multiSelect: true,
+							options: Array.from({ length: 10 }, (_, index) => ({
+								label: `Option ${index + 1} with a fairly long name`,
+								description: 'retry-limits.yaml in config/production/order-totals/ '.repeat(2),
+							})),
+						},
+					],
+				},
+			});
+			const question = page.locator('section[aria-label="question"]');
+			await question.waitFor({ timeout: 5000 });
+			expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+			// Ten long options: the sheet keeps to its share of the screen, its options scroll, Send stays.
+			expect((await question.boundingBox())?.height ?? 900).toBeLessThanOrEqual(844 * 0.6 + 1);
+			expect(
+				await question
+					.locator('.sh-options')
+					.evaluate((node) => node.scrollHeight > node.clientHeight),
+			).toBe(true);
+			expect(await isInView('Send')).toBe(true);
+			expect(await isSheetInside()).toBe(true);
+			store.dispatch({ type: 'ask_closed', askId: 'ui-phone-q' });
+
+			store.dispatch({
+				type: 'ask_opened',
+				ask: {
+					id: 'ui-phone-plan',
+					ref: 'store-front/main',
+					at: 1,
+					kind: 'plan',
+					input: {},
+					plan: Array.from({ length: 40 }, (_, index) => `${index + 1}. Step ${index + 1}.`).join(
+						'\n',
+					),
+				},
+			});
+			const plan = page.locator('section[aria-label="plan"]');
+			await plan.getByRole('button', { name: 'Read it all' }).click();
+			await plan.getByRole('button', { name: 'Show less' }).waitFor({ timeout: 5000 });
+			expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+			expect(await isInView('Approve')).toBe(true);
+			expect(await isSheetInside()).toBe(true);
+			store.dispatch({ type: 'ask_closed', askId: 'ui-phone-plan' });
+		} finally {
+			await context.close();
+		}
+	}, 20_000);
+
+	it('queued messages → "2 queued" in the box; its list cancels exactly that one; the spoken line shows what Voice OS last said', async () => {
 		const { context, page } = await signIn();
 		// Whatever state earlier tests left checkout in, a message sent behind a turn waits in its queue.
 		store.dispatch({ type: 'activate', ref: 'checkout-api/main' });
@@ -2154,13 +2544,21 @@ describe('voice os ui', () => {
 		);
 		store.dispatch({ type: 'send', ref: 'checkout-api/main', text: 'run the tests' });
 		store.dispatch({ type: 'send', ref: 'checkout-api/main', text: 'then deploy to staging' });
+		store.dispatch({ type: 'send', ref: 'checkout-api/main', text: 'and post the link' });
+		store.dispatch({ type: 'send', ref: 'checkout-api/main', text: 'then close the issue' });
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'checkout-api/main' } });
+		// The first may have started a turn of its own: the rest wait.
+		const queuedCount = () => store.state.sessions['checkout-api/main']?.queue.length ?? 0;
+		const before = queuedCount();
 		const queued = store.state.sessions['checkout-api/main']?.queue.find(
 			(queuedMessage) => queuedMessage.text === 'then deploy to staging',
 		);
-		const item = page.locator('[aria-label="queued"] .qitem', {
-			hasText: 'then deploy to staging',
-		});
+		const chip = page.locator('.vo-composer .qchip');
+		await chip.getByText('queued').waitFor({ timeout: 5000 });
+		expect(before).toBeGreaterThanOrEqual(3);
+		expect(await chip.getAttribute('aria-label')).toBe(`${before} queued`);
+		await chip.click();
+		const item = page.locator('.qchip-pop .qitem', { hasText: 'then deploy to staging' });
 		await item.getByRole('button', { name: /cancel/ }).click();
 		await waitUntil(() => listSentActions('cancel_queued').length > 0);
 		expect(listSentActions('cancel_queued').at(-1)).toEqual({
@@ -2168,6 +2566,50 @@ describe('voice os ui', () => {
 			ref: 'checkout-api/main',
 			queuedId: queued?.id ?? '',
 		});
+		await waitUntil(() => queuedCount() === before - 1);
+		await page.locator(`.qchip[aria-label="${before - 1} queued"]`).waitFor({ timeout: 5000 });
+
+		// ▲ now on a row → that message, by its id.
+		const list = page.locator('.qchip-pop');
+		const second = store.state.sessions['checkout-api/main']?.queue[1];
+		await list.locator('.qitem').nth(1).getByRole('button', { name: /now/ }).click();
+		await waitUntil(() => listSentActions('promote_queued').length > 0);
+		expect(listSentActions('promote_queued').at(-1)).toEqual({
+			type: 'promote_queued',
+			ref: 'checkout-api/main',
+			queuedId: second?.id ?? '',
+		});
+
+		// Esc closes the list only: the session stays on screen, the keyboard back on the chip.
+		await list.waitFor({ timeout: 5000 });
+		await list.getByRole('button', { name: /now/ }).first().focus();
+		await page.keyboard.press('Escape');
+		await list.waitFor({ state: 'detached', timeout: 5000 });
+		expect(await chip.evaluate((node) => node === document.activeElement)).toBe(true);
+		await Bun.sleep(300);
+		expect(store.state.view).toMatchObject({ kind: 'session', ref: 'checkout-api/main' });
+
+		// A press elsewhere closes it too.
+		await chip.click();
+		await list.waitFor({ timeout: 5000 });
+		await page.locator('.stream').click({ position: { x: 5, y: 5 } });
+		await list.waitFor({ state: 'detached', timeout: 5000 });
+
+		// The last one cancelled: no chip, no list.
+		await chip.click();
+
+		while (queuedCount() > 0) {
+			const left = queuedCount();
+			await list
+				.locator('.qitem')
+				.first()
+				.getByRole('button', { name: /cancel/ })
+				.click();
+			await waitUntil(() => queuedCount() < left);
+		}
+
+		await chip.waitFor({ state: 'detached', timeout: 5000 });
+		expect(await page.locator('.qchip-pop').count()).toBe(0);
 
 		store.dispatch({
 			type: 'spoken',
@@ -3891,7 +4333,7 @@ describe('slash commands', () => {
 		expect(await page.getByRole('menu').count()).toBe(0);
 		await page
 			.locator('section[aria-label="confirm"]')
-			.getByText(/Compact .*context\?/)
+			.getByText('Compact the conversation?')
 			.waitFor({ timeout: 5000 });
 
 		const dismiss = () => {

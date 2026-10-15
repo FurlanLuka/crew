@@ -4,7 +4,6 @@ import { describe, expect, it } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { PendingAsk, Session, State } from '../../shared/protocol.js';
 import { createInitialState, createSession } from '../../state/reducer.js';
-import { AskDock } from '../components/AskDock.js';
 import { SessionStream } from '../components/SessionStream.js';
 import type { SetupContext } from './common.js';
 import { SetupChat } from './SetupChat.js';
@@ -101,43 +100,6 @@ describe('SessionStream', () => {
 		).toBe('<section class="chat" aria-label="stream"><p>not yet</p></section>'));
 });
 
-describe('AskDock on a setup session', () => {
-	it('a question: its options, your own words and ✕, but nothing to say aloud', () => {
-		const html = renderToStaticMarkup(
-			<AskDock ask={question('vm1:setup')} label="setup" dispatch={noop} />,
-		);
-
-		expect(html).toContain('I have Redis on :6379');
-		expect(html).toContain('Your own answer…');
-		expect(html).toContain('aria-label="Decline the question"');
-		expect(html).not.toContain('Say <b>');
-	});
-
-	it('a permission: Yes / No, without the spoken words a worktree session shows', () => {
-		const ask = (ref: string): PendingAsk => ({
-			id: 'p1',
-			ref,
-			at: 1,
-			kind: 'permission',
-			toolName: 'Bash',
-			summary: 'run pnpm install',
-			input: { command: 'pnpm install' },
-			suggestions: [],
-		});
-
-		const setup = renderToStaticMarkup(
-			<AskDock ask={ask('setup')} label="setup" dispatch={noop} />,
-		);
-		const worktree = renderToStaticMarkup(
-			<AskDock ask={ask('store-front/main')} label="store-front/main" dispatch={noop} />,
-		);
-
-		expect(setup).toContain('>Yes</button>');
-		expect(setup).not.toContain('“yes”');
-		expect(worktree).toContain('Yes · “yes”');
-	});
-});
-
 describe('SetupChat', () => {
 	it("the setup session's question docked above the composer, its queued words, the draft and ✓ recorded", () => {
 		const state: State = {
@@ -179,11 +141,16 @@ describe('SetupChat', () => {
 		expect(foot).toContain('sub-agents · 1');
 		expect(foot.indexOf('sub-agents · 1')).toBeLessThan(foot.indexOf('aria-label="question"'));
 		expect(foot.indexOf('aria-label="question"')).toBeLessThan(foot.indexOf('aria-label="queued"'));
+		// Set up keeps its queue as rows under the ask, not folded into a chip.
+		expect(foot).toContain('then look at admin');
+		expect(foot).not.toContain('qchip');
 		expect(foot.indexOf('then look at admin')).toBeLessThan(foot.indexOf('class="reply"'));
-		expect(foot).toContain('question · setup');
+		expect(foot).toContain('class="sheet question"');
 		expect(foot).toContain('Decline the question');
+		expect(foot).toContain('Something else…');
 		expect(html).toContain('>Queue</button>');
-		expect(html).not.toContain('Say <b>');
+		// Answered here, never heard: no words to say.
+		expect(foot).not.toContain('sh-say');
 	});
 
 	it("a remote machine's chat shows that machine's setup ask, never this Mac's", () => {

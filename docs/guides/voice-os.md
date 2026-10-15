@@ -516,14 +516,16 @@ box" renames a machine (see [Other machines](#other-machines)).
 ## Questions, plans and permissions
 
 When a session asks you a question, shows a plan or asks for permission, you hear it and the page
-shows it in the dock at the bottom. Answer it the way you would answer a person, or click.
+docks it above the text box as a raised card: a title that asks, what you are judging (the command,
+the plan, the options), and the answers on the right, the main one last. One dim line under it says
+what to say to answer it by voice. Answer it the way you would answer a person, or click.
 
 ![A question from a session, with its options in the dock](../images/voice-os/question.png)
 
-A permission looks the same, with the command it wants to run and **Yes** and **No** under it. Type in
-the box below them to say no and tell it why.
+A permission says what it wants to do ("Run this command?"), why when the session said, and the
+command itself, with each program it runs picked out.
 
-![store-front/main asking to run the database migrations: pnpm db:migrate, Yes and No, and a box for no with a reason, docked above the spoken line and the text box](../images/voice-os/permission.png)
+![store-front/main asking to run the database migrations: pnpm db:migrate, with Deny and say why…, Deny and Allow, docked above the spoken line and the text box](../images/voice-os/permission.png)
 
 - "Yes." · "Go ahead." · "Always." ("Always" is offered when Claude Code suggests a rule. Voice
   OS hands that suggestion back to Claude Code unchanged, so the rule is kept wherever the
@@ -536,10 +538,13 @@ the box below them to say no and tell it why.
 - "Why does step three touch the kernel?" Asks about the plan without answering it. The session
   answers on the side and the plan keeps waiting.
 
-A plan has **Approve**, and **Change the plan…** to send it back with your notes. A permission
-has **Yes**, **Always for this** (when offered), **No**, and **No, and tell it why…**. A question
-has an **✕** to decline it without answering: the session is told you declined, and carries on
-without your answer.
+A permission has **Allow**, **Always allow …** (when offered, naming what it would remember, such
+as `bun test`), **Deny**, and **Deny and say why…**, which opens a field in the card for your reason.
+A plan scrolls in its card; **Read it all** makes it as tall as the card allows, **Change the plan…**
+opens a field to send it back with your notes, and **Approve** stays in view. A question lists its
+options as rows to click, and **Something else…** opens a field for your own answer; a question that
+takes several answers lets you pick more than one, then **Send**. Its **✕** declines it without
+answering: the session is told you declined, and carries on without your answer.
 
 If you say something unrelated ("actually, let's look at the router first"), you are moving on:
 your words go to the session, and they decline what it was waiting on.
@@ -549,7 +554,7 @@ looking at. If two things are waiting and it is unclear which you mean, Voice OS
 ("Yes to which — ranking or checkout?").
 
 `/clear` and `/compact`, typed or said ("slash compact"), wait for a yes before they reach the
-session.
+session: **Clear** or **Compact**, or **Keep it**.
 
 Another session's request for work, or for a secret, docks and is answered the same way. See
 [Sessions asking each other](#sessions-asking-each-other).
@@ -583,31 +588,32 @@ Whether auto mode is available depends on your Claude Code account, model and se
 asks for it but does not check what Claude Code did with the request; any permission prompt
 Claude Code raises comes to you like the others.
 
-When auto mode blocks something, the session page docks a red **blocked** prompt above the text box
-that says what the session was trying to do ("Auto mode blocked store-front/main from trying to run git push"), and
-Voice OS tells you.
+When auto mode blocks something, the session page docks a card with a red dot above the text box that
+says what the session was trying to do ("Auto mode blocked this · store-front/main tried to run git
+push"), and Voice OS tells you.
 
 ![The blocked prompt docked above the text box, and an "Allowed once" line in the stream](../images/voice-os/approval.png)
 
-- **Allow it** (or say "allow it" / "let it") lets that one call through. The session retries it,
+- **Allow once** (or say "allow it" / "let it") lets that one call through. The session retries it,
   and the stream shows **✓ Allowed once: …**. Only that call is allowed: auto mode is back for the
   next one, and any allowance still unused ends with the turn.
-- **Leave it blocked** dismisses the strip. The session carries on without it.
+- **Leave it blocked** dismisses the card. The session carries on without it.
 
 Asking "why is auto mode off?" or "why do you keep asking me?" on a session's page goes to the
 session. Voice OS does not guess at causes.
 
 > **Trust.** Auto mode is Claude Code's own safety check, and your Claude Code settings (allow and
 > deny rules, CLAUDE.md files, plugins) still apply, because sessions load your user, project and
-> local settings. Voice OS never widens what a session may do on its own: "Allow it" lets one
+> local settings. Voice OS never widens what a session may do on its own: "Allow once" lets one
 > call through, and "Always" saves only the rule Claude Code itself suggested. A session's
 > environment has `ANTHROPIC_API_KEY` and the Soniox key removed.
 
 ## Queued messages
 
-A session works on one thing at a time. What you send while it is busy waits in its queue, shown
-under the stream as **queued 1**, **queued 2**, and so on. Each message goes in order when the
-current work ends.
+A session works on one thing at a time. What you send while it is busy waits in its queue, folded
+into the text box as **2 queued** (with an amber dot when one came from another session). Click it to
+see them in order, each with **▲ now** and **✕ cancel**. Each message goes in order when the current
+work ends.
 
 - **Said aloud to the session on screen,** Voice OS asks: "Okay, after its current work. Send it
   now?" A yes (or **Send now** on the card) sends it at once, as **▲ now** does; a no, or carrying

@@ -12,11 +12,17 @@ export const useDismiss = (
 		}
 
 		const close = (event: Event) => {
-			if (
-				event instanceof KeyboardEvent
-					? event.key === 'Escape'
-					: !wrapRef.current?.contains(event.target as Node)
-			) {
+			if (event instanceof KeyboardEvent) {
+				if (event.key === 'Escape') {
+					// Closes the menu only: the page's own Esc, which skips handled keys, would also leave the view.
+					event.preventDefault();
+					onDismiss();
+				}
+
+				return;
+			}
+
+			if (!wrapRef.current?.contains(event.target as Node)) {
 				onDismiss();
 			}
 		};

@@ -1,11 +1,13 @@
-import { isSetupRef } from '../../shared/machine-ref.js';
+// What the session on screen waits on, docked above the voice bar (and in Set up's chat): one sheet
+// per kind. Each is keyed by the ask, so a field left open on one ask never carries over to the next.
 import type { PendingAsk } from '../../shared/protocol.js';
 import type { Dispatch } from '../types.js';
-import { Markdown } from './Markdown.js';
-import { QuestionDock } from './QuestionDock.js';
-import { Reason } from './Reason.js';
-import { LockIcon } from './icons.js';
-import { SessionBadge } from './PeerCard.js';
+import { describeConfirm, SAY } from '../prompts.js';
+import { PeerSheet } from './PeerSheet.js';
+import { PermissionSheet } from './PermissionSheet.js';
+import { PlanSheet } from './PlanSheet.js';
+import { Sheet, SheetFoot } from './PromptSheet.js';
+import { QuestionSheet } from './QuestionSheet.js';
 
 interface AskDockProps {
 	ask: PendingAsk;
@@ -13,188 +15,86 @@ interface AskDockProps {
 	dispatch: Dispatch;
 }
 
-// The word that answers by voice, beside its button. A setup session's asks are answered in Set up's
-// chat and never heard, so they show no words to say.
-export const describeSaid = (ask: PendingAsk, word: string): string =>
-	isSetupRef(ask.ref) ? '' : ` · “${word}”`;
+type CommandAsk = Extract<PendingAsk, { kind: 'command' }>;
+type RedirectAsk = Extract<PendingAsk, { kind: 'redirect' }>;
+
+interface ConfirmSheetProps {
+	ask: CommandAsk;
+	dispatch: Dispatch;
+}
+
+const ConfirmSheet = ({ ask, dispatch }: ConfirmSheetProps) => {
+	const copy = describeConfirm(ask);
+	const answer = (isApproved: boolean) =>
+		dispatch({ type: 'answer_command', askId: ask.id, isApproved });
+
+	return (
+		<Sheet
+			kind="confirm"
+			label="confirm"
+			tone="plain"
+			title={copy.title}
+			reason={copy.reason}
+			isRow={!copy.extra}
+		>
+			{copy.extra ? <p className="sh-quote">{copy.extra}</p> : null}
+			<SheetFoot sessionRef={ask.ref} say={SAY.confirm}>
+				<button type="button" className="btn ghost" onClick={() => answer(false)}>
+					Keep it
+				</button>
+				<button type="button" className="btn primary" onClick={() => answer(true)}>
+					{copy.verb}
+				</button>
+			</SheetFoot>
+		</Sheet>
+	);
+};
+
+interface RedirectSheetProps {
+	ask: RedirectAsk;
+	label: string;
+	dispatch: Dispatch;
+}
+
+const RedirectSheet = ({ ask, label, dispatch }: RedirectSheetProps) => {
+	const answer = (isApproved: boolean) =>
+		dispatch({ type: 'answer_redirect', askId: ask.id, isApproved });
+
+	return (
+		<Sheet
+			kind="switch"
+			label="switch"
+			tone="plain"
+			title="Stop and switch to this?"
+			reason={`${label} stops what it is doing`}
+		>
+			<p className="sh-quote">{ask.text}</p>
+			<SheetFoot sessionRef={ask.ref} say={SAY.redirect}>
+				<button type="button" className="btn" onClick={() => answer(false)}>
+					After this
+				</button>
+				<button type="button" className="btn primary" onClick={() => answer(true)}>
+					Switch now
+				</button>
+			</SheetFoot>
+		</Sheet>
+	);
+};
 
 export const AskDock = ({ ask, label, dispatch }: AskDockProps) => {
-	if (ask.kind === 'permission') {
-		const command = typeof ask.input.command === 'string' ? ask.input.command : null;
-
-		return (
-			<section className="dock crit" aria-label="permission">
-				<span className="lbl c-crit">
-					permission · {label} · {ask.toolName}
-				</span>
-				<div className="ask">
-					{label} wants to {ask.summary}.
-				</div>
-				{command && <div className="cmd">{command}</div>}
-				<div className="btns">
-					<button
-						type="button"
-						className="btn primary"
-						onClick={() =>
-							dispatch({ type: 'answer_permission', askId: ask.id, decision: 'allow' })
-						}
-					>
-						Yes{describeSaid(ask, 'yes')}
-					</button>
-					{ask.suggestions.length > 0 && (
-						<button
-							type="button"
-							className="btn"
-							onClick={() =>
-								dispatch({ type: 'answer_permission', askId: ask.id, decision: 'always' })
-							}
-						>
-							Always for this{describeSaid(ask, 'always')}
-						</button>
-					)}
-					<button
-						type="button"
-						className="btn danger"
-						onClick={() => dispatch({ type: 'answer_permission', askId: ask.id, decision: 'deny' })}
-					>
-						No{describeSaid(ask, 'no')}
-					</button>
-				</div>
-				<Reason
-					label="No, and tell it why…"
-					onSubmit={(message) =>
-						dispatch({ type: 'answer_permission', askId: ask.id, decision: 'deny', message })
-					}
-				/>
-			</section>
-		);
+	switch (ask.kind) {
+		case 'permission':
+			return <PermissionSheet key={ask.id} ask={ask} dispatch={dispatch} />;
+		case 'plan':
+			return <PlanSheet key={ask.id} ask={ask} dispatch={dispatch} />;
+		case 'command':
+			return <ConfirmSheet key={ask.id} ask={ask} dispatch={dispatch} />;
+		case 'redirect':
+			return <RedirectSheet key={ask.id} ask={ask} label={label} dispatch={dispatch} />;
+		case 'work':
+		case 'secret':
+			return <PeerSheet key={ask.id} ask={ask} dispatch={dispatch} />;
+		case 'question':
+			return <QuestionSheet key={ask.id} ask={ask} dispatch={dispatch} />;
 	}
-
-	if (ask.kind === 'plan') {
-		return (
-			<section className="dock amber plan" aria-label="plan">
-				<span className="lbl c-amber">plan ready · {label}</span>
-				<div className="quote">
-					<Markdown text={ask.plan} />
-				</div>
-				<div className="btns">
-					<button
-						type="button"
-						className="btn primary"
-						onClick={() => dispatch({ type: 'answer_plan', askId: ask.id, isApproved: true })}
-					>
-						Approve{describeSaid(ask, 'approve')}
-					</button>
-				</div>
-				<Reason
-					label="Change the plan…"
-					onSubmit={(message) =>
-						dispatch({ type: 'answer_plan', askId: ask.id, isApproved: false, message })
-					}
-				/>
-			</section>
-		);
-	}
-
-	if (ask.kind === 'command') {
-		return (
-			<section className="dock crit" aria-label="confirm">
-				<span className="lbl c-crit">
-					confirm · {label} · /{ask.command}
-				</span>
-				<div className="ask">
-					{ask.command === 'clear' ? 'Clear' : 'Compact'} {label}'s context?
-				</div>
-				<div className="cmd">{ask.text}</div>
-				<div className="btns">
-					<button
-						type="button"
-						className="btn primary"
-						onClick={() => dispatch({ type: 'answer_command', askId: ask.id, isApproved: true })}
-					>
-						Yes{describeSaid(ask, 'yes')}
-					</button>
-					<button
-						type="button"
-						className="btn danger"
-						onClick={() => dispatch({ type: 'answer_command', askId: ask.id, isApproved: false })}
-					>
-						No{describeSaid(ask, 'no')}
-					</button>
-				</div>
-			</section>
-		);
-	}
-
-	if (ask.kind === 'redirect') {
-		return (
-			<section className="dock crit" aria-label="switch">
-				<span className="lbl c-crit">switch · {label}</span>
-				<div className="ask">Stop what {label} is doing and switch to this?</div>
-				<div className="cmd">{ask.text}</div>
-				<div className="btns">
-					<button
-						type="button"
-						className="btn primary"
-						onClick={() => dispatch({ type: 'answer_redirect', askId: ask.id, isApproved: true })}
-					>
-						Switch{describeSaid(ask, 'yes')}
-					</button>
-					<button
-						type="button"
-						className="btn"
-						onClick={() => dispatch({ type: 'answer_redirect', askId: ask.id, isApproved: false })}
-					>
-						After{describeSaid(ask, 'no')}
-					</button>
-				</div>
-			</section>
-		);
-	}
-
-	if (ask.kind === 'work' || ask.kind === 'secret') {
-		const answer = (isApproved: boolean) =>
-			dispatch({ type: 'answer_peer', askId: ask.id, isApproved });
-
-		return (
-			<section className="dock amber peer-dock" aria-label="request from another session">
-				{ask.kind === 'work' ? (
-					<>
-						<div className="pd-route">
-							<SessionBadge label={ask.fromLabel} />
-							<span>wants</span>
-							<SessionBadge label={ask.toLabel} />
-							<span>to do this and report back</span>
-						</div>
-						<div className="pd-task">{ask.text}</div>
-					</>
-				) : (
-					<>
-						<div className="pd-route">
-							<LockIcon />
-							<SessionBadge label={ask.fromLabel} />
-							<span>wants a copy of</span>
-							<SessionBadge label={ask.toLabel} />
-							<span>’s</span>
-							<code>{ask.what}</code>
-						</div>
-						<p className="pd-note">
-							It goes into a private file only {ask.fromLabel} can read. Neither session sees the
-							value.
-						</p>
-					</>
-				)}
-				<div className="btns">
-					<button type="button" className="btn primary" onClick={() => answer(true)}>
-						Allow{describeSaid(ask, 'yes')}
-					</button>
-					<button type="button" className="btn danger" onClick={() => answer(false)}>
-						No{describeSaid(ask, 'no')}
-					</button>
-				</div>
-			</section>
-		);
-	}
-
-	return <QuestionDock ask={ask} label={label} dispatch={dispatch} />;
 };

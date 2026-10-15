@@ -29,10 +29,10 @@ const isTypingInField = (event: KeyboardEvent) =>
 	event.target instanceof HTMLTextAreaElement ||
 	event.target instanceof HTMLSelectElement;
 
-// The mode menu and the dictation buttons take Space as their own click.
+// The mode menu, the dictation buttons and a prompt's answers take Space as their own click.
 const isOnOwnControl = (event: KeyboardEvent) =>
 	event.target instanceof Element &&
-	event.target.closest('.mode-wrap, .composer-side, .vs-set') !== null;
+	event.target.closest('.mode-wrap, .composer-side, .vs-set, .sheet, .qchip-wrap') !== null;
 
 export const useVoiceInput = ({
 	state,

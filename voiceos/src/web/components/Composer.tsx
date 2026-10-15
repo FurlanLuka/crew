@@ -13,11 +13,13 @@ import { readSessionLabel } from '../../shared/machines.js';
 import { MAX_TEXT_CHARS, type ClientMessage, type State } from '../../shared/protocol.js';
 import { describeRouteChip } from '../../shared/route-chip.js';
 import { describeListening, isListeningMode } from '../listen-mode.js';
+import { readScreenAsk } from '../moments.js';
 import { AttachButton } from './AttachmentChips.js';
 import { SlashMenu } from './SlashMenu.js';
 import { ModeChip } from './ModeChip.js';
 import { ModelChip } from './ModelChip.js';
 import { ContextMeter } from './ContextMeter.js';
+import { QueueChip } from './QueueChip.js';
 import { readScreenRef } from '../../state/helpers.js';
 import { useSlashCommands } from '../use-slash-commands.js';
 import { ATTACHED_ONLY_TEXT, type Attachments } from '../use-attachments.js';
@@ -91,11 +93,22 @@ export const Composer = ({
 	const { listenMode, micStatus, isDictating } = voice;
 	const elapsedMs = useElapsed(voice.dictationStartedAt);
 	const route = describeRouteChip(state, { draft });
-	const isAlarm = route.isAnswering && !isDictating;
+	// The sheet docked above is the alarm: the box still says where words go, without the red.
+	const isAlarm = route.isAnswering && !isDictating && !readScreenAsk(state);
 	const discord = isOnDiscord ? state.discord : null;
 	const onScreen = readScreenRef(state);
 	const screenRef = onScreen && state.sessions[onScreen] ? onScreen : null;
 	const screenContext = screenRef ? (state.sessions[screenRef]?.context ?? null) : null;
+	const viewed = state.view.kind === 'session' ? state.sessions[state.view.ref] : undefined;
+	// Keyed by session: an open list never carries over to another session's queue.
+	const queueChip =
+		viewed && viewed.queue.length > 0 ? (
+			<QueueChip
+				key={viewed.ref}
+				session={viewed}
+				dispatch={(action) => send({ type: 'action', action })}
+			/>
+		) : null;
 	const slash = useSlashCommands({
 		state,
 		sessionRef: screenRef,
@@ -204,6 +217,7 @@ export const Composer = ({
 				<span className="c-dim">
 					{readSessionLabel(state, inactiveRef)} isn't active: activate it to talk to it.
 				</span>
+				{queueChip}
 				<AttachButton attachments={attachments} />
 				<button
 					type="button"
@@ -249,6 +263,7 @@ export const Composer = ({
 				aria-label="Say or type a command"
 			/>
 			<div className="composer-side">
+				{queueChip}
 				{isDictating ? (
 					<>
 						<span className="dictation-clock" title="Dictating for">

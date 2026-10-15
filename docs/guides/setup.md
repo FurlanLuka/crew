@@ -209,9 +209,9 @@ line, taken from the command it ran — not from what Claude says about it.
 It is drawn with the same pieces as a session in Voice OS: its steps, the reply as it arrives (with
 a caret), a bar while it compacts its context, and the sub-agents it has running. What it waits on
 is docked at the foot of the card, right above where you type, as Voice OS docks it above the voice
-bar: a question with its options as buttons, a field for your own answer and **✕** to decline it; a
-plan to approve or change; a permission as Yes / Always for this / No (or no, with a reason); a
-`/clear` or `/compact` to confirm. Words you send while it works wait in the queue under the ask —
+bar: a question with its options as rows, **Something else…** for your own answer and **✕** to
+decline it; a plan to approve or change; a permission as Allow / Always allow … / Deny (or **Deny and
+say why…**); a `/clear` or `/compact` to confirm. Words you send while it works wait in the queue under the ask —
 **▲ now** sends one at once, **✕ cancel** drops it — and go in order when the turn ends; **Stop**
 stops the turn. **Fix with Claude** and **Ask Claude** anywhere in Set up start here, with the
 failure or the form already said.
