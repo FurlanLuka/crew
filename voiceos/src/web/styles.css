@@ -148,6 +148,24 @@ h1 {
 .dot.starting {
 	background: var(--amber);
 }
+/* A session at work: a turning ring, so working never reads as a still dot. */
+.dot.running {
+	background: none;
+	border: 1.5px solid var(--amber);
+	border-top-color: transparent;
+	animation: dot-turn 1s linear infinite;
+}
+@keyframes dot-turn {
+	to {
+		transform: rotate(360deg);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.dot.running {
+		border-top-color: var(--amber);
+		animation: none;
+	}
+}
 .dot.ring,
 .dot.stopped {
 	background: none;

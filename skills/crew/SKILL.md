@@ -278,7 +278,7 @@ crew duplicate <workspace>[/<worktree>] <new-worktree> [--no-install] [--no-smok
 crew rename worktree <workspace>/<worktree> <new-name>            Renamed <workspace>/<worktree> → <workspace>/<new-name>   --json: {from, to, warnings: []}
 crew setup <workspace>[/<worktree>] [<project>...] [--no-smoke] [--wait]
 crew setup status <workspace>[/<worktree>] [--wait]               ✓|✗|▸ <project>  <step> <took> · <step> <took> · ▸ <running step> | <step> — <reason>
-crew setup logs <workspace>[/<worktree>] <project> [--lines=<n>]
+crew setup logs <workspace>[/<worktree>] <project>[/<server>] [--lines=<n>]
 crew verify <workspace>[/<worktree>] [<project>...] [--wait]
 crew fix <workspace>[/<worktree>] [--print]
 crew rm worktree <workspace>/<name> [--dry-run]
@@ -302,6 +302,8 @@ crew migrate [--dry-run] [--yes]
   of waiting for the slowest install. `--wait` stays until no runner is left (then 1 or 0).
   `crew setup logs <ref> <project>` is what an install is printing right now (its steps
   and the package manager's output) — read it when a step is taking long.
+  `crew setup logs <ref> <project>/<server>` is what that server printed while setup or
+  verify tried it — the evidence when a server died during verify and nothing runs now.
 - `--wait` on any of the creating commands does the polling for you: the table live in a
   terminal, then the summary — issues and the fix line — and exit 1 while anything is
   recorded. `--json` without `--wait` is `{ref, running: true, projects}` (no health yet);

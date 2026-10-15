@@ -33,6 +33,7 @@ import { persistNames } from './memory/names.js';
 import { persistGroups } from './memory/groups.js';
 import { persistModes } from './memory/modes.js';
 import { persistVoiceOff } from './memory/voice-off.js';
+import { persistOnboarded } from './memory/onboarded.js';
 import { followVoiceOff } from './speech/voice-off.js';
 import { resolveClaudeBin, isCompiled } from './sessions/claude-bin.js';
 import { SessionManager, connectStore } from './sessions/manager.js';
@@ -312,6 +313,7 @@ const voiceIn: VoiceInput = new VoiceInput({
 
 // Before Discord starts: with voice off its bot never joins the channel only to leave it.
 persistVoiceOff({ store, file: paths.voiceOffFile });
+persistOnboarded({ store, file: paths.onboardedFile });
 
 const DISCORD_GREETING_DELAY_MS = 1500;
 // One greeting at a time: leaving and coming back inside the delay must not say it twice.

@@ -394,6 +394,20 @@ func TestSetupLogs_TailsN(t *testing.T) {
 	}
 }
 
+func TestSmokeLogs_ReadsTheServersOwnLog(t *testing.T) {
+	newRepoWorkspace(t, "ws", "api")
+	ref := Ref{Workspace: "ws", Worktree: DefaultWorktree}
+	os.MkdirAll(SetupDir(ref.Slug()), 0o755)
+	os.WriteFile(RunnerLogFile(ref, "api"), []byte("runner\n"), 0o644)
+	os.WriteFile(smokeLogFile(ref.Slug(), "api", "web"), []byte("listening\nboom\n"), 0o644)
+	if got, _ := SmokeLogs(ref, "api", "web", 1); got != "boom" {
+		t.Errorf("n=1 → %q", got)
+	}
+	if _, err := SmokeLogs(ref, "api", "nope", 0); err == nil {
+		t.Error("a server never tried has no log: an error")
+	}
+}
+
 // A direct-mode member gets a runner that skips the checkout and install
 // but still smokes its servers from the canonical checkout — the smoke is
 // about the servers crew will start there, whoever owns the checkout.

@@ -36,6 +36,8 @@ export interface SessionSnapshot {
 	// How full its context was at the last reading: the meter shows it again after a reconnect.
 	// Absent from an older remote.
 	context?: ContextUsage;
+	// The model it runs on, for the composer's chip after a reconnect. Absent from an older remote.
+	model?: string;
 }
 
 export interface AsideInFlight {
@@ -122,6 +124,7 @@ export type CallResult =
 export const REMOTE_OBSERVATIONS = new Set<Observation['type']>([
 	'session_started',
 	'context_usage',
+	'session_model',
 	'mode_refused',
 	'turn_started',
 	'text_delta',

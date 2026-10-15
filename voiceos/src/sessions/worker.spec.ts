@@ -429,6 +429,22 @@ describe('Worker', () => {
 		expect(sessionIds).toEqual(['old', 'new']);
 	});
 
+	it('reports the model each init names: the start, and the new conversation after a /clear', async () => {
+		const { worker, observations, finished } = createWorker([
+			{ type: 'system', subtype: 'init', session_id: 'old', model: 'claude-opus-5-5[1m]' },
+			{ type: 'conversation_reset', new_conversation_id: 'announced' },
+			{ type: 'system', subtype: 'init', session_id: 'new', model: 'claude-sonnet-5-5' },
+		]);
+
+		worker.start();
+		await finished;
+
+		expect(observations.filter((observation) => observation.type === 'session_model')).toEqual([
+			{ type: 'session_model', ref: expect.any(String), model: 'claude-opus-5-5[1m]' },
+			{ type: 'session_model', ref: expect.any(String), model: 'claude-sonnet-5-5' },
+		]);
+	});
+
 	it("with a media folder, a tool's screenshot is stored and shown", async () => {
 		const mediaDir = mkdtempSync(join(tmpdir(), 'worker-media-'));
 		const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 9]).toString('base64');

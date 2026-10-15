@@ -1,17 +1,9 @@
 // What the worktree page reads, derived: its servers' lines, the values set for this worktree (crew's
-// overrides) and what each replaces, the command the form makes, and why a recorded failure
-// matters. Pure, beside its spec.
+// overrides) and what each replaces, and the command the form makes. Pure, beside its spec.
 import type { SetupCommand } from '../../crew/commands.js';
 import { countOf } from '../count.js';
 import { describeBindingSource } from './environment.js';
-import type {
-	CrewBinding,
-	CrewIssue,
-	CrewMember,
-	CrewProject,
-	CrewRoute,
-	CrewSmoke,
-} from './types.js';
+import type { CrewBinding, CrewMember, CrewProject, CrewRoute, CrewSmoke } from './types.js';
 
 export interface ServerLine {
 	project: string;
@@ -162,11 +154,3 @@ export const toOverrideCommand = ({
 			}
 		: null;
 };
-
-// What a recorded failure means for the worktree's session.
-export const describeIssueWhy = (issue: CrewIssue): string =>
-	issue.stage === 'install'
-		? `${issue.project}'s install failed here, so its session can read and change the code but not run it.`
-		: issue.stage === 'checkout'
-			? `git could not check ${issue.project} out here.`
-			: `${issue.server ?? issue.project} ${issue.reason === 'not listening' ? 'runs but never answered on its port' : 'stopped'}.`;

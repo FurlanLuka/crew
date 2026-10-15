@@ -172,11 +172,11 @@ it; on a remote machine it says the main is where to open crew.
 **Set up** is every configuration form, one machine at a time: projects (from the checkouts
 already on the machine), their install and env commands, servers, Environment (bindings) with
 each value previewed in every worktree, workspaces, worktrees with their runners and pinned
-values (overrides), machines, settings, import and export. Every form shows the crew command
-it runs and runs exactly that, so the CLI and the page can never disagree; nothing is removed
-without showing what it costs first. Each machine has a **Setup with Claude** chat — a Claude
-session in your home directory with the crew CLI — for "make a worktree in store front for the
-search fix". The terminal keeps one interactive view, for launching: `crew launch`.
+values (overrides), machines, settings, import and export. Every form runs a crew command and
+nothing else, so the CLI and the page can never disagree; nothing is removed without showing what
+it costs first. Each machine has a **Setup with Claude** chat — a Claude session in your home
+directory with the crew CLI — for "make a worktree in store front for the search fix", with the
+worktree it is working on shown beside it. The terminal keeps one interactive view, for launching: `crew launch`.
 
 ## Voice OS
 

@@ -718,6 +718,8 @@ describe('slash commands', () => {
 		expect(harness.fake.reloads).toEqual(['skills']);
 		expect(harness.fake.models).toEqual(['opus']);
 		expect(noticesOf(harness.store)).toEqual(['Skills reloaded: 1 skill.', 'Model: opus.']);
+		// The chip follows the switch the session took.
+		expect(harness.store.state.sessions[REF]?.model).toBe('opus');
 		harness.manager.stopAll();
 	});
 
@@ -744,6 +746,8 @@ describe('slash commands', () => {
 		const harness = createCommandHarness({ controlError: new Error('boom') });
 		await waitTick();
 
+		const before = harness.store.state.sessions[REF]?.model;
+
 		harness.store.dispatch({ type: 'reload_session', ref: REF, kind: 'plugins', force: true });
 		harness.store.dispatch({ type: 'set_model', ref: REF, model: 'opus' });
 		await waitTick();
@@ -752,6 +756,8 @@ describe('slash commands', () => {
 			'Could not reload plugins: Error: boom',
 			'Could not switch to opus: Error: boom',
 		]);
+		// A refused switch never moves the chip.
+		expect(harness.store.state.sessions[REF]?.model).toBe(before);
 		harness.manager.stopAll();
 	});
 

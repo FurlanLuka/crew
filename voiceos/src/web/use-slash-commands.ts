@@ -3,6 +3,7 @@
 import { type KeyboardEvent, useEffect, useState } from 'react';
 import { LOCAL_MACHINE } from '../shared/machine-ref.js';
 import type { ClientMessage, State } from '../shared/protocol.js';
+import { applyMenuKey } from './box-menu-keys.js';
 import { runCrew } from './setup/api.js';
 import {
 	describeUpdate,
@@ -109,33 +110,13 @@ export const useSlashCommands = ({
 			return false;
 		}
 
-		switch (event.key) {
-			case 'ArrowDown':
-				setSelected((index + 1) % entries.length);
-				break;
-			case 'ArrowUp':
-				setSelected((index - 1 + entries.length) % entries.length);
-				break;
-			case 'Escape':
-				setClosedFor(text);
-				break;
-			case 'Tab':
-				choose(entry);
-				break;
-			case 'Enter':
-				if (event.shiftKey || event.nativeEvent.isComposing) {
-					return false;
-				}
-
-				choose(entry);
-				break;
-			default:
-				return false;
-		}
-
-		event.preventDefault();
-
-		return true;
+		return applyMenuKey(event, {
+			index,
+			length: entries.length,
+			onMove: setSelected,
+			onClose: () => setClosedFor(text),
+			onChoose: () => choose(entry),
+		});
 	};
 
 	const runTyped = (typedText: string): boolean => {

@@ -6,6 +6,7 @@ import { DocCard } from './DocCard.js';
 import { buildMediaUrl } from '../media.js';
 import { AttachedFiles } from './AttachmentChips.js';
 import { PeerCard, SessionBadge } from './PeerCard.js';
+import { WorkingClock, WorkingDots } from './WorkingLine.js';
 
 const ASIDE_STATUS_TEXT = {
 	asking: 'asking aside…',
@@ -26,9 +27,11 @@ interface StreamLineProps {
 	onOpen?: () => void;
 	// The asked session's row for an exchange with another session: its live step.
 	peerRun?: PeerRun;
+	// The tool call still running, since when: its line shows it at work.
+	runningSince?: number;
 }
 
-export const StreamLine = ({ item, onOpen, peerRun }: StreamLineProps) => {
+export const StreamLine = ({ item, onOpen, peerRun, runningSince }: StreamLineProps) => {
 	switch (item.kind) {
 		case 'user':
 			// Another session's words (or Voice OS's, for a secret): labelled as theirs, never shown as
@@ -68,17 +71,32 @@ export const StreamLine = ({ item, onOpen, peerRun }: StreamLineProps) => {
 					<Markdown text={item.text} />
 				</div>
 			);
-		case 'tool':
+		case 'tool': {
+			const isRunning = runningSince !== undefined;
+			const body = (
+				<>
+					{isRunning ? <WorkingDots /> : <span className="c-amber">▸</span>} {item.summary}
+					{isRunning && (
+						<>
+							{' '}
+							<WorkingClock since={runningSince} />
+						</>
+					)}
+				</>
+			);
+
 			return onOpen ? (
-				<button type="button" className="line tool opens" onClick={onOpen}>
-					<span className="c-amber">▸</span> {item.summary}{' '}
-					<span className="opens-hint">· open</span>
+				<button
+					type="button"
+					className={isRunning ? 'line tool opens running' : 'line tool opens'}
+					onClick={onOpen}
+				>
+					{body} <span className="opens-hint">· open</span>
 				</button>
 			) : (
-				<div className="line tool">
-					<span className="c-amber">▸</span> {item.summary}
-				</div>
+				<div className={isRunning ? 'line tool running' : 'line tool'}>{body}</div>
 			);
+		}
 		case 'tool_result':
 			return item.ok ? null : <div className="line result c-crit"> ✕ {item.summary}</div>;
 		case 'diff':

@@ -1,11 +1,10 @@
-// The form that makes a workspace or adds projects to one: each project ticked with its mode, the
-// wires between them, a direct-mode refusal shown on submit.
+// The form that makes a workspace, or a workspace's settings: each project ticked with its mode, the
+// wires between them, a direct-mode refusal shown on submit, and (in settings) its removal.
 import { type FormEvent, useState } from 'react';
-import type { SetupCommand } from '../../crew/commands.js';
 import { isOk, useCrew, useCrewAction } from './api.js';
-import { CommandLine } from './CommandLine.js';
 import { Confirm, PageHead, ResultLine, type SetupContext } from './common.js';
 import type { CrewProject, CrewWorkspace } from './types.js';
+import { countOf } from '../count.js';
 import { type Mode, listWires, planWorkspace } from './workspace.js';
 
 interface WorkspaceFormProps {
@@ -19,15 +18,15 @@ export const WorkspaceForm = ({ ctx, name }: WorkspaceFormProps) => {
 	const projects = useCrew<CrewProject[]>(ctx.machine, { type: 'ls_projects' });
 	const workspaces = useCrew<CrewWorkspace[]>(ctx.machine, { type: 'ls_workspaces' });
 	const action = useCrewAction(ctx.machine);
-	const members =
-		workspaces.data?.find((row) => row.name === name)?.projects?.map((member) => member.name) ?? [];
+	const workspace = workspaces.data?.find((row) => row.name === name);
+	const members = workspace?.projects?.map((member) => member.name) ?? [];
 	const [typedName, setTypedName] = useState('');
 	const [picks, setPicks] = useState<Record<string, Mode> | null>(null);
 	const [removalQueue, setRemovalQueue] = useState<string[]>([]);
 	const current: Record<string, Mode> =
 		picks ??
 		Object.fromEntries(
-			(workspaces.data?.find((row) => row.name === name)?.projects ?? []).map((member) => [
+			(workspace?.projects ?? []).map((member) => [
 				member.name,
 				member.mode === 'direct' ? 'direct' : 'worktree',
 			]),
@@ -70,19 +69,19 @@ export const WorkspaceForm = ({ ctx, name }: WorkspaceFormProps) => {
 		ctx.go(
 			isEdit
 				? { page: 'workspace', name: workspaceName }
-				: { page: 'progress', ref: `${workspaceName.trim()}/main` },
+				: { page: 'worktree', ref: `${workspaceName.trim()}/main` },
 		);
 	};
 
 	const removing = removalQueue[0];
 
 	return (
-		<section className="page narrow" aria-label={isEdit ? `Edit ${name}` : 'New workspace'}>
+		<section className="page" aria-label={isEdit ? `${name} settings` : 'New workspace'}>
 			<PageHead
-				title={isEdit ? `Edit ${name}` : 'New workspace'}
+				title={isEdit ? `${name} settings` : 'New workspace'}
 				lead={
 					isEdit
-						? 'Add or take out projects. Every worktree gets the change.'
+						? 'Its projects. Adding or taking one out changes every worktree: an added one is checked out and installed in each.'
 						: 'Pick the projects you work on together. Its first worktree, main, is created with every server running.'
 				}
 			/>
@@ -158,21 +157,6 @@ export const WorkspaceForm = ({ ctx, name }: WorkspaceFormProps) => {
 						))}
 					</div>
 				)}
-				<CommandLine
-					commands={[
-						...commands,
-						...removals.map(
-							(project): SetupCommand => ({
-								type: 'rm_workspace_project',
-								workspace: workspaceName,
-								project,
-								confirm: true,
-							}),
-						),
-					]}
-					then={isEdit ? undefined : 'main is checked out, installed and its servers started'}
-					machineTitle={ctx.machineTitle}
-				/>
 				<ResultLine reply={action.last && !isOk(action.last) ? action.last : null} />
 				<div className="form-actions">
 					<button
@@ -236,6 +220,46 @@ export const WorkspaceForm = ({ ctx, name }: WorkspaceFormProps) => {
 					}}
 				/>
 			)}
+			{isEdit && name && !removing && (
+				<RemoveWorkspace ctx={ctx} name={name} worktrees={workspace?.worktrees ?? []} />
+			)}
 		</section>
+	);
+};
+
+interface RemoveWorkspaceProps {
+	ctx: SetupContext;
+	name: string;
+	worktrees: string[];
+}
+
+const RemoveWorkspace = ({ ctx, name, worktrees }: RemoveWorkspaceProps) => {
+	const action = useCrewAction(ctx.machine);
+	const [isRemoving, setIsRemoving] = useState(false);
+
+	return isRemoving ? (
+		<Confirm
+			title={`Remove ${name}?`}
+			why={
+				<p className="fail-why">
+					{worktrees.length
+						? `Its ${countOf(worktrees.length, 'worktree goes', 'worktrees go')} to the trash: ${worktrees.join(', ')}. Commits not on the base stay in git's reflog.`
+						: 'It has no worktrees.'}{' '}
+					The projects stay on {ctx.machineTitle}.
+				</p>
+			}
+			command={{ type: 'rm_workspace', workspace: name, confirm: true }}
+			machine={ctx.machine}
+			actionLabel="Remove workspace"
+			run={action.run}
+			onCancel={() => setIsRemoving(false)}
+			onDone={() => ctx.go({ page: 'board', tab: 'workspaces' })}
+		/>
+	) : (
+		<div className="form-actions remove-row">
+			<button type="button" className="btn danger" onClick={() => setIsRemoving(true)}>
+				Remove workspace
+			</button>
+		</div>
 	);
 };

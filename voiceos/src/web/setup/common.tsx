@@ -12,7 +12,6 @@ import {
 	readCrewLine,
 	useCrew,
 } from './api.js';
-import { CommandLine } from './CommandLine.js';
 import { describeCost, formatBytes } from './readers.js';
 
 export interface SetupContext {
@@ -21,8 +20,11 @@ export interface SetupContext {
 	machine: string;
 	machineTitle: string;
 	go: (page: SetupPage, options?: { replace?: boolean }) => void;
-	// "Fix with Claude", "Ask Claude": to this machine's setup chat, never interrupting it.
-	askClaude: (prompt: string) => void;
+	// "Fix with Claude", "Ask Claude": to this machine's setup chat, never interrupting it. ref: the
+	// worktree it is about, shown beside the chat at once.
+	askClaude: (prompt: string, ref?: string) => void;
+	// Words the developer typed for setup: sent at once, then the chat (busy, they wait in its queue).
+	tellClaude: (words: string, ref?: string) => void;
 	send: (message: ClientMessage) => void;
 	// Voice OS on that worktree's session: activated, then on screen.
 	openVoice: (sessionRef: string) => void;
@@ -49,13 +51,25 @@ export const ResultLine = ({ reply, okText = 'Done.' }: ResultLineProps) => {
 	);
 };
 
+// A list still on its way from crew: said, so an empty answer is never shown before it is read.
+export const LoadingRow = ({ text }: { text: string }) => (
+	<div className="box">
+		<div className="box-row" aria-busy="true">
+			<span className="dot idle" />
+			<span className="sub">
+				<span className="m">{text}</span>
+			</span>
+		</div>
+	</div>
+);
+
 export const describeSize = (bytes: number | undefined): string =>
 	bytes === undefined ? '' : formatBytes(bytes);
 
 interface ConfirmProps {
 	title: string;
 	why: ReactNode;
-	// The removal itself, shown as its command; its dry run says what it costs.
+	// The removal itself; its dry run says what it costs.
 	command: SetupCommand;
 	dryRun?: SetupCommand | null;
 	// The dry run already read by the page that opens this (it needed the answer too): shown as it is,
@@ -120,7 +134,6 @@ export const Confirm = ({
 				)}
 				{cost.reply && !isOk(cost.reply) && <p className="m">{readCrewLine(cost.reply)}</p>}
 			</div>
-			<CommandLine commands={[command]} />
 			{typed && (
 				<label className="field">
 					<span>Type {typed} to confirm</span>

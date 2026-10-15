@@ -4,18 +4,18 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { LOCAL_MACHINE, refOn, SETUP_REF } from '../../shared/machine-ref.js';
 import { isMachineReachable, readMachineTitle } from '../../shared/machines.js';
 import type { ClientMessage, State } from '../../shared/protocol.js';
-import type { Navigate, Route, SetupPage } from '../router.js';
+import { BOARD, type Navigate, type Route, type SetupPage } from '../router.js';
 import { useCrew } from './api.js';
 import { Board } from './Board.js';
 import { CheckPage } from './CheckPage.js';
 import type { SetupContext } from './common.js';
 import { crumbsFor, pageAbove } from './crumbs.js';
 import { countNeedsYou } from './derive.js';
+import type { AskedFocus } from './focus.js';
 import { ExportPage } from './ExportPage.js';
 import { ImportPage } from './ImportPage.js';
-import { LogsPage } from './LogsPage.js';
 import { AddMachine, MachinePage } from './MachinePage.js';
-import { NewWorktree, Progress } from './NewWorktree.js';
+import { NewWorktree } from './NewWorktree.js';
 import { ProjectForm } from './ProjectForm.js';
 import { AddProject } from './AddProject.js';
 import { ProjectPage } from './ProjectPage.js';
@@ -116,6 +116,7 @@ export const SetupShell = ({
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
 	const [busyAsk, setBusyAsk] = useState<BusyAsk | null>(null);
 	const [chatDraft, setChatDraft] = useState('');
+	const [askedFocus, setAskedFocus] = useState<AskedFocus | null>(null);
 	const menuRef = useRef<HTMLDivElement | null>(null);
 	const machineTitle = readMachineTitle(state, machine);
 	const setupRef = setupRefFor(machine);
@@ -127,7 +128,11 @@ export const SetupShell = ({
 	);
 
 	const askClaude = useCallback(
-		(prompt: string) => {
+		(prompt: string, ref?: string) => {
+			if (ref) {
+				setAskedFocus({ ref, afterIndex: state.sessions[setupRef]?.stream.length ?? 0 });
+			}
+
 			if (isSetupBusy(state, setupRef)) {
 				setBusyAsk({ prompt });
 
@@ -140,7 +145,28 @@ export const SetupShell = ({
 		[state, setupRef, go],
 	);
 
-	const ctx: SetupContext = { state, machine, machineTitle, go, askClaude, send, openVoice };
+	const tellClaude = useCallback(
+		(words: string, ref?: string) => {
+			if (ref) {
+				setAskedFocus({ ref, afterIndex: state.sessions[setupRef]?.stream.length ?? 0 });
+			}
+
+			send({ type: 'action', action: { type: 'send', ref: setupRef, text: words } });
+			go({ page: 'chat' });
+		},
+		[state, setupRef, go, send],
+	);
+
+	const ctx: SetupContext = {
+		state,
+		machine,
+		machineTitle,
+		go,
+		askClaude,
+		tellClaude,
+		send,
+		openVoice,
+	};
 
 	useEffect(() => {
 		if (pendingAsk) {
@@ -209,7 +235,7 @@ export const SetupShell = ({
 
 	const pickMachine = (next: string) => {
 		setIsMenuOpen(false);
-		navigate({ half: 'setup', machine: next, page: { page: 'board', tab: 'projects' } });
+		navigate({ half: 'setup', machine: next, page: BOARD });
 	};
 
 	const crumbs = crumbsFor(page);
@@ -292,7 +318,7 @@ export const SetupShell = ({
 				<nav className="crumbs" aria-label="Where you are">
 					{crumbs.length > 0 && (
 						<>
-							<button type="button" onClick={() => go({ page: 'board', tab: 'projects' })}>
+							<button type="button" onClick={() => go(BOARD)}>
 								{machineTitle}
 							</button>
 							{crumbs.map((crumb, index) => {
@@ -331,6 +357,7 @@ export const SetupShell = ({
 					page={page}
 					chatDraft={chatDraft}
 					onChatDraftUsed={() => setChatDraft('')}
+					askedFocus={askedFocus}
 					onFirstRun={goFirstRun}
 				/>
 			</main>
@@ -384,6 +411,7 @@ interface SetupPageViewProps {
 	page: SetupPage;
 	chatDraft: string;
 	onChatDraftUsed: () => void;
+	askedFocus: AskedFocus | null;
 	onFirstRun: () => void;
 }
 
@@ -392,13 +420,21 @@ const SetupPageView = ({
 	page,
 	chatDraft,
 	onChatDraftUsed,
+	askedFocus,
 	onFirstRun,
 }: SetupPageViewProps) => {
 	switch (page.page) {
 		case 'board':
 			return <Board ctx={ctx} tab={page.tab} onFirstRun={onFirstRun} />;
 		case 'chat':
-			return <SetupChat ctx={ctx} draft={chatDraft} onDraftUsed={onChatDraftUsed} />;
+			return (
+				<SetupChat
+					ctx={ctx}
+					draft={chatDraft}
+					onDraftUsed={onChatDraftUsed}
+					askedFocus={askedFocus}
+				/>
+			);
 		case 'project':
 			return <ProjectPage ctx={ctx} name={page.name} />;
 		case 'project-new':
@@ -417,10 +453,6 @@ const SetupPageView = ({
 			return <WorktreePage ctx={ctx} worktreeRef={page.ref} />;
 		case 'worktree-new':
 			return <NewWorktree ctx={ctx} workspace={page.workspace} />;
-		case 'progress':
-			return <Progress ctx={ctx} worktreeRef={page.ref} />;
-		case 'logs':
-			return <LogsPage ctx={ctx} worktreeRef={page.ref} />;
 		case 'rename':
 			return <WorktreeNameForm ctx={ctx} worktreeRef={page.ref} kind="rename" />;
 		case 'duplicate':

@@ -3,7 +3,6 @@
 import { type FormEvent, useState } from 'react';
 import type { SetupCommand } from '../../crew/commands.js';
 import { isOk, useCrew, useCrewAction } from './api.js';
-import { CommandLine } from './CommandLine.js';
 import { PageHead, ResultLine, type SetupContext } from './common.js';
 import type { CrewWorkspace } from './types.js';
 
@@ -71,7 +70,7 @@ export const AddProject = ({ ctx }: { ctx: SetupContext }) => {
 	};
 
 	return (
-		<section className="page narrow" aria-label="Add a project">
+		<section className="page" aria-label="Add a project">
 			<PageHead
 				title="Add a project"
 				lead="Its sessions can work on the code at once. Then set it up: fill in the install and dev servers yourself (prefilled with what crew finds), or let Claude work them out and ask you only what it can't."
@@ -79,10 +78,10 @@ export const AddProject = ({ ctx }: { ctx: SetupContext }) => {
 			<form onSubmit={(event) => void submit(event)}>
 				<div className="seg">
 					<button type="button" aria-pressed={source === 'url'} onClick={() => setSource('url')}>
-						Git URL
+						Clone by URL
 					</button>
 					<button type="button" aria-pressed={source === 'path'} onClick={() => setSource('path')}>
-						A folder
+						Use a folder on this Mac
 					</button>
 				</div>
 				{source === 'url' ? (
@@ -109,7 +108,9 @@ export const AddProject = ({ ctx }: { ctx: SetupContext }) => {
 							value={path}
 							onChange={(event) => setPath(event.target.value)}
 						/>
-						<small>used where it is; nothing is moved</small>
+						<small>
+							used where it is, for a repo with no remote: crew's worktrees branch from it
+						</small>
 					</label>
 				)}
 				<label className="field">
@@ -138,10 +139,6 @@ export const AddProject = ({ ctx }: { ctx: SetupContext }) => {
 					</select>
 					<small>sessions run in a workspace's worktrees</small>
 				</label>
-				<CommandLine
-					commands={[addProject, addWorkspace]}
-					then="set up its install and dev servers"
-				/>
 				<ResultLine reply={action.last && !isOk(action.last) ? action.last : null} />
 				<div className="form-actions">
 					<button type="submit" className="btn primary" disabled={!addProject || action.isBusy}>

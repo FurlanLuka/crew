@@ -3792,6 +3792,81 @@ describe('slash commands', () => {
 		await context.close();
 	}, 20_000);
 
+	it('the model chip: shown once the session reports its model; a pick sends that model and the chip follows the report', async () => {
+		const { context, page } = await openWithCommands();
+		const before = received.length;
+		const chip = page.getByRole('button', { name: /^Model:/ });
+
+		store.dispatch({ type: 'session_model', ref: REF, model: 'claude-opus-5-5[1m]' });
+		await chip.waitFor({ timeout: 5000 });
+		expect(await chip.textContent()).toBe('Opus 5.5 · 1M');
+
+		// The model it already runs on: the menu closes, nothing is sent.
+		await chip.click();
+		await page.getByRole('menuitemradio', { name: /Opus 5\.5/ }).click();
+		await page.getByRole('menu').waitFor({ state: 'detached', timeout: 5000 });
+		await Bun.sleep(150);
+		expect(
+			received
+				.slice(before)
+				.some(
+					(entry) => entry.message.type === 'action' && entry.message.action.type === 'set_model',
+				),
+		).toBe(false);
+
+		await chip.click();
+		await page.getByRole('menuitemradio', { name: /Sonnet 5\.5/ }).click();
+		await waitUntil(() =>
+			received
+				.slice(before)
+				.some(
+					(entry) =>
+						entry.message.type === 'action' &&
+						entry.message.action.type === 'set_model' &&
+						entry.message.action.model === 'claude-sonnet-5-5',
+				),
+		);
+		// Not before the session says it switched.
+		expect(await chip.textContent()).toBe('Opus 5.5 · 1M');
+		store.dispatch({ type: 'session_model', ref: REF, model: 'claude-sonnet-5-5' });
+		await page.waitForFunction(
+			() => document.querySelector('.model-chip')?.textContent === 'Sonnet 5.5',
+			undefined,
+			{ timeout: 5000 },
+		);
+		await context.close();
+	}, 20_000);
+
+	it('working: thinking at the foot of the stream; a running tool shows it on its own line, never twice; gone once the turn ends', async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openWithCommands();
+		const line = page.locator('.line.working');
+
+		store.dispatch({ type: 'turn_started', ref: REF });
+		await line.getByText('Thinking').waitFor({ timeout: 5000 });
+		expect(await page.locator(`.vo-tab[data-ref="${REF}"] .dot.running`).count()).toBe(1);
+
+		store.dispatch({
+			type: 'tool',
+			ref: REF,
+			name: 'Bash',
+			summary: 'run pnpm test --filter checkout',
+		});
+		const running = page.locator('.line.tool.running');
+		await running.waitFor({ timeout: 5000 });
+		expect(await running.textContent()).toContain('run pnpm test --filter checkout');
+		expect(await running.locator('.working-dots').count()).toBe(1);
+		expect(await line.count()).toBe(0);
+
+		store.dispatch({ type: 'tool_result', ref: REF, ok: true, summary: '' });
+		await line.getByText('Thinking').waitFor({ timeout: 5000 });
+		expect(await running.count()).toBe(0);
+
+		store.dispatch({ type: 'turn_ended', ref: REF, costUsd: 0, text: '' });
+		await line.waitFor({ state: 'detached', timeout: 5000 });
+		await context.close();
+	}, 20_000);
+
 	it("the context meter: how full the session is, right of the box; Compact goes through Voice OS's confirm", async () => {
 		store.dispatch({ type: 'conversation_reset', ref: REF });
 		const { context, page } = await openWithCommands();
@@ -3839,7 +3914,7 @@ describe('slash commands', () => {
 		await context.close();
 	}, 20_000);
 
-	it('at phone width the chip and the box share one row', async () => {
+	it('at phone width the mode chip and the box share one row; the meter and the model chip are left out', async () => {
 		const { context, page } = await openWithCommands();
 
 		await page.setViewportSize({ width: 390, height: 800 });
@@ -3848,7 +3923,11 @@ describe('slash commands', () => {
 		await page.locator('.ctx-wrap').waitFor({ state: 'attached', timeout: 5000 });
 		expect(await page.locator('.ctx-wrap').isVisible()).toBe(false);
 		store.dispatch({ type: 'conversation_reset', ref: REF });
-		const chip = await page.locator('.perm-chip').boundingBox();
+		// So is the model chip: the permission mode is the one that stays.
+		store.dispatch({ type: 'session_model', ref: REF, model: 'claude-opus-5-5[1m]' });
+		await page.locator('.model-wrap').waitFor({ state: 'attached', timeout: 5000 });
+		expect(await page.locator('.model-wrap').isVisible()).toBe(false);
+		const chip = await page.locator('.perm-chip:not(.model-chip)').boundingBox();
 		const field = await fieldOf(page).boundingBox();
 
 		expect(chip && field).toBeTruthy();

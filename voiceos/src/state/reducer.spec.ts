@@ -2221,6 +2221,35 @@ describe('a crash with words waiting', () => {
 	});
 });
 
+describe('session_model', () => {
+	it('records the model on the session; the same one again → nothing changes', () => {
+		const started = run([
+			{ type: 'worktrees', worktrees: [worktree('store-front/main')] },
+			{ type: 'session_model', ref: 'store-front/main', model: 'claude-opus-5-5[1m]' },
+		]);
+		expect(started.state.sessions['store-front/main']?.model).toBe('claude-opus-5-5[1m]');
+
+		const again = run(
+			[{ type: 'session_model', ref: 'store-front/main', model: 'claude-opus-5-5[1m]' }],
+			started.state,
+		);
+		expect(again.effects).toEqual([]);
+		expect(again.state.sessions['store-front/main']?.model).toBe('claude-opus-5-5[1m]');
+	});
+});
+
+describe('set_onboarded', () => {
+	it('sets the flag; the same value again → still set, no effects', () => {
+		const set = run([{ type: 'set_onboarded', onboarded: true }]);
+		expect(set.state.onboarded).toBe(true);
+		expect(set.effects).toEqual([]);
+
+		const again = run([{ type: 'set_onboarded', onboarded: true }], set.state);
+		expect(again.state.onboarded).toBe(true);
+		expect(again.effects).toEqual([]);
+	});
+});
+
 describe('set_voice_off', () => {
 	it('off → only the flag; back on → the updates that waited are dropped, the page showed them', () => {
 		const waiting = run([

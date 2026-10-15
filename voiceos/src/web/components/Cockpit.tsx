@@ -192,6 +192,7 @@ export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 					sessionRef={session.ref}
 					session={session}
 					className="vo-stream stream"
+					hasAsk={state.asks.some((ask) => ask.ref === session.ref)}
 					openFor={(item) => {
 						if (item.kind === 'session_ask') {
 							const peerRef = item.peerRef;

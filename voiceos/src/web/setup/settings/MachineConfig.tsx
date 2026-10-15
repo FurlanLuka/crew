@@ -1,7 +1,6 @@
 // This machine's addresses and the dev proxy, set with crew config set.
 import { type FormEvent, useState } from 'react';
 import { useCrew, useCrewAction, isOk } from '../api.js';
-import { CommandLine } from '../CommandLine.js';
 import { ResultLine, type SetupContext } from '../common.js';
 import {
 	CONFIG_FIELDS,
@@ -88,7 +87,6 @@ export const MachineConfig = ({ ctx }: { ctx: SetupContext }) => {
 					Refresh tmux config
 				</button>
 			</div>
-			<CommandLine commands={changed} machineTitle={ctx.machineTitle} />
 			{trust ? <p className="result-line ok">{trust}</p> : <ResultLine reply={action.last} />}
 		</form>
 	);

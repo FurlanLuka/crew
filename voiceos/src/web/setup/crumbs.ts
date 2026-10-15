@@ -1,5 +1,5 @@
 // Set up's breadcrumbs, pure: the trail after the machine's name, and where Esc goes.
-import type { BoardTab, SetupPage } from '../router.js';
+import { BOARD, type SetupPage } from '../router.js';
 
 export interface Crumb {
 	label: string;
@@ -51,14 +51,11 @@ export const crumbsFor = (page: SetupPage): Crumb[] => {
 		case 'workspace-new':
 			return [workspaces(), { label: 'New workspace' }];
 		case 'workspace-edit':
-			return [workspaces(), workspaceCrumb(page.name), { label: 'Edit projects' }];
+			return [workspaces(), workspaceCrumb(page.name), { label: 'Settings' }];
 		case 'worktree-new':
 			return [workspaces(), workspaceCrumb(page.workspace), { label: 'New worktree' }];
 		case 'worktree':
-		case 'progress':
 			return worktreeCrumbs(page.ref);
-		case 'logs':
-			return worktreeCrumbs(page.ref, 'Logs');
 		case 'rename':
 			return worktreeCrumbs(page.ref, 'Rename');
 		case 'duplicate':
@@ -85,5 +82,5 @@ export const pageAbove = (page: SetupPage): SetupPage | null => {
 	const trail = crumbsFor(page);
 	const above = trail.at(-2)?.page;
 
-	return above ?? { page: 'board', tab: 'projects' as BoardTab };
+	return above ?? BOARD;
 };

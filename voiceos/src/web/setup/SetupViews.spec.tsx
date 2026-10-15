@@ -6,7 +6,8 @@ import { LOCAL_MACHINE } from '../../shared/machine-ref.js';
 import type { State } from '../../shared/protocol.js';
 import { createInitialState, createSession } from '../../state/reducer.js';
 import { FirstRun } from '../home/FirstRun.js';
-import { ClaudeCard, ProblemsStrip } from './Board.js';
+import { ProblemsStrip } from './Board.js';
+import { ClaudeCard } from './ClaudeCard.js';
 import type { SetupContext } from './common.js';
 import { listProblems } from './derive.js';
 
@@ -18,6 +19,7 @@ const createCtx = (state: State = createInitialState()): SetupContext => ({
 	machineTitle: 'This Mac',
 	go: noop,
 	askClaude: noop,
+	tellClaude: noop,
 	send: noop,
 	openVoice: noop,
 });
@@ -68,15 +70,19 @@ describe('ProblemsStrip', () => {
 
 describe('ClaudeCard', () => {
 	it('free → a field to ask anything', () =>
-		expect(renderToStaticMarkup(<ClaudeCard ctx={createCtx(withSetup())} />)).toContain(
-			'aria-label="Ask setup"',
-		));
+		expect(
+			renderToStaticMarkup(
+				<ClaudeCard ctx={createCtx(withSetup())} worktrees={[]} projects={[]} />,
+			),
+		).toContain('aria-label="Ask setup"'));
 
 	it('working or waiting on you → says so, with Open only', () => {
 		const state = withSetup({
 			asks: [{ id: 'a1', ref: 'setup', at: 1, kind: 'plan', input: {}, plan: 'p' }],
 		});
-		const html = renderToStaticMarkup(<ClaudeCard ctx={createCtx(state)} />);
+		const html = renderToStaticMarkup(
+			<ClaudeCard ctx={createCtx(state)} worktrees={[]} projects={[]} />,
+		);
 
 		expect(html).toContain('waiting on you');
 		expect(html).toContain('>Open</button>');
@@ -87,15 +93,24 @@ describe('ClaudeCard', () => {
 describe('FirstRun', () => {
 	const render = (resume: string | null) =>
 		renderToStaticMarkup(
-			<FirstRun resume={resume} openVoice={noop} askClaude={noop} goSetup={noop} />,
+			<FirstRun
+				resume={resume}
+				openVoice={noop}
+				askClaude={noop}
+				goSetup={noop}
+				goImport={noop}
+				markOnboarded={noop}
+			/>,
 		);
 
-	it('a fresh first run → the opening: the wordmark and Get started, no steps yet', () => {
+	it('a fresh first run → the opening: the wordmark and three ways in, no steps yet', () => {
 		const html = render(null);
 
 		expect(html).toContain('data-stage="intro"');
 		expect(html).toContain('your sessions, every machine');
-		expect(html).toContain('Get started');
+		expect(html).toContain('<b>Import</b>');
+		expect(html).toContain('<b>Set it up step by step</b>');
+		expect(html).toContain('<b>Skip</b>');
 		expect(html).not.toContain('fr-progress');
 	});
 
@@ -104,6 +119,6 @@ describe('FirstRun', () => {
 
 		expect(html).toContain('Getting store-front/main ready');
 		expect(html).toMatch(/<li[^>]*aria-current="step"[^>]*>\s*Getting it ready</);
-		expect(html).not.toContain('Get started');
+		expect(html).not.toContain('Set it up step by step');
 	});
 });

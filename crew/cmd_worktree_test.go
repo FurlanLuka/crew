@@ -136,23 +136,27 @@ func TestCreationDocs(t *testing.T) {
 	if string(finished) != `{"health":null,"projects":[{"name":"api","path":"/p/api"}],"ref":"ws/wt"}` {
 		t.Errorf("finished = %s", finished)
 	}
-	logs, _ := json.Marshal(logsDoc(ref, "api", "", 50))
+	logs, _ := json.Marshal(logsDoc(ref, "api", "", "", 50))
 	if string(logs) != `{"lines":[],"project":"api","ref":"ws/wt"}` {
 		t.Errorf("empty logs = %s", logs)
 	}
-	logs, _ = json.Marshal(logsDoc(ref, "api", "a\nb", 50))
+	logs, _ = json.Marshal(logsDoc(ref, "api", "", "a\nb", 50))
 	if !strings.Contains(string(logs), `"lines":["a","b"]`) {
 		t.Errorf("logs = %s", logs)
 	}
-	logs, _ = json.Marshal(logsDoc(ref, "api", "\x1b[31merr\x1b[0m\n", 50))
+	logs, _ = json.Marshal(logsDoc(ref, "api", "", "\x1b[31merr\x1b[0m\n", 50))
 	if !strings.Contains(string(logs), `"lines":["err"]`) {
 		t.Errorf("setup logs must be cleaned like dev logs: %s", logs)
 	}
 	// Cleaned, then counted: the prompt lines the cleaning drops never take
 	// one of the n places.
-	logs, _ = json.Marshal(logsDoc(ref, "api", "a\nb\nc\n\x1b[?2004h% \n\x1b[?2004h% \n", 2))
+	logs, _ = json.Marshal(logsDoc(ref, "api", "", "a\nb\nc\n\x1b[?2004h% \n\x1b[?2004h% \n", 2))
 	if !strings.Contains(string(logs), `"lines":["b","c"]`) {
 		t.Errorf("setup logs must clean before taking n: %s", logs)
+	}
+	serverLogs, _ := json.Marshal(logsDoc(ref, "api", "web", "a\n", 50))
+	if string(serverLogs) != `{"lines":["a"],"project":"api","ref":"ws/wt","server":"web"}` {
+		t.Errorf("a server's log names its server: %s", serverLogs)
 	}
 	devLogs, _ := json.Marshal(devLogsDoc("ws/wt", "web", "a\nb\nc\n", 2))
 	if string(devLogs) != `{"lines":["b","c"],"ref":"ws/wt","server":"web"}` {
