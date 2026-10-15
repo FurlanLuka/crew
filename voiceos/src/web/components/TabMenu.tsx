@@ -203,11 +203,21 @@ interface GroupMenuProps {
 	spot: Spot;
 	onClose: () => void;
 	onRename: () => void;
+	// Where Open does more than the bar's toggle (Home also shows a member): Open only, never Close.
+	onOpen?: () => void;
 }
 
-export const GroupMenu = ({ state, dispatch, group, spot, onClose, onRename }: GroupMenuProps) => {
+export const GroupMenu = ({
+	state,
+	dispatch,
+	group,
+	spot,
+	onClose,
+	onRename,
+	onOpen,
+}: GroupMenuProps) => {
 	const [opener] = useState(() => document.activeElement);
-	const isOpen = state.openGroup === group.id;
+	const isOpen = !onOpen && state.openGroup === group.id;
 
 	const pick = (run: () => void) => {
 		onClose();
@@ -220,7 +230,9 @@ export const GroupMenu = ({ state, dispatch, group, spot, onClose, onRename }: G
 				type="button"
 				role="menuitem"
 				className="nm-item"
-				onClick={() => pick(() => dispatch({ type: 'open_group', id: isOpen ? null : group.id }))}
+				onClick={() =>
+					pick(onOpen ?? (() => dispatch({ type: 'open_group', id: isOpen ? null : group.id })))
+				}
 			>
 				<span className="nm-text">{isOpen ? 'Close' : 'Open'}</span>
 			</button>

@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import type { PendingAsk, State } from '../../shared/protocol.js';
 import { createInitialState, createSession } from '../../state/reducer.js';
 import { Activate, describeGroup, listActivateSections } from './Activate.js';
-import { ActiveView, sortForHome } from './ActiveView.js';
+import { ActiveView, listHomeSections, sortForHome } from './ActiveView.js';
 import { listRecentFolders, NewSessionDialog } from './NewSessionDialog.js';
 import { AskDock } from './AskDock.js';
 import { Cockpit } from './Cockpit.js';
@@ -266,6 +266,150 @@ describe('Home', () => {
 				}),
 			),
 		).toMatch(/data-machine="vm1"[\s\S]*?dot ask[\s\S]*?not reachable · last seen 2h ago/));
+
+	describe('with groups', () => {
+		const askOf = (ref: string): PendingAsk => ({ ...asking, id: `q-${ref}`, ref });
+		const shop = {
+			id: 'g1',
+			name: 'Shop',
+			color: 'pink' as const,
+			refs: ['store-front/main', 'store-front/wrk1'],
+		};
+		const api = {
+			id: 'g2',
+			name: 'API',
+			color: 'teal' as const,
+			refs: ['checkout-api/main', 'vm1:api/main'],
+		};
+		const grouped = (patch: Partial<State> = {}) =>
+			createState({
+				// A loose session first in the bar: it still lists last.
+				active: [
+					'setup',
+					'store-front/main',
+					'store-front/wrk1',
+					'checkout-api/main',
+					'vm1:api/main',
+				],
+				groups: [shop, api],
+				...patch,
+			});
+		const shape = (state: State) =>
+			listHomeSections(state).map(({ group, refs, missing }) => ({
+				group: group?.id ?? null,
+				refs,
+				missing,
+			}));
+
+		it('groups in the bar order, the loose sessions last; waiting first inside a group, never moving it', () => {
+			const looseFirst = grouped({
+				active: ['checkout-api/main', 'store-front/main', 'store-front/wrk1', 'vm1:api/main'],
+				groups: [shop],
+				asks: [askOf('store-front/wrk1')],
+			});
+
+			expect(shape(looseFirst)).toEqual([
+				{ group: 'g1', refs: ['store-front/wrk1', 'store-front/main'], missing: [] },
+				{ group: null, refs: ['checkout-api/main', 'vm1:api/main'], missing: [] },
+			]);
+			expect(
+				shape(
+					grouped({
+						active: [
+							'admin/main',
+							'checkout-api/main',
+							'vm1:api/main',
+							'store-front/main',
+							'store-front/wrk1',
+						],
+					}),
+				).map((section) => section.group),
+			).toEqual(['g2', 'g1', null]);
+			expect(
+				shape(grouped({ asks: [askOf('vm1:api/main')] })).map((section) => section.refs),
+			).toEqual([
+				['store-front/main', 'store-front/wrk1'],
+				['vm1:api/main', 'checkout-api/main'],
+			]);
+		});
+
+		it('every session grouped → no loose list; no groups → one list; nothing active → none', () => {
+			expect(shape(grouped()).map((section) => section.group)).toEqual(['g1', 'g2']);
+			expect(shape(createState({ active: ['store-front/main'] }))).toEqual([
+				{ group: null, refs: ['store-front/main'], missing: [] },
+			]);
+			expect(listHomeSections(createState({ active: [] }))).toEqual([]);
+			expect(
+				shape(
+					grouped({
+						active: [
+							'store-front/main',
+							'store-front/wrk1',
+							'checkout-api/main',
+							'vm1:api/main',
+							'gone/main',
+						],
+					}),
+				).at(-1),
+			).toEqual({ group: null, refs: [], missing: ['gone/main'] });
+		});
+
+		it('a member out of reach stays with its group; a group with one left lists loose, as the bar draws it', () => {
+			const withGone = grouped({
+				active: [
+					'store-front/main',
+					'store-front/wrk1',
+					'gone/main',
+					'checkout-api/main',
+					'vm1:api/main',
+				],
+				groups: [{ ...shop, refs: ['store-front/main', 'store-front/wrk1', 'gone/main'] }, api],
+			});
+
+			expect(shape(withGone)[0]).toEqual({
+				group: 'g1',
+				refs: ['store-front/main', 'store-front/wrk1'],
+				missing: ['gone/main'],
+			});
+
+			const halfGone = grouped({
+				active: ['store-front/main', 'gone/main', 'checkout-api/main', 'vm1:api/main'],
+				groups: [{ ...shop, refs: ['store-front/main', 'gone/main'] }, api],
+			});
+
+			expect(shape(halfGone)).toEqual([
+				{ group: 'g2', refs: ['checkout-api/main', 'vm1:api/main'], missing: [] },
+				{ group: null, refs: ['store-front/main'], missing: ['gone/main'] },
+			]);
+		});
+
+		it('each list under its name in its colour, counting who needs you; the loose ones under "Not in a group"', () => {
+			const calm = render(
+				grouped({ active: ['store-front/main', 'store-front/wrk1', 'checkout-api/main'] }),
+			);
+
+			expect(calm).toMatch(
+				/data-group="g1" data-color="pink"[\s\S]*?<b>Shop<\/b>[\s\S]*?2 sessions</,
+			);
+			expect(calm).not.toContain('need');
+			expect(calm).toMatch(/<b>Not in a group<\/b>[\s\S]*?data-ref="checkout-api\/main"/);
+
+			const busy = render(
+				grouped({ asks: [askOf('store-front/main'), askOf('store-front/wrk1')] }),
+			);
+
+			expect(busy).toContain('2 sessions · 2 need you');
+			expect(busy).toContain('2 sessions</span>');
+			expect(busy).not.toContain('Not in a group');
+		});
+
+		it('no groups → no list headers, as before', () => {
+			const html = render(home);
+
+			expect(html).not.toContain('vo-hgroup-head');
+			expect(html).not.toContain('Not in a group');
+		});
+	});
 });
 
 describe('New session dialog', () => {
