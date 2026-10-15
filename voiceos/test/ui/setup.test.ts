@@ -1009,7 +1009,7 @@ describe('Setup with Claude', () => {
 		await context.close();
 	}, 20_000);
 
-	it('"@" in the board\'s Setup with Claude box too; Ask → the chat with the name in it and the worktree beside', async () => {
+	it('"@" in the board\'s Setup with Claude box too; Enter sends it at once and opens the chat with the worktree beside', async () => {
 		await waitUntil(() => server.store.state.sessions.setup?.status === 'idle');
 		const { context, page } = await open('/setup');
 		const field = page.getByLabel('Ask setup');
@@ -1023,9 +1023,19 @@ describe('Setup with Claude', () => {
 		expect(await field.inputValue()).toBe('verify store-front/main ');
 		await menu.waitFor({ state: 'detached', timeout: 5000 });
 
-		await page.getByRole('button', { name: 'Ask' }).click();
+		await field.press('Enter');
 		await page.waitForURL('**/setup/chat');
-		expect(await page.getByLabel('Reply to setup').inputValue()).toBe('verify store-front/main');
+		// Sent with the one Enter: nothing left to send again in the chat.
+		await waitUntil(() =>
+			server.received.some(
+				(entry) =>
+					entry.message.type === 'action' &&
+					entry.message.action.type === 'send' &&
+					entry.message.action.ref === 'setup' &&
+					entry.message.action.text === 'verify store-front/main',
+			),
+		);
+		expect(await page.getByLabel('Reply to setup').inputValue()).toBe('');
 		await page
 			.getByRole('complementary', { name: 'store-front/main beside the chat' })
 			.waitFor({ timeout: 5000 });

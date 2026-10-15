@@ -28,7 +28,7 @@ export const ClaudeCard = ({ ctx, worktrees, projects }: ClaudeCardProps) => {
 		const words = text.trim();
 
 		if (words) {
-			ctx.askClaude(words, findRefIn(words, worktrees) ?? undefined);
+			ctx.tellClaude(words, findRefIn(words, worktrees) ?? undefined);
 		}
 	};
 

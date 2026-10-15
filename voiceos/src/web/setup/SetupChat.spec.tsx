@@ -47,6 +47,7 @@ const createContext = (state: State, machine = 'local'): SetupContext => ({
 	machineTitle: machine === 'local' ? 'This Mac' : 'Build box',
 	go: noop,
 	askClaude: noop,
+	tellClaude: noop,
 	send: noop,
 	openVoice: noop,
 });

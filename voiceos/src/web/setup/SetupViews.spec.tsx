@@ -19,6 +19,7 @@ const createCtx = (state: State = createInitialState()): SetupContext => ({
 	machineTitle: 'This Mac',
 	go: noop,
 	askClaude: noop,
+	tellClaude: noop,
 	send: noop,
 	openVoice: noop,
 });

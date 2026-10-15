@@ -145,7 +145,28 @@ export const SetupShell = ({
 		[state, setupRef, go],
 	);
 
-	const ctx: SetupContext = { state, machine, machineTitle, go, askClaude, send, openVoice };
+	const tellClaude = useCallback(
+		(words: string, ref?: string) => {
+			if (ref) {
+				setAskedFocus({ ref, afterIndex: state.sessions[setupRef]?.stream.length ?? 0 });
+			}
+
+			send({ type: 'action', action: { type: 'send', ref: setupRef, text: words } });
+			go({ page: 'chat' });
+		},
+		[state, setupRef, go, send],
+	);
+
+	const ctx: SetupContext = {
+		state,
+		machine,
+		machineTitle,
+		go,
+		askClaude,
+		tellClaude,
+		send,
+		openVoice,
+	};
 
 	useEffect(() => {
 		if (pendingAsk) {

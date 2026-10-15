@@ -23,6 +23,8 @@ export interface SetupContext {
 	// "Fix with Claude", "Ask Claude": to this machine's setup chat, never interrupting it. ref: the
 	// worktree it is about, shown beside the chat at once.
 	askClaude: (prompt: string, ref?: string) => void;
+	// Words the developer typed for setup: sent at once, then the chat (busy, they wait in its queue).
+	tellClaude: (words: string, ref?: string) => void;
 	send: (message: ClientMessage) => void;
 	// Voice OS on that worktree's session: activated, then on screen.
 	openVoice: (sessionRef: string) => void;
