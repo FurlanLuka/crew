@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'bun:test';
 import type { Session, StreamItem } from '../shared/protocol.js';
 import { createSession } from '../state/reducer.js';
-import { readWorkingLine } from './working-line.js';
+import { readWorkingState } from './working-line.js';
 
-const tool = (summary: string): StreamItem => ({
-	id: summary,
-	at: 1,
+const tool = (id: string, at: number): StreamItem => ({
+	id,
+	at,
 	kind: 'tool',
 	name: 'Bash',
-	summary,
+	summary: 'run pnpm test',
 });
-const result: StreamItem = { id: 'r', at: 2, kind: 'tool_result', ok: true, summary: '' };
+const result: StreamItem = { id: 'r', at: 9, kind: 'tool_result', ok: true, summary: '' };
 
 const session = (patch: Partial<Session>): Session => ({
 	...createSession({
@@ -26,49 +26,33 @@ const session = (patch: Partial<Session>): Session => ({
 	...patch,
 });
 
-describe('readWorkingLine', () => {
+describe('readWorkingState', () => {
 	it('running, nothing yet → thinking, since the request', () =>
-		expect(readWorkingLine(session({}), false)).toEqual({
-			kind: 'working',
-			what: 'Thinking',
-			since: 1000,
+		expect(readWorkingState(session({}), false)).toEqual({ kind: 'thinking', since: 1000 }));
+
+	it('a tool with no result yet → that tool, since it started: shown on its own line', () =>
+		expect(readWorkingState(session({ stream: [tool('t1', 2000)] }), false)).toEqual({
+			kind: 'tool',
+			itemId: 't1',
+			since: 2000,
 		}));
 
-	it('a tool with no result yet → that tool, said as happening', () => {
-		expect(
-			readWorkingLine(session({ stream: [tool('run pnpm test --filter checkout')] }), false),
-		).toMatchObject({ what: 'Running pnpm test --filter checkout' });
-		expect(readWorkingLine(session({ stream: [tool('read src/app.ts')] }), false)).toMatchObject({
-			what: 'Read src/app.ts',
-		});
-	});
+	it('the tool came back → thinking again', () =>
+		expect(readWorkingState(session({ stream: [tool('t1', 2000), result] }), false)).toMatchObject({
+			kind: 'thinking',
+		}));
 
-	it('the tool came back → thinking again; text arriving → writing', () => {
-		expect(readWorkingLine(session({ stream: [tool('run ls'), result] }), false)).toMatchObject({
-			what: 'Thinking',
-		});
-		expect(readWorkingLine(session({ draft: 'Two cases fail' }), false)).toMatchObject({
-			what: 'Writing',
-		});
-	});
+	it('a reply arriving → nothing more: its caret says it', () =>
+		expect(readWorkingState(session({ draft: 'Two cases fail' }), false)).toBeNull());
 
 	it('blocked, or a question open for it → waiting on you', () => {
-		expect(readWorkingLine(session({ status: 'blocked' }), false)).toEqual({ kind: 'waiting' });
-		expect(readWorkingLine(session({}), true)).toEqual({ kind: 'waiting' });
+		expect(readWorkingState(session({ status: 'blocked' }), false)).toEqual({ kind: 'waiting' });
+		expect(readWorkingState(session({}), true)).toEqual({ kind: 'waiting' });
 	});
 
-	it('idle, stopped or compacting → no line', () => {
-		expect(readWorkingLine(session({ status: 'idle' }), false)).toBeNull();
-		expect(readWorkingLine(session({ status: 'stopped' }), false)).toBeNull();
-		expect(readWorkingLine(session({ compactingSince: 5 }), false)).toBeNull();
+	it('idle, stopped or compacting → nothing', () => {
+		expect(readWorkingState(session({ status: 'idle' }), false)).toBeNull();
+		expect(readWorkingState(session({ status: 'stopped' }), false)).toBeNull();
+		expect(readWorkingState(session({ compactingSince: 5 }), false)).toBeNull();
 	});
-
-	it('a long command is cut', () =>
-		expect(
-			(
-				readWorkingLine(session({ stream: [tool(`run ${'x'.repeat(100)}`)] }), false) as {
-					what: string;
-				}
-			).what.length,
-		).toBe('Running '.length + 60));
 });

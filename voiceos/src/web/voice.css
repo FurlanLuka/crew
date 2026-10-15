@@ -2578,3 +2578,9 @@ button.line.opens:hover .opens-hint {
 		opacity: 0.7;
 	}
 }
+.line.tool.running .working-dots {
+	margin-right: 2px;
+}
+.line.tool .working-clock {
+	margin-left: 4px;
+}

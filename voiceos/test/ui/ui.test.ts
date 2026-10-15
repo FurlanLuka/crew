@@ -3669,7 +3669,7 @@ describe('slash commands', () => {
 		await context.close();
 	}, 20_000);
 
-	it('the working line: thinking, then the tool it runs, for the whole turn; gone once the turn ends', async () => {
+	it('working: thinking at the foot of the stream; a running tool shows it on its own line, never twice; gone once the turn ends', async () => {
 		await ensureIdle(REF);
 		const { context, page } = await openWithCommands();
 		const line = page.locator('.line.working');
@@ -3684,7 +3684,15 @@ describe('slash commands', () => {
 			name: 'Bash',
 			summary: 'run pnpm test --filter checkout',
 		});
-		await line.getByText('Running pnpm test --filter checkout').waitFor({ timeout: 5000 });
+		const running = page.locator('.line.tool.running');
+		await running.waitFor({ timeout: 5000 });
+		expect(await running.textContent()).toContain('run pnpm test --filter checkout');
+		expect(await running.locator('.working-dots').count()).toBe(1);
+		expect(await line.count()).toBe(0);
+
+		store.dispatch({ type: 'tool_result', ref: REF, ok: true, summary: '' });
+		await line.getByText('Thinking').waitFor({ timeout: 5000 });
+		expect(await running.count()).toBe(0);
 
 		store.dispatch({ type: 'turn_ended', ref: REF, costUsd: 0, text: '' });
 		await line.waitFor({ state: 'detached', timeout: 5000 });

@@ -1,34 +1,36 @@
-// The foot of a session's stream while its turn runs: three dots, what it is doing and for how long;
-// red, like its tab, when it waits on you. Gone when it is done.
+// How a running turn shows it is at work: three soft dots and a clock. On a tool call's own line while
+// it runs; at the foot of the stream for quiet thinking, or in red, like its tab, when it waits on
+// you.
 import { formatAge } from '../../state/working.js';
 import { useNow } from '../use-now.js';
-import type { WorkingLine as Line } from '../working-line.js';
 
 const ELAPSED_TICK_MS = 1000;
 
-export const WorkingLine = ({ line }: { line: NonNullable<Line> }) => {
+export const WorkingDots = () => (
+	<span className="working-dots" aria-hidden="true">
+		<i />
+		<i />
+		<i />
+	</span>
+);
+
+export const WorkingClock = ({ since }: { since: number }) => {
 	const now = useNow(ELAPSED_TICK_MS);
 
-	if (line.kind === 'waiting') {
-		return (
-			<div className="line working waiting" role="status">
-				<span className="dot ask" />
-				<span>Waiting on you</span>
-			</div>
-		);
-	}
-
-	return (
-		<div className="line working" role="status" aria-label={`working: ${line.what}`}>
-			<span className="working-dots" aria-hidden="true">
-				<i />
-				<i />
-				<i />
-			</span>
-			<span>{line.what}</span>
-			{line.since !== null && (
-				<span className="c-dim">{formatAge(Math.max(0, now - line.since))}</span>
-			)}
-		</div>
-	);
+	return <span className="c-dim working-clock">{formatAge(Math.max(0, now - since))}</span>;
 };
+
+export const ThinkingLine = ({ since }: { since: number | null }) => (
+	<div className="line working" role="status" aria-label="working: thinking">
+		<WorkingDots />
+		<span>Thinking</span>
+		{since !== null && <WorkingClock since={since} />}
+	</div>
+);
+
+export const WaitingLine = () => (
+	<div className="line working waiting" role="status">
+		<span className="dot ask" />
+		<span>Waiting on you</span>
+	</div>
+);

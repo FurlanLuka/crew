@@ -721,10 +721,10 @@ as Claude Code reports it when the session starts, after a clear and after a swi
 Opus, Sonnet or Haiku: it is the same switch `/model` makes, for the next turn, and the chip changes
 once the session has taken it.
 
-While a turn runs, a line at the bottom of the session's stream says what it is doing and for how
-long: "Thinking", the command it is running ("Running pnpm test"), or "Writing" while its reply
-arrives. It stays through quiet thinking and long tool calls, so a session at work never looks idle.
-When it needs you, the line says so in red, like its tab. When the turn ends the line goes away. The
+While a turn runs, the session shows it is at work for the whole of it, so it never looks idle. A
+tool call still running has three soft dots and its clock on its own line; while it thinks, a
+"Thinking" line with the time sits at the bottom of the stream; a reply arriving has its caret. When
+it needs you, the bottom line says so in red, like its tab. When the turn ends it all goes away. The
 session's dot on its tab, in the header and on Active turns while it works.
 
 ## Context meter

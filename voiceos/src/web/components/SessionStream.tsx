@@ -9,8 +9,8 @@ import { useStickToBottom } from '../use-stick-to-bottom.js';
 import { CompactingLine } from './CompactingLine.js';
 import { Markdown } from './Markdown.js';
 import { StreamLine } from './StreamLine.js';
-import { WorkingLine } from './WorkingLine.js';
-import { readWorkingLine } from '../working-line.js';
+import { ThinkingLine, WaitingLine } from './WorkingLine.js';
+import { readWorkingState } from '../working-line.js';
 
 interface SessionStreamProps {
 	// Scrolls to the end when it changes: the session on screen.
@@ -40,7 +40,8 @@ export const SessionStream = ({
 	// The compaction bar is added at the end of the stream too: it comes into view like a line.
 	const streamRef = useStickToBottom<HTMLElement>(sessionRef);
 	const draft = session ? stripStreamingTag(session.draft) : '';
-	const working = session ? readWorkingLine(session, hasAsk) : null;
+	const working = session ? readWorkingState(session, hasAsk) : null;
+	const runningToolId = working?.kind === 'tool' ? working.itemId : null;
 
 	return (
 		<section className={className} aria-label="stream" ref={streamRef}>
@@ -48,14 +49,18 @@ export const SessionStream = ({
 				const after = renderAfter?.(item);
 				const onOpen = openFor?.(item);
 				const opens = onOpen ? { onOpen } : {};
+				const running =
+					item.id === runningToolId && working?.kind === 'tool'
+						? { runningSince: working.since }
+						: {};
 
 				return after ? (
 					<div key={item.id} className="stream-item">
-						<StreamLine item={item} {...opens} />
+						<StreamLine item={item} {...opens} {...running} />
 						{after}
 					</div>
 				) : (
-					<StreamLine key={item.id} item={item} {...opens} />
+					<StreamLine key={item.id} item={item} {...opens} {...running} />
 				);
 			})}
 			{draft && (
@@ -67,7 +72,8 @@ export const SessionStream = ({
 			{session && session.compactingSince !== null && (
 				<CompactingLine since={session.compactingSince} />
 			)}
-			{working && <WorkingLine line={working} />}
+			{working?.kind === 'thinking' && <ThinkingLine since={working.since} />}
+			{working?.kind === 'waiting' && <WaitingLine />}
 			{children}
 		</section>
 	);
