@@ -1608,6 +1608,31 @@
 .sh-steps i.on {
 	background: #fff;
 }
+.sheet.peer .sh-title {
+	color: var(--label-2);
+	font-weight: 400;
+}
+/* The sessions' names sit on the title's line: inline, not flex, so their text shares its baseline. */
+.sh-title .pc-who {
+	display: inline;
+}
+.sh-title .pc-ava {
+	width: 18px;
+	height: 18px;
+	margin-right: 6px;
+	vertical-align: middle;
+}
+/* A request's note is a sentence of its own, under the title. */
+.sheet.peer .sh-reason {
+	display: block;
+	margin: 4px 0 0;
+}
+.sheet.peer .sh-head {
+	align-items: flex-start;
+}
+.sheet.peer .sh-head > .dot {
+	margin-top: 7px;
+}
 .sh-body {
 	flex: 0 1 auto;
 	min-height: 0;
