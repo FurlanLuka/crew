@@ -1,6 +1,7 @@
-// The voice bar, docked across the bottom: what the session on screen waits on (its question, plan,
-// permission, confirm or a call auto mode blocked), a moment Voice OS asks, the last spoken line, then the mic, where your words
-// go and the listening mode. The mic's logic is use-voice-input.ts.
+// The voice bar, docked across the bottom: what the session on screen waits on (its question,
+// plan, permission, confirm or a call auto mode blocked), a moment Voice OS asks, the last spoken
+// line, then the mic, the box (its queued messages folded into it) and the listening mode. The
+// mic's logic is use-voice-input.ts.
 import type { Action, ClientMessage, State } from '../../shared/protocol.js';
 import { readLabel } from '../../state/helpers.js';
 import { isListeningMode, type InputMode } from '../listen-mode.js';
@@ -11,12 +12,11 @@ import type { VoiceInput } from '../use-voice-input.js';
 import { useAttachments } from '../use-attachments.js';
 import { AskDock } from './AskDock.js';
 import { AttachmentChips } from './AttachmentChips.js';
-import { DenialDock } from './DenialDock.js';
+import { DenialSheet } from './DenialSheet.js';
 import { Composer } from './Composer.js';
 import { LastSpokenLine } from './LastSpokenLine.js';
 import { ModeMenu } from './ModeMenu.js';
 import { MomentsRow } from './MomentsRow.js';
-import { QueueList } from './QueueList.js';
 import { VoiceToggle } from './VoiceToggle.js';
 
 interface BottomBarProps {
@@ -92,11 +92,10 @@ export const BottomBar = ({
 	return (
 		<footer className="vo-bar">
 			{denial && (
-				<DenialDock denial={denial} label={readLabel(state, denial.ref)} dispatch={dispatch} />
+				<DenialSheet denial={denial} label={readLabel(state, denial.ref)} dispatch={dispatch} />
 			)}
 			{ask && <AskDock ask={ask} label={readLabel(state, ask.ref)} dispatch={dispatch} />}
 			<MomentsRow state={state} dispatch={dispatch} />
-			{viewed && <QueueList session={viewed} dispatch={dispatch} />}
 			<LastSpokenLine state={state} />
 			<AttachmentChips attachments={attachments} />
 			<div className="vo-composer">

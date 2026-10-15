@@ -1229,37 +1229,6 @@
 .btw-a {
 	color: var(--label);
 }
-/* Another session's request waiting on the developer. */
-.peer-dock {
-	display: grid;
-	gap: 10px;
-}
-.pd-route {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	flex-wrap: wrap;
-	font-size: 13.5px;
-	color: var(--label-2);
-}
-.pd-route .lock-icon {
-	color: var(--amber);
-}
-.pd-task {
-	padding: 10px 12px;
-	border-radius: 9px;
-	background: #07090b;
-	box-shadow: inset 0 0 0 1px var(--hair);
-	color: #fff;
-	font: 13px / 1.5 var(--mono);
-	white-space: pre-wrap;
-	word-break: break-word;
-}
-.pd-note {
-	margin: 0;
-	color: var(--label-2);
-	font-size: 13.5px;
-}
 .sd-note {
 	margin-right: auto;
 	color: var(--label-3);
@@ -1520,9 +1489,8 @@
 	font-size: 12.5px;
 }
 
-/* The state row (what went wrong, with the way out) and the ask dock (what the session waits on). */
-.vs-state,
-.dock {
+/* The state row: what went wrong, with the way out. */
+.vs-state {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
@@ -1535,132 +1503,376 @@
 .vs-state .row-actions {
 	margin-left: auto;
 }
-.vs-state.crit,
-.dock.crit {
+.vs-state.crit {
 	background: rgba(224, 108, 95, 0.07);
 }
 .vs-state.wait {
 	background: rgba(240, 160, 44, 0.06);
 }
-.dock {
-	display: grid;
-	gap: 10px;
-	max-height: 46vh;
-	overflow-y: auto;
-}
-.dock.question {
-	background: rgba(255, 255, 255, 0.04);
-}
-.dock.amber {
-	background: rgba(240, 160, 44, 0.06);
-}
-/* A plan is read before it is approved: one tall scroller for its text, the buttons always in view
-   (debug note 45). */
-.dock.plan {
-	max-height: none;
-}
-.dock.plan .quote {
-	max-height: 50vh;
-}
-/* Docked above the voice bar, flush like the moments row: a hairline on top and below. */
-.vo-bar > .dock {
+
+/* A prompt the session waits on: one raised sheet, no border. The dot says what kind, the title asks,
+   the body (a command, a plan, the options) scrolls within the sheet's height, and the answers stay in
+   view at its foot, the primary last. */
+.sheet {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	min-width: 0;
+	max-height: 60vh;
+	padding: 14px 16px;
+	border-radius: 14px;
+	background: linear-gradient(180deg, #191c21 0%, #15181c 100%);
 	box-shadow:
-		inset 0 1px 0 var(--hair),
-		inset 0 -1px 0 var(--hair);
+		0 0 0 1px rgba(255, 255, 255, 0.075),
+		inset 0 1px 0 rgba(255, 255, 255, 0.05),
+		0 24px 48px -18px rgba(0, 0, 0, 0.8);
+	animation: sheet-rise 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
-.dock-head {
+@keyframes sheet-rise {
+	from {
+		transform: translateY(6px);
+		opacity: 0;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.sheet {
+		animation: none;
+	}
+}
+.vo-bar > .sheet {
+	margin: 14px 20px 2px;
+}
+.sh-head {
 	display: flex;
 	align-items: center;
-	gap: 12px;
+	gap: 10px;
+	min-width: 0;
 }
-.dock-head .decline {
-	margin-left: auto;
-	padding-inline: 8px;
+.sh-head > .dot.plain {
+	background: rgba(255, 255, 255, 0.75);
 }
-.dock .lbl {
+.sh-head > .dot.ask {
+	box-shadow: 0 0 0 4px rgba(224, 108, 95, 0.18);
+}
+.sh-head > .dot.run {
+	box-shadow: 0 0 0 4px rgba(240, 160, 44, 0.16);
+}
+.sh-title {
+	min-width: 0;
+	color: #fff;
+	font: 600 15px / 1.35 var(--sys);
+	overflow-wrap: anywhere;
+}
+.sh-title .lock-icon {
+	color: var(--amber);
+	vertical-align: -1px;
+}
+.sh-title code {
+	font-size: 13px;
+}
+.sh-reason {
+	margin-left: 8px;
 	color: var(--label-3);
+	font-weight: 400;
 }
-.dock.crit .lbl {
-	color: var(--crit-text);
+.sh-meta {
+	display: flex;
+	flex: none;
+	align-items: center;
+	gap: 10px;
+	margin-left: auto;
+	color: var(--label-3);
+	font: 11.5px var(--mono);
 }
-.dock .ask {
-	font: 15px / 1.45 var(--sys);
+.sh-tool {
+	padding: 2px 7px;
+	border-radius: 6px;
+	background: var(--fill);
+	color: var(--label-2);
+}
+.sh-steps,
+.sh-steps > span {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+}
+.sh-steps > span {
+	gap: 4px;
+}
+.sh-steps i {
+	width: 14px;
+	height: 3px;
+	border-radius: 2px;
+	background: rgba(255, 255, 255, 0.15);
+}
+.sh-steps i.on {
+	background: #fff;
+}
+.sheet.peer .sh-title {
+	color: var(--label-2);
+	font-weight: 400;
+}
+/* The sessions' names sit on the title's line: inline, not flex, so their text shares its baseline. */
+.sh-title .pc-who {
+	display: inline;
+}
+.sh-title .pc-ava {
+	width: 18px;
+	height: 18px;
+	margin-right: 6px;
+	vertical-align: middle;
+}
+/* A request's note is a sentence of its own, under the title. */
+.sheet.peer .sh-reason {
+	display: block;
+	margin: 4px 0 0;
+}
+.sheet.peer .sh-head {
+	align-items: flex-start;
+}
+.sheet.peer .sh-head > .dot {
+	margin-top: 7px;
+}
+.sh-body {
+	flex: 0 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	scrollbar-width: thin;
+}
+.sh-cmd,
+.sh-fields,
+.sh-task,
+.sh-plan {
+	margin: 0;
+	padding: 11px 14px;
+	border-radius: 10px;
+	background: #08090b;
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+.sh-cmd {
+	color: var(--label-2);
+	font: 13px / 1.6 var(--mono);
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+.sh-cmd .pr {
+	margin-right: 10px;
+	color: var(--label-4);
+	user-select: none;
+}
+.sh-cmd .program,
+.sh-cmd.plain {
 	color: #fff;
 }
-.dock .quote {
-	max-height: 24vh;
-	overflow-y: auto;
+.sh-cmd .operator {
+	color: var(--amber);
+}
+.sh-fields {
+	display: grid;
+	gap: 4px;
+	font: 12.5px / 1.5 var(--mono);
+}
+.sh-fields div {
+	display: grid;
+	grid-template-columns: minmax(72px, max-content) minmax(0, 1fr);
+	gap: 12px;
+}
+.sh-fields dt {
+	color: var(--label-3);
+}
+.sh-fields dd {
+	margin: 0;
+	color: #fff;
+	overflow-wrap: anywhere;
+}
+.sh-task {
+	color: #fff;
+	font-size: 14px;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+.sh-quote {
+	margin: 0;
 	padding-left: 12px;
-	box-shadow: inset 2px 0 0 rgba(255, 255, 255, 0.175);
+	box-shadow: inset 2px 0 0 rgba(255, 255, 255, 0.18);
+	color: #fff;
+	font-size: 14px;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+/* Collapsed it still scrolls, so nothing is out of reach before "Read it all". */
+.sh-plan {
+	max-height: 170px;
+	padding: 14px 18px;
 	color: var(--label-2);
 	font-size: 13.5px;
 }
-.dock .cmd {
-	padding: 8px 12px;
-	border-radius: 8px;
-	background: rgba(0, 0, 0, 0.55);
-	color: #f0b3ab;
-	font: 12.5px var(--mono);
-	white-space: pre-wrap;
-	word-break: break-all;
+.sh-plan.open {
+	max-height: none;
 }
-.opts {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 8px;
+.sh-plan > :first-child {
+	margin-top: 0;
 }
-.opt {
+.sh-plan > :last-child {
+	margin-bottom: 0;
+}
+.sh-options {
 	display: grid;
 	gap: 2px;
-	text-align: left;
-	padding: 9px 12px;
+	margin: 0 -6px;
+	padding: 0 6px;
+}
+.sh-option {
+	display: grid;
+	grid-template-columns: 22px minmax(0, 1fr) auto;
+	align-items: center;
+	gap: 12px;
+	margin: 0 -6px;
+	padding: 8px 10px;
 	border: 0;
-	border-radius: 10px;
-	background: var(--elev-2);
+	border-radius: 9px;
+	background: transparent;
 	color: #fff;
-	font: 13.5px var(--sys);
+	text-align: left;
+	font: 14px var(--sys);
 }
-.opt:hover {
-	background: var(--elev-3);
+.sh-option:hover,
+.sh-option.picked {
+	background: rgba(255, 255, 255, 0.06);
 }
-.opt .k {
+.sh-option .k {
+	display: grid;
+	place-items: center;
+	width: 22px;
+	height: 22px;
+	border-radius: 6px;
+	background: var(--fill);
+	color: var(--label-2);
+	font: 500 11.5px var(--mono);
+}
+.sh-option:hover .k,
+.sh-option.picked .k {
+	background: #f2f5f8;
+	color: #000;
+}
+.sh-option .l {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+.sh-option .l b {
+	font-weight: 500;
+}
+.sh-option .l span {
+	margin-left: 10px;
 	color: var(--label-3);
-	font: 11px var(--mono);
+	font-size: 13px;
 }
-.opt .l {
-	font-weight: 600;
+.sh-option .w {
+	color: var(--label-4);
+	font: 11.5px var(--mono);
 }
-.opt .d {
+.sh-option.else .k,
+.sh-option.else:hover .k {
+	background: transparent;
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
 	color: var(--label-3);
-	font-size: 12px;
 }
-.dock .hint {
+.sh-option.else .l {
+	color: var(--label-2);
+}
+.sh-foot {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+}
+.sh-say {
+	margin-right: auto;
 	color: var(--label-3);
 	font-size: 12.5px;
 }
-.dock .hint b {
-	color: #fff;
-	font-weight: 500;
-}
-.reason {
+.sh-btns {
 	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: 8px;
+	margin-left: auto;
+}
+.sheet .btn {
+	min-height: 32px;
+	border-radius: 9px;
+	font-size: 13.5px;
+}
+.sheet .btn.sh-x {
+	min-height: 26px;
+	padding: 0 8px;
+}
+.sheet .btn code {
+	color: inherit;
+	font: 12.5px var(--mono);
+}
+.btn.deny {
+	background: transparent;
+	color: var(--crit-text);
+}
+.btn.deny:hover {
+	background: var(--crit-fill);
+}
+.sh-more {
+	color: var(--label-3);
+	font-weight: 400;
+}
+.sh-own {
+	display: flex;
+	align-items: center;
 	gap: 8px;
 }
-.reason input {
+.sh-own-lead {
+	flex: none;
+	color: var(--crit-text);
+	font-size: 13px;
+}
+.sh-own input {
 	flex: 1;
 	min-width: 0;
-	padding: 6px 12px;
+	height: 36px;
+	padding: 0 12px;
 	border: 0;
-	border-radius: 10px;
-	background: var(--elev-2);
-	box-shadow: inset 0 0 0 1px var(--sep);
+	border-radius: 9px;
+	background: #0a0b0d;
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
 	color: #fff;
-	font: 13px var(--sys);
+	font: 14px var(--sys);
+}
+.sh-own input:focus-visible {
+	outline: none;
+	box-shadow:
+		inset 0 0 0 1px rgba(255, 255, 255, 0.4),
+		0 0 0 3px rgba(255, 255, 255, 0.06);
+}
+.sh-own input::placeholder {
+	color: var(--label-3);
+}
+/* Nothing to read: the question and its answers on one row. */
+.sheet.row {
+	flex-direction: row;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px 16px;
+	padding: 12px 12px 12px 16px;
+}
+.sheet.row .sh-head {
+	flex: 1 1 320px;
+}
+.sheet.row .sh-foot {
+	margin-left: auto;
 }
 
-/* The voice bar: a moment, the queue, the spoken line, then the composer. */
+/* The voice bar: a prompt, a moment, the spoken line, then the composer (the queue folded into it). */
 .vo-bar {
 	display: grid;
+	/* One column, never wider than the screen: a long command or caption wraps instead. */
+	grid-template-columns: minmax(0, 1fr);
 	padding: 0 0 env(safe-area-inset-bottom, 0px);
 	background: #0f1215;
 	box-shadow: inset 0 1px 0 var(--hair);
@@ -1689,13 +1901,14 @@
 }
 .queue {
 	display: grid;
-	box-shadow: inset 0 -1px 0 var(--hair);
 }
 .qitem {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
-	gap: 12px;
-	padding: 6px 24px;
+	gap: 6px 10px;
+	padding: 6px 8px;
+	border-radius: 8px;
 	font-size: 13px;
 	color: var(--label-2);
 }
@@ -1707,25 +1920,86 @@
 }
 .qitem .qtext {
 	min-width: 0;
+	overflow-wrap: anywhere;
 }
 .qitem .btn:first-of-type {
 	margin-left: auto;
 }
+/* The queue folded into the box: "N queued", its list opening above it. */
+.qchip-wrap {
+	position: relative;
+	flex: none;
+}
+.qchip {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 24px;
+	padding: 0 9px;
+	border: 0;
+	border-radius: 8px;
+	background: var(--fill);
+	color: var(--label-2);
+	font: 12px var(--mono);
+	white-space: nowrap;
+}
+.qchip:hover,
+.qchip[aria-expanded="true"] {
+	background: var(--fill-hover);
+	color: #fff;
+}
+.qchip-n {
+	color: #fff;
+	font-weight: 600;
+}
+.qchip-pop {
+	position: absolute;
+	right: -8px;
+	bottom: calc(100% + 12px);
+	z-index: 21;
+	width: min(460px, calc(100vw - 32px));
+	max-height: 50vh;
+	overflow-y: auto;
+	padding: 6px;
+	border-radius: 12px;
+	background: var(--menu);
+	box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+.qchip-pop .qitem:hover {
+	background: rgba(255, 255, 255, 0.04);
+}
+.qchip-pop .qtext {
+	flex: 1 1 180px;
+	color: #fff;
+}
+/* What Voice OS last said, as a quiet caption over the box. */
 .vo-spoken {
 	display: flex;
-	align-items: baseline;
-	gap: 12px;
-	padding: 10px 24px;
-	box-shadow: inset 0 -1px 0 var(--hair);
+	align-items: center;
+	gap: 10px;
+	min-width: 0;
+	padding: 10px 24px 0;
 }
-.vo-spoken .label {
+.vo-spoken .wave-icon {
 	flex: none;
-	color: var(--label-2);
+	color: var(--label-3);
+}
+.vo-spoken .who {
+	flex: none;
+	color: var(--label-3);
+	font: 600 11px var(--mono);
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
 }
 .vo-spoken p {
+	display: -webkit-box;
+	min-width: 0;
 	margin: 0;
-	font-size: 14px;
-	color: #fff;
+	overflow: hidden;
+	color: var(--label-2);
+	font-size: 13.5px;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
 }
 .vo-composer {
 	display: flex;
@@ -2277,11 +2551,9 @@
 		width: 100%;
 	}
 	.vs-state,
-	.dock,
 	.vo-offer,
 	.vo-spoken,
 	.vo-composer,
-	.qitem,
 	.conn.inline,
 	.vo-notice {
 		padding-left: 16px;
@@ -2868,4 +3140,69 @@ button.line.opens:hover .opens-hint {
 }
 .line.tool .working-clock {
 	margin-left: 4px;
+}
+
+/* Phone: a prompt takes the width, its reason goes under the title, the answers fill their row and
+   an option's description goes under its name. */
+@media (max-width: 600px) {
+	.sheet {
+		gap: 10px;
+		padding: 12px;
+	}
+	.vo-bar > .sheet {
+		margin: 10px 10px 2px;
+	}
+	.sh-head {
+		align-items: flex-start;
+	}
+	.sh-head > .dot {
+		margin-top: 6px;
+	}
+	.sh-title {
+		font-size: 14.5px;
+	}
+	.sh-reason {
+		display: block;
+		margin: 2px 0 0;
+	}
+	.sh-say {
+		flex-basis: 100%;
+	}
+	.sh-btns {
+		flex: 1 1 100%;
+	}
+	.sh-btns .btn {
+		flex: 1 1 auto;
+		min-height: 40px;
+	}
+	.sh-option {
+		padding: 10px 8px;
+	}
+	.sh-option .l span {
+		display: block;
+		margin: 2px 0 0;
+	}
+	.sh-option .w {
+		display: none;
+	}
+	.sh-own {
+		flex-wrap: wrap;
+	}
+	.sh-own-lead {
+		flex-basis: 100%;
+	}
+	.sh-own input {
+		flex-basis: 100%;
+		height: 42px;
+	}
+	.sh-own .btn {
+		flex: 1 1 auto;
+		min-height: 40px;
+	}
+	.sh-plan {
+		max-height: 150px;
+	}
+	.vo-spoken {
+		padding: 8px 16px 0;
+	}
 }

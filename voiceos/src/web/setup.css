@@ -943,33 +943,12 @@ form {
 	gap: 10px;
 	min-width: 0;
 }
-.ss-foot .dock {
+/* Inside the card the prompt sits flush with its other pieces, with less of the stream to give. */
+.ss-foot .sheet {
 	max-height: 40vh;
-	padding: 14px 16px;
-	border-radius: 14px;
-	background: var(--elev-2);
-	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.125);
 }
-/* A plan keeps its one scroller for the text and its buttons in view, as above the voice bar. */
-.ss-foot .dock.plan {
-	max-height: none;
-}
-.ss-foot .dock.crit {
-	background: var(--crit-fill);
-	box-shadow: inset 0 0 0 1px rgba(224, 108, 95, 0.3);
-}
-.ss-foot .dock.amber {
-	background: var(--amber-fill);
-	box-shadow: inset 0 0 0 1px rgba(240, 160, 44, 0.28);
-}
-.ss-foot .opt {
-	background: var(--elev-3);
-}
-.ss-foot .opt:hover {
-	background: #2e333a;
-}
-.ss-foot .reason input {
-	background: var(--elev-3);
+.ss-foot .sheet.plan {
+	max-height: 60vh;
 }
 .ss-foot .queue,
 .ss-foot .panel {
@@ -1077,17 +1056,9 @@ form {
 }
 @media (max-width: 600px) {
 	/* On a phone the stream keeps most of the card: the ask scrolls within its own share. */
-	.ss-foot .dock {
-		max-height: 34vh;
-	}
-	.ss-foot .dock.plan {
-		max-height: none;
-	}
-	.ss-foot .dock.plan .quote {
-		max-height: 34vh;
-	}
-	.ss-foot .opts {
-		display: grid;
+	.ss-foot .sheet,
+	.ss-foot .sheet.plan {
+		max-height: 44vh;
 	}
 	.top {
 		width: calc(100% - 20px);

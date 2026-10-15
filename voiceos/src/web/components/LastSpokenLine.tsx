@@ -1,4 +1,5 @@
 import type { SpokenLine, State } from '../../shared/protocol.js';
+import { WaveIcon } from './icons.js';
 
 const SPOKEN_LINE_SHOWN_MS = 60_000;
 
@@ -25,7 +26,9 @@ export const LastSpokenLine = ({ state }: LastSpokenLineProps) => {
 
 	return (
 		<div className="vo-spoken speech">
-			<span className="label">Spoken</span>
+			{/* With voice off nothing is played: no waveform, so the line never reads as heard. */}
+			{state.voiceOff ? null : <WaveIcon />}
+			<span className="who">Voice OS</span>
 			<p className="said">{lastSpoken.text}</p>
 		</div>
 	);

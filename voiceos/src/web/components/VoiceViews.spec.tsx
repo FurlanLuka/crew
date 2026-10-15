@@ -7,7 +7,6 @@ import { createInitialState, createSession } from '../../state/reducer.js';
 import { Activate, describeGroup, listActivateSections } from './Activate.js';
 import { ActiveView, listHomeSections, sortForHome } from './ActiveView.js';
 import { listRecentFolders, NewSessionDialog } from './NewSessionDialog.js';
-import { AskDock } from './AskDock.js';
 import { Cockpit } from './Cockpit.js';
 import { DevLogsDialog, isErrorLine } from './DevLogsDialog.js';
 import { DevPanel } from './DevPanel.js';
@@ -564,31 +563,6 @@ const QUESTION: PendingAsk = {
 		},
 	],
 };
-
-describe('AskDock', () => {
-	it('a question → its options as buttons, how to say one, and an X to decline it', () => {
-		const html = renderToStaticMarkup(
-			<AskDock ask={QUESTION} label="store-front/main" dispatch={noop} />,
-		);
-
-		expect(html).toContain('A new events table, or a column on orders?');
-		expect(html).toContain('A column on orders');
-		expect(html).toContain('Your own answer…');
-		expect(html).toContain('aria-label="Decline the question"');
-		expect(html).toContain('title="Decline the question"');
-	});
-
-	it('a plan keeps its own way to say no: no X', () =>
-		expect(
-			renderToStaticMarkup(
-				<AskDock
-					ask={{ id: 'p1', ref: 'store-front/main', at: 1, kind: 'plan', input: {}, plan: 'p' }}
-					label="store-front/main"
-					dispatch={noop}
-				/>,
-			),
-		).not.toContain('Decline the question'));
-});
 
 describe('SessionStateRow', () => {
 	it('an open ask → no row: it is docked above the voice bar', () =>

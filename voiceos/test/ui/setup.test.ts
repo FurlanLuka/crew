@@ -818,13 +818,13 @@ describe('Setup with Claude', () => {
 			.waitFor({ timeout: 5000 });
 		expect(await page.locator('.chat strong', { hasText: 'REDIS_URL' }).count()).toBe(1);
 		// Docked at the card's foot, right above the composer; nothing to say aloud.
-		const dock = page.locator('.ss-foot > section.dock.question');
+		const dock = page.locator('.ss-foot > section.sheet.question');
 		await dock.waitFor({ timeout: 5000 });
 		expect(
 			await page
 				.locator('.ss-foot > *')
 				.evaluateAll((nodes) => nodes.map((node) => node.className)),
-		).toEqual(['dock question', 'reply']);
+		).toEqual(['sheet question', 'reply']);
 		expect(await dock.innerText()).not.toContain('Say');
 
 		await dock.getByRole('button', { name: /Skip the worker/ }).click();
@@ -834,15 +834,69 @@ describe('Setup with Claude', () => {
 		});
 		await dock.waitFor({ state: 'detached', timeout: 5000 });
 
-		// Your own words, from the dock's own field.
+		// Your own words: "Something else…" opens the sheet's own field.
 		openQuestion('setup-q2');
-		await dock.getByLabel('Your own answer…').fill('use the one in docker compose');
-		await dock.getByRole('button', { name: 'Send' }).click();
+		await dock.getByRole('button', { name: 'Something else…' }).click();
+		await dock.getByLabel('Your own answer').fill('use the one in docker compose');
+		await dock.getByRole('button', { name: 'Answer', exact: true }).click();
 		await waitUntil(() => server.store.state.asks.every((ask) => ask.id !== 'setup-q2'));
 		expect(answerOf('setup-q2')).toMatchObject({
 			action: { answers: { [REDIS]: 'use the one in docker compose' } },
 		});
 		await context.close();
+	}, 20_000);
+
+	it('on a phone: a long question and a permission with its reason open → inside the card, nothing scrolls sideways', async () => {
+		const { context, page } = await open('/setup/chat', { width: 390, height: 844 });
+		const isFootInside = () =>
+			page.evaluate(() =>
+				[...document.querySelectorAll('.ss-foot > *')].every(
+					(node) => node.getBoundingClientRect().right <= window.innerWidth,
+				),
+			);
+
+		const isInView = async (name: string) => {
+			const box = await page.getByRole('button', { name, exact: true }).boundingBox();
+
+			return box ? box.y + box.height <= 844 && box.x + box.width <= 390 : false;
+		};
+
+		try {
+			openQuestion('setup-phone-q');
+			const question = page.locator('.ss-foot > section.sheet.question');
+			await question.waitFor({ timeout: 5000 });
+			await question.getByRole('button', { name: 'Something else…' }).click();
+			await question.getByLabel('Your own answer').waitFor({ timeout: 5000 });
+			expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+			expect(await isFootInside()).toBe(true);
+			expect(await isInView('Answer')).toBe(true);
+			server.store.dispatch({ type: 'ask_closed', askId: 'setup-phone-q' });
+
+			server.store.dispatch({
+				type: 'ask_opened',
+				ask: {
+					id: 'setup-phone-p',
+					ref: 'setup',
+					at: 1,
+					kind: 'permission',
+					toolName: 'Bash',
+					summary: 'run pnpm install',
+					input: {
+						command: `pnpm --filter @store/checkout-web install ${'--frozen-lockfile '.repeat(8)}`,
+					},
+					suggestions: [],
+				},
+			});
+			const permission = page.locator('.ss-foot > section.sheet.permission');
+			await permission.getByRole('button', { name: 'Deny and say why…' }).click();
+			await permission.getByLabel('What should it do instead?').waitFor({ timeout: 5000 });
+			expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+			expect(await isFootInside()).toBe(true);
+			expect(await isInView('Deny and send')).toBe(true);
+			server.store.dispatch({ type: 'ask_closed', askId: 'setup-phone-p' });
+		} finally {
+			await context.close();
+		}
 	}, 20_000);
 
 	it('✕ declines the question', async () => {
@@ -851,7 +905,7 @@ describe('Setup with Claude', () => {
 		await page.getByRole('button', { name: 'Decline the question' }).click();
 		await waitUntil(() => server.store.state.asks.every((ask) => ask.id !== 'setup-q3'));
 		expect(answerOf('setup-q3')).toMatchObject({ action: { type: 'decline_question' } });
-		await page.locator('.ss-foot .dock').waitFor({ state: 'detached', timeout: 5000 });
+		await page.locator('.ss-foot .sheet').waitFor({ state: 'detached', timeout: 5000 });
 		await context.close();
 	}, 20_000);
 
@@ -1106,9 +1160,9 @@ describe('Setup with Claude', () => {
 				},
 			});
 			const { context, page } = await open('/setup/chat?on=vm1');
-			const dock = page.locator('.ss-foot > section.dock.question');
+			const dock = page.locator('.ss-foot > section.sheet.question');
 			await dock.waitFor({ timeout: 5000 });
-			expect(await page.locator('.ss-foot section.dock').count()).toBe(1);
+			expect(await page.locator('.ss-foot section.sheet').count()).toBe(1);
 			expect(await dock.innerText()).toContain('Which Postgres on the build box?');
 			expect(await dock.innerText()).not.toContain(REDIS);
 

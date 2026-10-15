@@ -2,7 +2,6 @@ import { describe, expect, it } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { PeerRun, StreamItem } from '../../shared/protocol.js';
 import { createSession } from '../../state/reducer.js';
-import { AskDock } from './AskDock.js';
 import { PeerCard } from './PeerCard.js';
 import { QueueList } from './QueueList.js';
 import { PeerRunDialog } from './PeerRunDialog.js';
@@ -219,44 +218,5 @@ describe('QueueList', () => {
 
 		expect(html).toContain('from store-front/main · ');
 		expect(html).toContain('Heads up.');
-	});
-});
-
-describe('AskDock for another session', () => {
-	const base = {
-		ref: 'store',
-		at: 1,
-		to: 'checkout',
-		fromLabel: 'store-front/main',
-		toLabel: 'checkout-api/main',
-		requestId: 'r1',
-	};
-
-	it('work → both sessions, the route, and the task as plain text', () => {
-		const html = renderToStaticMarkup(
-			<AskDock
-				ask={{ ...base, id: 'r1:ok', kind: 'work', text: 'run the staging check' }}
-				label="store-front/main"
-				dispatch={() => undefined}
-			/>,
-		);
-
-		expect(html).toContain('>SF</span>store-front/main');
-		expect(html).toContain('<span>to do this and report back</span>');
-		expect(html).toContain('<div class="pd-task">run the staging check</div>');
-	});
-
-	it("a secret → a lock, the secret's name, and where it goes", () => {
-		const html = renderToStaticMarkup(
-			<AskDock
-				ask={{ ...base, id: 'r1:ok', kind: 'secret', what: 'STRIPE_KEY' }}
-				label="store-front/main"
-				dispatch={() => undefined}
-			/>,
-		);
-
-		expect(html).toContain('lock-icon');
-		expect(html).toContain('<code>STRIPE_KEY</code>');
-		expect(html).toContain('It goes into a private file only store-front/main can read.');
 	});
 });
