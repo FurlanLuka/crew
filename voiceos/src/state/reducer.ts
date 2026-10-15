@@ -257,6 +257,7 @@ export const createSession = (info: WorktreeInfo): Session => ({
 	subagentRuns: [],
 	compactingSince: null,
 	context: null,
+	model: null,
 	reportOwed: false,
 	turnFrom: null,
 	replyOwed: null,
@@ -1092,6 +1093,13 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				})),
 			);
 		}
+
+		case 'session_model':
+			return state.sessions[input.ref]?.model === input.model
+				? withoutEffects(state)
+				: withoutEffects(
+						updateSession(state, input.ref, (session) => ({ ...session, model: input.model })),
+					);
 
 		case 'compacting': {
 			const isStarting = input.isCompacting && state.sessions[input.ref]?.compactingSince === null;

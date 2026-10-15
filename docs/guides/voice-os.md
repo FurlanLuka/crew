@@ -35,6 +35,7 @@ Every command, with things you can say for each: [Voice OS commands](voice-os-co
 - [Docs, images and sub-agents](#docs-images-and-sub-agents)
 - [Attaching files](#attaching-files)
 - [Sessions asking each other](#sessions-asking-each-other)
+- [Model and working line](#model-and-working-line)
 - [Context meter](#context-meter)
 - [Slash commands](#slash-commands)
 - [Dev servers](#dev-servers)
@@ -712,6 +713,19 @@ asked session shows the same exchange dimmed, since its own conversation never s
 quiet unless something needs your Allow. A session can make three requests to other sessions per
 turn, and a session told something by another cannot tell it back in the same turn, so two sessions
 never keep each other going while you are away.
+
+## Model and working line
+
+Beside the permission chip, a second chip says which model the session runs on ("Opus 5.5 · 1M"),
+as Claude Code reports it when the session starts, after a clear and after a switch. Tap it and pick
+Opus, Sonnet or Haiku: it is the same switch `/model` makes, for the next turn, and the chip changes
+once the session has taken it.
+
+While a turn runs, a line at the bottom of the session's stream says what it is doing and for how
+long: "Thinking", the command it is running ("Running pnpm test"), or "Writing" while its reply
+arrives. It stays through quiet thinking and long tool calls, so a session at work never looks idle.
+When it needs you, the line says so in red, like its tab. When the turn ends the line goes away. The
+session's dot on its tab, in the header and on Active turns while it works.
 
 ## Context meter
 

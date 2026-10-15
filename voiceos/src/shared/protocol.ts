@@ -310,6 +310,9 @@ export interface Session {
 	// How full its context is, as Claude Code last reported it; null before the first reading and
 	// right after a clear.
 	context: ContextUsage | null;
+	// The model it runs on, as Claude Code reports it (an id, "claude-opus-5-5[1m]"); null before its
+	// first report.
+	model: string | null;
 	// When its latest spoken line came, if nothing but a question or plan has come since: such a line
 	// asked it, and Voice OS does not ask it again.
 	lineBeforeAsk: { at: number; text: string } | null;
@@ -807,6 +810,8 @@ export type Observation =
 	| { type: 'session_started'; ref: string }
 	// How full its context is now: after each turn, a compaction, a clear, or a start.
 	| { type: 'context_usage'; ref: string; used: number; max: number; compactAt?: number }
+	// The model it runs on: at its start, after a /clear and after a switch.
+	| { type: 'session_model'; ref: string; model: string }
 	// A worker could not run the mode it was asked for (Skip as root: Claude Code refuses it); kept is
 	// the mode it runs instead.
 	| { type: 'mode_refused'; ref: string; mode: SdkMode; kept: SdkMode; reason: 'root' }

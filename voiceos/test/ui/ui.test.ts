@@ -3624,6 +3624,60 @@ describe('slash commands', () => {
 		await context.close();
 	}, 20_000);
 
+	it('the model chip: shown once the session reports its model; a pick sends that model and the chip follows the report', async () => {
+		const { context, page } = await openWithCommands();
+		const before = received.length;
+		const chip = page.getByRole('button', { name: /^Model:/ });
+
+		store.dispatch({ type: 'session_model', ref: REF, model: 'claude-opus-5-5[1m]' });
+		await chip.waitFor({ timeout: 5000 });
+		expect(await chip.textContent()).toBe('Opus 5.5 · 1M');
+
+		await chip.click();
+		await page.getByRole('menuitemradio', { name: /Sonnet 5\.5/ }).click();
+		await waitUntil(() =>
+			received
+				.slice(before)
+				.some(
+					(entry) =>
+						entry.message.type === 'action' &&
+						entry.message.action.type === 'set_model' &&
+						entry.message.action.model === 'claude-sonnet-5-5',
+				),
+		);
+		// Not before the session says it switched.
+		expect(await chip.textContent()).toBe('Opus 5.5 · 1M');
+		store.dispatch({ type: 'session_model', ref: REF, model: 'claude-sonnet-5-5' });
+		await page.waitForFunction(
+			() => document.querySelector('.model-chip')?.textContent === 'Sonnet 5.5',
+			undefined,
+			{ timeout: 5000 },
+		);
+		await context.close();
+	}, 20_000);
+
+	it('the working line: thinking, then the tool it runs, for the whole turn; gone once the turn ends', async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openWithCommands();
+		const line = page.locator('.line.working');
+
+		store.dispatch({ type: 'turn_started', ref: REF });
+		await line.getByText('Thinking').waitFor({ timeout: 5000 });
+		expect(await page.locator(`.vo-tab[data-ref="${REF}"] .dot.running`).count()).toBe(1);
+
+		store.dispatch({
+			type: 'tool',
+			ref: REF,
+			name: 'Bash',
+			summary: 'run pnpm test --filter checkout',
+		});
+		await line.getByText('Running pnpm test --filter checkout').waitFor({ timeout: 5000 });
+
+		store.dispatch({ type: 'turn_ended', ref: REF, costUsd: 0, text: '' });
+		await line.waitFor({ state: 'detached', timeout: 5000 });
+		await context.close();
+	}, 20_000);
+
 	it("the context meter: how full the session is, right of the box; Compact goes through Voice OS's confirm", async () => {
 		store.dispatch({ type: 'conversation_reset', ref: REF });
 		const { context, page } = await openWithCommands();

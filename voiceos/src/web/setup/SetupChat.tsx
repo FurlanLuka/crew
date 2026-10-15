@@ -140,6 +140,7 @@ export const SetupChat = ({ ctx, draft, onDraftUsed, askedFocus }: SetupChatProp
 						session={session}
 						className="chat"
 						renderAfter={renderRecorded}
+						hasAsk={ask !== null}
 					>
 						{!session && (
 							<p className="msg c-dim">

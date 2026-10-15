@@ -180,6 +180,7 @@ export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 					sessionRef={session.ref}
 					session={session}
 					className="vo-stream stream"
+					hasAsk={state.asks.some((ask) => ask.ref === session.ref)}
 					openFor={(item) => {
 						const run = item.kind === 'tool' ? findRunFor(session, item.toolUseId) : null;
 

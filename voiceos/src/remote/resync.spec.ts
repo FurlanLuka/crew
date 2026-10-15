@@ -70,6 +70,23 @@ describe('planResync', () => {
 		]);
 	});
 
+	it("a fresh main → the session's model comes back with it", () => {
+		const { inputs } = planResync(
+			mainWith(),
+			'vm1',
+			snapshot({
+				sessions: [
+					{ ref: 'store/main', status: 'idle', lastTurn: null, model: 'claude-haiku-5-5' },
+				],
+			}),
+		);
+
+		expect(inputs).toEqual([
+			{ type: 'session_started', ref: REMOTE },
+			{ type: 'session_model', ref: REMOTE, model: 'claude-haiku-5-5' },
+		]);
+	});
+
 	it('a fresh main, an old turn there → no news: not reported', () => {
 		const { inputs } = planResync(
 			mainWith(),

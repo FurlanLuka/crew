@@ -135,6 +135,7 @@ describe('toMainInput', () => {
 		{ type: 'compacting', ref: 'store/main', isCompacting: true },
 		{ type: 'session_notice', ref: 'store/main', text: 'n' },
 		{ type: 'context_usage', ref: 'store/main', used: 41_600, max: 200_000 },
+		{ type: 'session_model', ref: 'store/main', model: 'claude-opus-5-5[1m]' },
 		{
 			type: 'mode_refused',
 			ref: 'store/main',
