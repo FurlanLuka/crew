@@ -14,6 +14,7 @@ import { toSpokenName } from '../shared/spoken.js';
 import { isReachable, readElsewhereMachine, readSessionLabel } from '../shared/machines.js';
 import { canRun } from '../shared/active.js';
 import { readMode, toSdkMode } from '../shared/modes.js';
+import { markDelivered } from './peer-cards.js';
 
 // Withdrawn side questions remembered, so a late answer to one is never said or queued.
 export const WITHDRAWN_KEPT = 20;
@@ -224,7 +225,8 @@ export const sendNow = ({
 	);
 
 	return {
-		state: next,
+		// A tell or allowed work reached the session: the asker's card says Delivered.
+		state: markDelivered(next, from),
 		effects: [
 			{
 				type: 'worker_send',

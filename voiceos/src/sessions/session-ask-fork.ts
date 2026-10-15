@@ -3,7 +3,9 @@
 // secret — a secret moves only through request_secret, with the developer's OK.
 import type { HookCallback, query as sdkQuery } from '@anthropic-ai/claude-agent-sdk';
 import { createLogger } from '../log.js';
-import type { PeerForkStatus } from '../shared/protocol.js';
+import type { PeerForkStatus, SubagentItemContent } from '../shared/protocol.js';
+import { readShownText } from '../shared/spoken-tags.js';
+import { getContentBlocks, summarizeResult, summarizeTool } from './tool-summary.js';
 import type { RawMessage } from './events.js';
 import { dropCheckpoints, isTopLevelAssistant, readText, runFork } from './fork.js';
 import {
@@ -197,11 +199,25 @@ const listToolUses = (message: RawMessage): ToolUseBlock[] => {
 		: [];
 };
 
+// A call reaching for a secret, in any of the ways the tool hook refuses one: a secret path, a search
+// inside one, or a glob that names one.
+const isSecretTarget = (name: string, input: Record<string, unknown>): boolean => {
+	const path = readString(input, 'file_path') ?? readString(input, 'path');
+	const pattern = readString(input, 'pattern');
+	const glob = readString(input, 'glob');
+
+	return Boolean(
+		(path && isSecretPath(path)) ||
+			(name === 'Glob' && pattern && (isSecretPath(pattern) || isSecretPattern(pattern))) ||
+			(glob && isSecretPattern(glob)),
+	);
+};
+
 const describeRead = ({ name, input }: ToolUseBlock): string | null => {
 	const target = readString(input ?? {}, 'file_path') ?? readString(input ?? {}, 'pattern');
 
 	// A secret it reached for was refused, never read: the card must not say it was.
-	return READ_TOOLS.has(name) && target && !isSecretPath(target) ? target : null;
+	return READ_TOOLS.has(name) && target && !isSecretTarget(name, input ?? {}) ? target : null;
 };
 
 const splitFiles = (reply: string): { answer: string; files: string[] } => {
@@ -269,11 +285,74 @@ export const classifySessionAsk = (messages: RawMessage[]): SessionAskOutcome =>
 	return { status: 'answered', answer: answer || reply, files, read };
 };
 
+// What the copy did, as its steps window shows it. Its text before a call is how it got there; the
+// text it ends on is the reply, shown as the answer, so text waits for a call before it is a step. A
+// call it made on a secret path was refused and is left out, as the read list leaves it out. A
+// result shows only when it failed: what a file held never leaves this machine.
+export const createForkSteps = (cwd: string, onItem: (item: SubagentItemContent) => void) => {
+	let held: string[] = [];
+	// Calls left out for reaching a secret: their refusals name the path, so they go too.
+	const skipped = new Set<string>();
+
+	return (message: RawMessage): void => {
+		if (message.parent_tool_use_id) {
+			return;
+		}
+
+		if (message.type === 'user') {
+			for (const block of getContentBlocks(message)) {
+				const result =
+					block.type === 'tool_result' && !skipped.has(String(block.tool_use_id))
+						? summarizeResult(block)
+						: null;
+
+				if (result && !result.ok) {
+					onItem({ kind: 'tool_result', ...result });
+				}
+			}
+
+			return;
+		}
+
+		if (message.type !== 'assistant') {
+			return;
+		}
+
+		for (const block of getContentBlocks(message)) {
+			if (block.type === 'text') {
+				const text = readShownText(typeof block.text === 'string' ? block.text : '').trim();
+
+				if (text) {
+					held.push(text);
+				}
+			}
+
+			if (block.type === 'tool_use' && typeof block.name === 'string') {
+				const input = (block.input ?? {}) as Record<string, unknown>;
+
+				if (isSecretTarget(block.name, input)) {
+					skipped.add(String(block.id));
+					continue;
+				}
+
+				for (const text of held) {
+					onItem({ kind: 'text', text });
+				}
+
+				held = [];
+				onItem({ kind: 'tool', name: block.name, summary: summarizeTool(block.name, input, cwd) });
+			}
+		}
+	};
+};
+
 export interface RunSessionAskForkParams {
 	launch: QueryLaunch;
 	sessionId: string | null;
 	fromLabel: string;
 	question: string;
+	// Each step of the copy as it happens.
+	onItem?: (item: SubagentItemContent) => void;
 	runQuery?: typeof sdkQuery;
 	timeoutMs?: number;
 }
@@ -283,6 +362,7 @@ export const runSessionAskFork = async ({
 	sessionId,
 	fromLabel,
 	question,
+	onItem,
 	runQuery,
 	timeoutMs = SESSION_ASK_TIMEOUT_MS,
 }: RunSessionAskForkParams): Promise<SessionAskOutcome> => {
@@ -301,6 +381,7 @@ export const runSessionAskFork = async ({
 		maxTurns: SESSION_ASK_MAX_TURNS,
 		preToolUse: createForkToolHook({ cwd: launch.cwd, dirs: launch.dirs }),
 		timeoutMs,
+		...(onItem ? { onMessage: createForkSteps(launch.cwd, onItem) } : {}),
 		...(runQuery ? { runQuery } : {}),
 	});
 

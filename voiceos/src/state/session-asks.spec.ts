@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'bun:test';
 import { run, worktree } from '../../test/support/reduce.js';
-import type { Input, State } from '../shared/protocol.js';
+import type { Input, QueuedMessage, State } from '../shared/protocol.js';
 import { buildPeerNote } from '../shared/peer-note.js';
 import type { Effect } from './reducer.js';
 import { isDevelopersMessage, promoteAllQueued } from './delivery.js';
+import { updateSession } from './helpers.js';
+import { NOT_DELIVERED } from './peer-cards.js';
+import { SUBAGENT_ITEMS_KEPT } from './subagents.js';
 import { PEER_REQUESTS_PER_TURN, resolveAskTarget } from './session-asks.js';
 
 const STORE = 'store-front/main';
@@ -29,6 +32,9 @@ const sessions = (): State =>
 			{ type: 'session_started', ref },
 		]),
 	]).state;
+
+const updateQueue = (state: State, ref: string, message: QueuedMessage): State =>
+	updateSession(state, ref, (session) => ({ ...session, queue: [...session.queue, message] }));
 
 const busy = (state: State, ref: string): State =>
 	run([{ type: 'send', ref, text: 'keep working' }], { start: state }).state;
@@ -86,7 +92,7 @@ describe('resolveAskTarget', () => {
 });
 
 describe('an ask', () => {
-	it('→ a card on both sessions, and a copy of the asked one is run', () => {
+	it('→ a card on the asker, a side-panel run on the asked session (no card there), and a copy of it is run', () => {
 		const { state, effects } = run(
 			[request('ask', 'Which retry limit?', { session: 'checkout api main' })],
 			{
@@ -102,15 +108,25 @@ describe('an ask', () => {
 			question: 'Which retry limit?',
 		});
 		expect(cardsOf(state, STORE)).toMatchObject([
-			{ role: 'asker', peer: CHECKOUT, status: 'asking' },
+			{ peer: CHECKOUT, peerRef: CHECKOUT, status: 'asking' },
 		]);
-		expect(cardsOf(state, CHECKOUT)).toMatchObject([
-			{ role: 'asked', peer: STORE, status: 'asking' },
+		expect(cardsOf(state, CHECKOUT)).toEqual([]);
+		expect(state.sessions[CHECKOUT]?.peerRuns).toMatchObject([
+			{
+				requestId: 'r1',
+				kind: 'ask',
+				fromRef: STORE,
+				fromLabel: STORE,
+				text: 'Which retry limit?',
+				status: 'asking',
+				settledAt: null,
+				items: [],
+			},
 		]);
 		expect(state.sessions[STORE]?.peerRequestsInTurn).toBe(1);
 	});
 
-	it('answered → both cards settle and the asker hears the answer once; a late repeat is ignored', () => {
+	it('answered → the card and the run settle and the asker hears the answer once; a late repeat is ignored', () => {
 		const asked = run([request('ask', 'Which retry limit?', { session: 'checkout api main' })], {
 			start: sessions(),
 		}).state;
@@ -126,9 +142,15 @@ describe('an ask', () => {
 		const { state, effects } = run([settled], { start: asked });
 
 		expect(answered(effects)).toEqual([`${CHECKOUT} answered:\n\nFive tries.`]);
-		expect(cardsOf(state, CHECKOUT)).toMatchObject([
-			{ status: 'answered', read: ['src/retry.ts'] },
+		expect(cardsOf(state, STORE)).toMatchObject([
+			{ status: 'answered', answer: 'Five tries.', read: ['src/retry.ts'], settledAt: 1000 },
 		]);
+		expect(state.sessions[CHECKOUT]?.peerRuns[0]).toMatchObject({
+			status: 'answered',
+			answer: 'Five tries.',
+			step: null,
+			settledAt: 1000,
+		});
 		expect(answered(run([settled], { start: state }).effects)).toEqual([]);
 	});
 
@@ -329,13 +351,24 @@ describe('a secret', () => {
 			{ start: allowed.state },
 		).state;
 
+		// Told by Voice OS, never as words of the asked session.
 		expect(copied.sessions[STORE]?.stream.at(-1)).toMatchObject({
 			kind: 'user',
-			from: CHECKOUT,
+			from: 'Voice OS',
 		});
 		expect(JSON.stringify(copied.sessions[STORE]?.stream.at(-1))).toContain(
 			'/s/store-front_main/r1/STRIPE_KEY.env',
 		);
+		expect(cardsOf(copied, STORE)[0]).toMatchObject({
+			status: 'answered',
+			answer: '/s/store-front_main/r1/STRIPE_KEY.env',
+		});
+		expect(copied.sessions[CHECKOUT]?.peerRuns[0]).toMatchObject({
+			kind: 'secret',
+			text: 'STRIPE_KEY',
+			status: 'answered',
+			answer: null,
+		});
 	});
 });
 
@@ -444,10 +477,14 @@ describe('what keeps it tidy', () => {
 
 		expect(expired.sessions[STORE]?.stream.at(-1)).toMatchObject({
 			kind: 'user',
-			from: CHECKOUT,
+			from: 'Voice OS',
 			text: `The secret from ${CHECKOUT} could not be copied: no answer in time.`,
 		});
-		expect(cardsOf(expired, STORE)[0]).toMatchObject({ status: 'failed' });
+		expect(cardsOf(expired, STORE)[0]).toMatchObject({
+			status: 'failed',
+			answer: 'no answer in time',
+		});
+		expect(expired.sessions[CHECKOUT]?.peerRuns[0]).toMatchObject({ status: 'failed' });
 	});
 
 	it('a copy that failed → the asker is told why', () => {
@@ -468,6 +505,14 @@ describe('what keeps it tidy', () => {
 
 		expect(secret.sessions[STORE]?.stream.at(-1)).toMatchObject({
 			text: `The secret from ${CHECKOUT} could not be copied: STRIPE_KEY is not in the session's .env files.`,
+		});
+		expect(cardsOf(secret, STORE)[0]).toMatchObject({
+			status: 'failed',
+			answer: "STRIPE_KEY is not in the session's .env files",
+		});
+		expect(secret.sessions[CHECKOUT]?.peerRuns[0]).toMatchObject({
+			status: 'failed',
+			answer: "STRIPE_KEY is not in the session's .env files",
 		});
 	});
 
@@ -557,5 +602,391 @@ describe('what keeps it tidy', () => {
 
 		expect(counted.sessions[STORE]?.peerRequestsInTurn).toBe(1);
 		expect(ended.sessions[STORE]?.peerRequestsInTurn).toBe(0);
+	});
+});
+
+describe("the copy's steps on the asked session", () => {
+	const asking = (): State =>
+		run([request('ask', 'Which retry limit?', { session: 'checkout api main' })], {
+			start: sessions(),
+		}).state;
+	const item = (summary: string): Input => ({
+		type: 'session_fork_item',
+		ref: CHECKOUT,
+		id: 'r1',
+		item: { kind: 'tool', name: 'Grep', summary },
+	});
+
+	it('each step joins its run; a call is the live step', () => {
+		const state = run(
+			[
+				{
+					type: 'session_fork_item',
+					ref: CHECKOUT,
+					id: 'r1',
+					item: { kind: 'text', text: 'Looking.' },
+				},
+				item('search for MAX_RETRIES'),
+			],
+			{ start: asking() },
+		).state;
+
+		expect(state.sessions[CHECKOUT]?.peerRuns[0]).toMatchObject({
+			step: 'search for MAX_RETRIES',
+			items: [
+				{ kind: 'text', text: 'Looking.' },
+				{ kind: 'tool', summary: 'search for MAX_RETRIES' },
+			],
+		});
+	});
+
+	it('a step for an unknown request, or after its run settled (late, or the main restarted) → nothing', () => {
+		const start = asking();
+
+		expect(run([{ ...item('x'), id: 'r9' } as Input], { start }).state.sessions[CHECKOUT]).toBe(
+			start.sessions[CHECKOUT],
+		);
+
+		const expired = run([{ type: 'peer_expired', key: 'r1' }], { start }).state;
+
+		expect(expired.sessions[CHECKOUT]?.peerRuns[0]).toMatchObject({
+			status: 'failed',
+			settledAt: 1000,
+		});
+		expect(
+			run([item('late')], { start: expired }).state.sessions[CHECKOUT]?.peerRuns[0]?.items,
+		).toEqual([]);
+	});
+
+	it(`past ${SUBAGENT_ITEMS_KEPT} steps → the newest kept; a text after a call keeps the call as the step`, () => {
+		const many = Array.from(
+			{ length: SUBAGENT_ITEMS_KEPT + 5 },
+			(_, n): Input => item(`step ${n}`),
+		);
+		const state = run(
+			[
+				...many,
+				{ type: 'session_fork_item', ref: CHECKOUT, id: 'r1', item: { kind: 'text', text: 'hm' } },
+			],
+			{ start: asking() },
+		).state;
+		const peerRun = state.sessions[CHECKOUT]?.peerRuns[0];
+
+		expect(peerRun?.items).toHaveLength(SUBAGENT_ITEMS_KEPT);
+		expect(peerRun?.items[0]).toMatchObject({ summary: 'step 6' });
+		expect(peerRun?.step).toBe(`step ${SUBAGENT_ITEMS_KEPT + 4}`);
+	});
+
+	it("work the copy needed, its asker's machine removed before anyone allowed it → the row ends when the OK lapses", () => {
+		const needsWork = run(
+			[
+				request('ask', 'Does it work on staging?', { ref: REMOTE_STORE, session: CHECKOUT }),
+				{
+					type: 'session_fork_settled',
+					ref: CHECKOUT,
+					id: 'r1',
+					status: 'needs_work',
+					answer: 'run the staging check',
+					files: [],
+					read: [],
+				},
+				{ type: 'remove_machine', id: 'vm1' },
+			],
+			{ start: sessions() },
+		).state;
+
+		expect(needsWork.sessions[CHECKOUT]?.peerRuns[0]).toMatchObject({
+			status: 'needs_work',
+			settledAt: null,
+		});
+
+		const lapsed = run([{ type: 'peer_expired', key: 'r1:ok' }], { start: needsWork }).state;
+
+		expect(lapsed.sessions[CHECKOUT]?.peerRuns[0]).toMatchObject({ status: 'refused' });
+		expect(lapsed.sessions[CHECKOUT]?.peerRuns[0]?.settledAt).not.toBeNull();
+	});
+
+	it('a remote too old to send steps → the run still settles, with none', () => {
+		const state = run(
+			[
+				{
+					type: 'session_fork_settled',
+					ref: CHECKOUT,
+					id: 'r1',
+					status: 'answered',
+					answer: 'Five.',
+					files: [],
+					read: [],
+				},
+			],
+			{ start: asking() },
+		).state;
+
+		expect(state.sessions[CHECKOUT]?.peerRuns[0]).toMatchObject({ status: 'answered', items: [] });
+	});
+
+	it('the asked session restarts or clears its conversation → its runs stay', () => {
+		const state = run(
+			[
+				{ type: 'worker_exited', ref: CHECKOUT, error: null },
+				{ type: 'conversation_reset', ref: CHECKOUT },
+			],
+			{ start: asking() },
+		).state;
+
+		expect(state.sessions[CHECKOUT]?.peerRuns).toHaveLength(1);
+	});
+});
+
+describe('a tell or allowed work, queued → delivered', () => {
+	const tell = (start: State): State =>
+		run([request('tell', 'totals.grand moves', { session: 'checkout api main' })], { start }).state;
+
+	it('to an idle session → delivered at once, and the words show there from the asker', () => {
+		const state = tell(sessions());
+
+		expect(cardsOf(state, STORE)[0]).toMatchObject({ status: 'delivered', peerRef: CHECKOUT });
+		expect(state.sessions[CHECKOUT]?.stream.at(-1)).toMatchObject({ kind: 'user', from: STORE });
+	});
+
+	it('to a busy one → queued, then delivered when it starts on it', () => {
+		const queued = tell(busy(sessions(), CHECKOUT));
+
+		expect(cardsOf(queued, STORE)[0]).toMatchObject({ status: 'queued' });
+
+		const done = run([{ type: 'turn_ended', ref: CHECKOUT, costUsd: 0, text: 'done' }], {
+			start: queued,
+		}).state;
+
+		expect(cardsOf(done, STORE)[0]).toMatchObject({ status: 'delivered' });
+	});
+
+	it('moved to the front with ▲ now → still from the asker, and delivered when it goes', () => {
+		const queued = tell(busy(sessions(), CHECKOUT));
+		const queuedId = queued.sessions[CHECKOUT]?.queue[0]?.id ?? '';
+		const promoted = run([{ type: 'promote_queued', ref: CHECKOUT, queuedId }], {
+			start: queued,
+		}).state;
+
+		expect(promoted.sessions[CHECKOUT]?.queue[0]).toMatchObject({
+			from: { ref: STORE, requestId: 'r1' },
+		});
+		expect(cardsOf(promoted, STORE)[0]).toMatchObject({ status: 'queued' });
+
+		const sent = run([{ type: 'turn_ended', ref: CHECKOUT, costUsd: 0, text: 'cut' }], {
+			start: promoted,
+		}).state;
+
+		expect(cardsOf(sent, STORE)[0]).toMatchObject({ status: 'delivered' });
+		expect(sent.sessions[CHECKOUT]?.stream.at(-1)).toMatchObject({ kind: 'user', from: STORE });
+	});
+
+	it("moved to the front, then the developer speaks → the other session's first, theirs right after, apart, and no second interrupt", () => {
+		const queued = tell(busy(sessions(), CHECKOUT));
+		const queuedId = queued.sessions[CHECKOUT]?.queue[0]?.id ?? '';
+		const state = run(
+			[
+				{ type: 'promote_queued', ref: CHECKOUT, queuedId },
+				{ type: 'send', ref: CHECKOUT, text: 'also check the totals', isSpoken: true },
+			],
+			{ start: queued },
+		).state;
+		const spoken = run([{ type: 'send', ref: CHECKOUT, text: 'and the tax', isSpoken: true }], {
+			start: state,
+		});
+
+		expect(spoken.effects.some((effect) => effect.type === 'worker_interrupt')).toBe(false);
+		// More words in the burst join theirs, in order.
+		expect(spoken.state.sessions[CHECKOUT]?.queue.map((message) => message.text)).toEqual([
+			'totals.grand moves',
+			'also check the totals and the tax',
+		]);
+		const queue = state.sessions[CHECKOUT]?.queue ?? [];
+
+		expect(queue.map((message) => message.text)).toEqual([
+			'totals.grand moves',
+			'also check the totals',
+		]);
+		expect(queue[0]?.from).toMatchObject({ ref: STORE });
+		expect(queue[1]?.from).toBeUndefined();
+	});
+
+	it('moved to the front while sub-agents run → folded into the turn as theirs, delivered on that input', () => {
+		const queued = run(
+			[
+				{
+					type: 'subagent_started',
+					ref: CHECKOUT,
+					taskId: 't1',
+					agentType: 'Explore',
+					description: 'look around',
+					isBackground: false,
+				},
+			],
+			{ start: tell(busy(sessions(), CHECKOUT)) },
+		).state;
+		const queuedId = queued.sessions[CHECKOUT]?.queue[0]?.id ?? '';
+		const promoted = run([{ type: 'promote_queued', ref: CHECKOUT, queuedId }], {
+			start: queued,
+		}).state;
+
+		expect(cardsOf(promoted, STORE)[0]).toMatchObject({ status: 'delivered' });
+		expect(promoted.sessions[CHECKOUT]?.stream.at(-1)).toMatchObject({ kind: 'user', from: STORE });
+	});
+
+	it('its machine removed → the session goes, and the card says not delivered', () => {
+		// Working there: the tell waits in its queue.
+		const working = updateSession(sessions(), REMOTE_CHECKOUT, (session) => ({
+			...session,
+			status: 'running',
+		}));
+		const queued = run([request('tell', 'heads up', { session: REMOTE_CHECKOUT })], {
+			start: working,
+		}).state;
+
+		expect(cardsOf(queued, STORE)[0]).toMatchObject({ status: 'queued' });
+
+		const removed = run([{ type: 'remove_machine', id: 'vm1' }], { start: queued }).state;
+
+		expect(cardsOf(removed, STORE)[0]).toMatchObject({ status: 'failed', answer: NOT_DELIVERED });
+	});
+
+	it.each<[string, Input[]]>([
+		['cancelled', [{ type: 'cancel_queued', ref: CHECKOUT, queuedId: '' }]],
+		['interrupted', [{ type: 'interrupt', ref: CHECKOUT }]],
+		['the session deactivated', [{ type: 'deactivate', ref: CHECKOUT }]],
+		['its worker stopped cleanly', [{ type: 'worker_exited', ref: CHECKOUT, error: null }]],
+	])('dropped from the queue (%s) → not delivered', (_how, inputs) => {
+		const queued = tell(busy(sessions(), CHECKOUT));
+		const queuedId = queued.sessions[CHECKOUT]?.queue[0]?.id ?? '';
+		const state = run(
+			inputs.map((input) => (input.type === 'cancel_queued' ? { ...input, queuedId } : input)),
+			{ start: queued },
+		).state;
+
+		expect(cardsOf(state, STORE)[0]).toMatchObject({ status: 'failed', answer: NOT_DELIVERED });
+	});
+
+	it('work the developer allowed → queued, then delivered', () => {
+		const needsWork = run(
+			[
+				request('ask', 'Does it work on staging?', { session: 'checkout api main' }),
+				{
+					type: 'session_fork_settled',
+					ref: CHECKOUT,
+					id: 'r1',
+					status: 'needs_work',
+					answer: 'run the staging check',
+					files: [],
+					read: [],
+				},
+			],
+			{ start: busy(sessions(), CHECKOUT) },
+		).state;
+		const allowed = run([{ type: 'answer_peer', askId: 'r1:ok', isApproved: true }], {
+			start: needsWork,
+		}).state;
+
+		expect(cardsOf(allowed, STORE)[0]).toMatchObject({
+			status: 'queued',
+			answer: 'run the staging check',
+		});
+		expect(allowed.sessions[CHECKOUT]?.peerRuns[0]).toMatchObject({ status: 'queued' });
+
+		const done = run([{ type: 'turn_ended', ref: CHECKOUT, costUsd: 0, text: 'done' }], {
+			start: allowed,
+		}).state;
+
+		expect(cardsOf(done, STORE)[0]).toMatchObject({ status: 'delivered' });
+	});
+
+	it('allowed work moved to the front → it still reports back to the asker when it ends', () => {
+		const allowed = run(
+			[
+				request('ask', 'Does it work on staging?', { session: 'checkout api main' }),
+				{
+					type: 'session_fork_settled',
+					ref: CHECKOUT,
+					id: 'r1',
+					status: 'needs_work',
+					answer: 'run the staging check',
+					files: [],
+					read: [],
+				},
+				{ type: 'answer_peer', askId: 'r1:ok', isApproved: true },
+			],
+			{ start: busy(sessions(), CHECKOUT) },
+		).state;
+		const queuedId = allowed.sessions[CHECKOUT]?.queue[0]?.id ?? '';
+		const done = run(
+			[
+				{ type: 'promote_queued', ref: CHECKOUT, queuedId },
+				{ type: 'turn_ended', ref: CHECKOUT, costUsd: 0, text: 'cut' },
+				{ type: 'turn_ended', ref: CHECKOUT, costUsd: 0, text: 'All green.' },
+			],
+			{ start: allowed },
+		).state;
+
+		expect(done.sessions[STORE]?.stream.at(-1)).toMatchObject({ kind: 'user', from: CHECKOUT });
+		expect(JSON.stringify(done.sessions[STORE]?.stream.at(-1))).toContain('All green.');
+	});
+
+	it('a peer message queued without a request (from before this change) → delivered, no card touched', () => {
+		const start = updateQueue(tell(busy(sessions(), CHECKOUT)), CHECKOUT, {
+			id: 'legacy',
+			text: 'old words',
+			at: 1,
+			from: { ref: STORE, label: STORE },
+		});
+		const state = run(
+			[
+				{ type: 'turn_ended', ref: CHECKOUT, costUsd: 0, text: 'done' },
+				{ type: 'turn_ended', ref: CHECKOUT, costUsd: 0, text: 'done' },
+			],
+			{ start },
+		).state;
+
+		expect(state.sessions[CHECKOUT]?.stream.at(-1)).toMatchObject({
+			kind: 'user',
+			text: 'old words',
+		});
+		expect(cardsOf(state, STORE)).toMatchObject([{ status: 'delivered' }]);
+	});
+});
+
+describe('a secret, on both sides', () => {
+	const asked = (): State =>
+		run([request('secret', 'STRIPE_KEY', { session: 'checkout api main' })], { start: sessions() })
+			.state;
+
+	it('asked → the card waits for the OK; the asked session has a secret run, not a card', () => {
+		const state = asked();
+
+		expect(cardsOf(state, STORE)[0]).toMatchObject({ status: 'waiting_ok', peerRef: CHECKOUT });
+		expect(cardsOf(state, CHECKOUT)).toEqual([]);
+		expect(state.sessions[CHECKOUT]?.peerRuns[0]).toMatchObject({
+			kind: 'secret',
+			text: 'STRIPE_KEY',
+			status: 'waiting_ok',
+		});
+	});
+
+	it('the developer says no → refused on both', () => {
+		const state = run([{ type: 'answer_peer', askId: 'r1:ok', isApproved: false }], {
+			start: asked(),
+		}).state;
+
+		expect(cardsOf(state, STORE)[0]).toMatchObject({ status: 'refused' });
+		expect(state.sessions[CHECKOUT]?.peerRuns[0]).toMatchObject({ status: 'refused' });
+	});
+
+	it('allowed → copying on both, with no status words in the answer', () => {
+		const state = run([{ type: 'answer_peer', askId: 'r1:ok', isApproved: true }], {
+			start: asked(),
+		}).state;
+
+		expect(cardsOf(state, STORE)[0]).toMatchObject({ status: 'asking' });
+		expect(cardsOf(state, STORE)[0]?.answer).toBeUndefined();
+		expect(state.sessions[CHECKOUT]?.peerRuns[0]).toMatchObject({ status: 'asking' });
 	});
 });

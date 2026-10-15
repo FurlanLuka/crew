@@ -1,9 +1,12 @@
 // A forked, unsaved copy of a session's conversation, asked one thing while the session keeps
 // working: the aside's side answer and another session's ask both run through here.
 import { query as sdkQuery, type HookCallback } from '@anthropic-ai/claude-agent-sdk';
+import { createLogger } from '../log.js';
 import { readSpokenTag } from '../shared/spoken-tags.js';
 import type { RawMessage } from './events.js';
 import { buildQueryOptions, type QueryLaunch } from './worker.js';
+
+const log = createLogger('fork');
 
 export const readText = (message: RawMessage): string => {
 	const content = message.message?.content;
@@ -47,6 +50,8 @@ export interface RunForkParams {
 	timeoutMs: number;
 	// Seen as each message arrives: true stops the fork there (what came so far is kept).
 	shouldStop?: (message: RawMessage) => boolean;
+	// Each message as it arrives, for whoever shows the fork's steps live.
+	onMessage?: (message: RawMessage) => void;
 	runQuery?: typeof sdkQuery;
 }
 
@@ -64,6 +69,7 @@ export const runFork = async ({
 	preToolUse,
 	timeoutMs,
 	shouldStop,
+	onMessage,
 	runQuery = sdkQuery,
 }: RunForkParams): Promise<ForkRun> => {
 	const abort = new AbortController();
@@ -96,6 +102,13 @@ export const runFork = async ({
 			const raw = message as unknown as RawMessage;
 
 			messages.push(raw);
+
+			// Showing a step must never cost the answer.
+			try {
+				onMessage?.(raw);
+			} catch (error) {
+				log.warn('fork step not shown', { error: String(error) });
+			}
 
 			if (shouldStop?.(raw)) {
 				stop.reason = 'stopped';

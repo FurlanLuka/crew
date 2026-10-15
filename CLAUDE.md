@@ -400,7 +400,13 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   runs a read-only fork on the target's machine (`session_fork` → `runSessionAskFork`: Read/Grep/Glob
   inside the session's roots, secret paths and globs denied by `decideForkTool`) → `session_fork_settled`;
   `needs_work` opens a held `work` ask (docked on the asker, spoken, 15 min) whose Allow queues the work
-  to the target with `replyTo`, and the turn's final text goes back (`settleReplyBack`). A tell is a
+  to the target with `replyTo`, and the turn's final text goes back (`settleReplyBack`). The page: the
+  asker's `session_ask` card (`peerRef`, `settledAt`) holds the exchange; the asked session gets no
+  card, a `PeerRun` in `Session.peerRuns` (`state/peer-runs.ts`, ten kept, memory only) shown in its
+  side panel, whose steps come live as `session_fork_item` (`createForkSteps`: text before a call, the
+  call, failed results only; crosses from remotes). Tells and allowed work carry `from.requestId`:
+  `sendNow` marks the card `delivered`, and `settleLeftQueues` (run after every input) marks one that
+  left a queue unsent `failed` (`state/peer-cards.ts`). A tell is a
   queued message with `from` (`QueuedMessage.from`, the peer note, never `isDevelopersMessage`). A
   secret opens a held `secret` ask; Allow → `secret_transfer` to the target's machine, which reads it
   and sends the bytes beside the state (`SecretMessage` on the link, `deliverSecret` on the main) into

@@ -222,6 +222,7 @@ export class SessionManager {
 					sessionId: worker.id,
 					fromLabel,
 					question,
+					onItem: (item) => this.options.emit({ type: 'session_fork_item', ref, id, item }),
 					...(this.options.runQuery ? { runQuery: this.options.runQuery } : {}),
 				})
 			: { status: 'failed' as const, answer: 'it is not running', files: [], read: [] };

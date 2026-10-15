@@ -77,6 +77,8 @@ import {
 } from './active.js';
 import { isNameInput, reduceName } from './names.js';
 import { isGroupInput, reconcileGroups, reduceGroup } from './groups.js';
+import { settleLeftQueues } from './peer-cards.js';
+import { reduceForkItem } from './peer-runs.js';
 import { isModeInput, reduceSessionMode } from './session-modes.js';
 import { isActive } from '../shared/active.js';
 
@@ -255,6 +257,7 @@ export const createSession = (info: WorktreeInfo): Session => ({
 	requests: [],
 	subagents: [],
 	subagentRuns: [],
+	peerRuns: [],
 	compactingSince: null,
 	context: null,
 	model: null,
@@ -566,6 +569,8 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 			return reduceAnswerPeer(answered, input, stamped);
 		case 'peer_expired':
 			return reducePeerRequestExpired(state, input.key, stamped);
+		case 'session_fork_item':
+			return withoutEffects(reduceForkItem(state, input, stamped));
 	}
 
 	if (isSubagentInput(input)) {
@@ -1184,6 +1189,10 @@ export const reduce = (state: State, stamped: Stamped): ReducerResult => {
 
 	return {
 		...result,
-		state: reconcileGroups(before, settleMeanwhile(before, result.state, stamped.input)),
+		state: settleLeftQueues(
+			before,
+			reconcileGroups(before, settleMeanwhile(before, result.state, stamped.input)),
+			stamped.at,
+		),
 	};
 };

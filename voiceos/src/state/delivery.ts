@@ -117,6 +117,8 @@ interface FoldIntoTurnParams {
 	attachments: Attachment[] | undefined;
 	stamped: Stamped;
 	isOwed: boolean;
+	// Another session's words keep who they are from and who is owed the reply.
+	peer?: Pick<QueuedMessage, 'from' | 'replyTo'>;
 }
 
 const foldIntoTurn = ({
@@ -127,6 +129,7 @@ const foldIntoTurn = ({
 	attachments,
 	stamped,
 	isOwed,
+	peer,
 }: FoldIntoTurnParams): ReducerResult =>
 	sendNow({
 		state,
@@ -134,10 +137,12 @@ const foldIntoTurn = ({
 		text,
 		note,
 		attachments,
-		isSpoken: true,
+		isSpoken: !peer?.from,
 		itemId: stamped.id,
 		at: stamped.at,
 		reportOwed: Boolean(state.sessions[ref]?.reportOwed) || isOwed,
+		...(peer?.from ? { from: peer.from } : {}),
+		...(peer?.replyTo ? { replyTo: peer.replyTo } : {}),
 	});
 
 const queueFollowUp = ({
@@ -157,6 +162,41 @@ const queueFollowUp = ({
 	}
 
 	const head = session?.queue[0];
+
+	// Another session's words moved to the front, cutting the turn: they go first as they are, and the
+	// developer's go right after them, apart. The turn is already being cut: no second interrupt.
+	if (session && head && hasFollowUpWaiting(session) && !isDevelopersMessage(head)) {
+		const earlier = session.queue[1];
+		// More words in the same burst join the developer's first ones, as they would at the head.
+		const joins = earlier && earlier.isSpoken && isDevelopersMessage(earlier);
+		const mergedAttachments = joins
+			? joinAttachments(earlier.attachments, attachments)
+			: attachments;
+		const behind: QueuedMessage = joins
+			? {
+					...earlier,
+					text: `${earlier.text} ${text}`,
+					...(earlier.note || note ? { note: joinNotes(earlier.note, note) } : {}),
+					...(mergedAttachments ? { attachments: mergedAttachments } : {}),
+					...(earlier.reportOwed || isOwed ? { reportOwed: true as const } : {}),
+				}
+			: {
+					id: stamped.id,
+					text,
+					at: stamped.at,
+					isSpoken: true,
+					...(note ? { note } : {}),
+					...(attachments?.length ? { attachments } : {}),
+					...(isOwed ? { reportOwed: true as const } : {}),
+				};
+
+		return withoutEffects(
+			updateSession(state, ref, (current) => ({
+				...current,
+				queue: [head, behind, ...current.queue.slice(joins ? 2 : 1)],
+			})),
+		);
+	}
 
 	if (session && head && hasFollowUpWaiting(session)) {
 		const mergedAttachments = joinAttachments(head.attachments, attachments);
@@ -362,6 +402,8 @@ interface ReplaceRunningParams {
 	attachments: Attachment[] | undefined;
 	stamped: Stamped;
 	isOwed: boolean;
+	// Another session's words moved to the front keep who they are from and who is owed the reply.
+	peer?: Pick<QueuedMessage, 'from' | 'replyTo'>;
 }
 
 export const replaceRunning = ({
@@ -372,6 +414,7 @@ export const replaceRunning = ({
 	attachments,
 	stamped,
 	isOwed,
+	peer,
 }: ReplaceRunningParams): ReducerResult => {
 	// The running turn's work is replaced, not added to: it is cut like a follow-up cuts it (never
 	// narrated), and these words go first; whatever else waits keeps its place behind them.
@@ -382,7 +425,16 @@ export const replaceRunning = ({
 	}
 
 	if (hasRunningAgents(session)) {
-		return foldIntoTurn({ state, ref, text, note, attachments, stamped, isOwed });
+		return foldIntoTurn({
+			state,
+			ref,
+			text,
+			note,
+			attachments,
+			stamped,
+			isOwed,
+			...(peer ? { peer } : {}),
+		});
 	}
 
 	const message: QueuedMessage = {
@@ -390,6 +442,8 @@ export const replaceRunning = ({
 		text,
 		at: stamped.at,
 		isFollowUp: true,
+		...(peer?.from ? { from: peer.from } : {}),
+		...(peer?.replyTo ? { replyTo: peer.replyTo } : {}),
 		...(note ? { note } : {}),
 		...(attachments?.length ? { attachments } : {}),
 		...(session.reportOwed || isOwed ? { reportOwed: true as const } : {}),
@@ -398,7 +452,8 @@ export const replaceRunning = ({
 	return {
 		state: updateSession(state, ref, (current) => ({
 			...current,
-			needsUser: null,
+			// Another session's words answer nothing the developer was asked.
+			needsUser: peer?.from ? current.needsUser : null,
 			reportOwed: false,
 			queue: [message, ...current.queue],
 		})),
@@ -523,6 +578,10 @@ const sendFirst = ({ state, ref, message, stamped }: SendFirstParams): ReducerRe
 			attachments: message.attachments,
 			stamped: { ...stamped, id: message.id },
 			isOwed: true,
+			peer: {
+				...(message.from ? { from: message.from } : {}),
+				...(message.replyTo ? { replyTo: message.replyTo } : {}),
+			},
 		});
 	}
 

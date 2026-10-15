@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { isActive } from '../../shared/active.js';
 import { readMachine, toLocalRef } from '../../shared/machine-ref.js';
 import { readMachineTitle, readSessionLabel } from '../../shared/machines.js';
-import type { Session, State } from '../../shared/protocol.js';
+import type { Session, State, StreamItem } from '../../shared/protocol.js';
 import { describeWork } from '../../state/working.js';
 import {
 	describeSessionBadge,
@@ -28,6 +28,9 @@ import { SessionStream } from './SessionStream.js';
 import { SubagentDialog } from './SubagentDialog.js';
 import { SubagentsPanel } from './SubagentsPanel.js';
 import { VoicePanel } from './VoicePanel.js';
+import { findPeerRun } from '../../state/peer-runs.js';
+import { PeerRunDialog } from './PeerRunDialog.js';
+import { PeerRunsPanel } from './PeerRunsPanel.js';
 
 interface CockpitProps {
 	session: Session;
@@ -120,6 +123,15 @@ export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 	const [removal, setRemoval] = useState<Removal>(null);
 	const [openTaskId, setOpenTaskId] = useState<string | null>(null);
 	const openRun = session.subagentRuns.find((run) => run.taskId === openTaskId) ?? null;
+	// A copy's steps: this session's own (another session asked it) or the asked session's (it asked).
+	const [openPeer, setOpenPeer] = useState<{ ref: string; requestId: string } | null>(null);
+	const openPeerRun = openPeer
+		? findPeerRun(state.sessions[openPeer.ref], openPeer.requestId)
+		: undefined;
+	const peerRunFor = (item: StreamItem) =>
+		item.kind === 'session_ask' && item.peerRef
+			? (findPeerRun(state.sessions[item.peerRef], item.requestId) ?? null)
+			: null;
 	const now = useNow();
 	const isOn = isActive(state, session.ref);
 	const workingOn = readWorkingOn(session);
@@ -182,10 +194,19 @@ export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 					className="vo-stream stream"
 					hasAsk={state.asks.some((ask) => ask.ref === session.ref)}
 					openFor={(item) => {
+						if (item.kind === 'session_ask') {
+							const peerRef = item.peerRef;
+
+							return peerRef && item.request === 'ask' && peerRunFor(item)
+								? () => setOpenPeer({ ref: peerRef, requestId: item.requestId })
+								: null;
+						}
+
 						const run = item.kind === 'tool' ? findRunFor(session, item.toolUseId) : null;
 
 						return run ? () => setOpenTaskId(run.taskId) : null;
 					}}
+					peerRunFor={peerRunFor}
 				>
 					{session.status === 'stopped' && !session.error && (
 						<div className="line notice c-dim">
@@ -220,6 +241,10 @@ export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 						)}
 					</div>
 					<SubagentsPanel subagents={session.subagents} onOpen={setOpenTaskId} />
+					<PeerRunsPanel
+						runs={session.peerRuns}
+						onOpen={(requestId) => setOpenPeer({ ref: session.ref, requestId })}
+					/>
 					{isDevShown && (
 						<DevPanel
 							worktree={session.ref}
@@ -244,6 +269,13 @@ export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 					</div>
 				</aside>
 			</div>
+			{openPeer && openPeerRun && (
+				<PeerRunDialog
+					run={openPeerRun}
+					sessionLabel={readSessionLabel(state, openPeer.ref)}
+					onClose={() => setOpenPeer(null)}
+				/>
+			)}
 			{openRun && (
 				<SubagentDialog
 					run={openRun}

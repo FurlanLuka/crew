@@ -4,6 +4,8 @@ import type { Dispatch } from '../types.js';
 import { Markdown } from './Markdown.js';
 import { QuestionDock } from './QuestionDock.js';
 import { Reason } from './Reason.js';
+import { LockIcon } from './icons.js';
+import { SessionBadge } from './PeerCard.js';
 
 interface AskDockProps {
 	ask: PendingAsk;
@@ -155,17 +157,33 @@ export const AskDock = ({ ask, label, dispatch }: AskDockProps) => {
 			dispatch({ type: 'answer_peer', askId: ask.id, isApproved });
 
 		return (
-			<section className="dock amber" aria-label="request from another session">
-				<span className="lbl c-amber">
-					{ask.kind === 'work' ? 'work for another session' : 'a secret'} · {ask.fromLabel} →{' '}
-					{ask.toLabel}
-				</span>
-				<div className="ask">
-					{ask.kind === 'work'
-						? `${ask.fromLabel} wants ${ask.toLabel} to do this and report back.`
-						: `${ask.fromLabel} wants a copy of ${ask.toLabel}'s ${ask.what}, into a private temp file. Neither session sees the value.`}
-				</div>
-				{ask.kind === 'work' && <div className="cmd">{ask.text}</div>}
+			<section className="dock amber peer-dock" aria-label="request from another session">
+				{ask.kind === 'work' ? (
+					<>
+						<div className="pd-route">
+							<SessionBadge label={ask.fromLabel} />
+							<span>wants</span>
+							<SessionBadge label={ask.toLabel} />
+							<span>to do this and report back</span>
+						</div>
+						<div className="pd-task">{ask.text}</div>
+					</>
+				) : (
+					<>
+						<div className="pd-route">
+							<LockIcon />
+							<SessionBadge label={ask.fromLabel} />
+							<span>wants a copy of</span>
+							<SessionBadge label={ask.toLabel} />
+							<span>’s</span>
+							<code>{ask.what}</code>
+						</div>
+						<p className="pd-note">
+							It goes into a private file only {ask.fromLabel} can read. Neither session sees the
+							value.
+						</p>
+					</>
+				)}
 				<div className="btns">
 					<button type="button" className="btn primary" onClick={() => answer(true)}>
 						Allow{describeSaid(ask, 'yes')}

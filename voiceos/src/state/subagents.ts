@@ -46,7 +46,7 @@ export const SUBAGENT_RUNS_KEPT = 10;
 export const SUBAGENT_ITEMS_KEPT = 200;
 export const SUBAGENT_TEXT_CHARS = 2000;
 
-const clipItem = (item: SubagentItemContent, id: string, at: number): SubagentItem => {
+export const clipItem = (item: SubagentItemContent, id: string, at: number): SubagentItem => {
 	if (item.kind !== 'text' || item.text.length <= SUBAGENT_TEXT_CHARS) {
 		return { ...item, id, at } as SubagentItem;
 	}

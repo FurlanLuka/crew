@@ -11,7 +11,7 @@ import type {
 import { createInitialState, createSession } from '../state/reducer.js';
 import { GENERAL_NOTES } from '../shared/notes.js';
 import { findCurrentAsk, describeRouteChip } from '../shared/route-chip.js';
-import { isRemembered, VOICE_MEMORY_MS } from '../shared/protocol.js';
+import { GROUP_COLORS, isRemembered, VOICE_MEMORY_MS } from '../shared/protocol.js';
 
 import {
 	describeRunStatus,
@@ -28,6 +28,12 @@ import {
 	readLastLine,
 	describeSessionBadge,
 	describeGroup,
+	describePeerCard,
+	describePeerRunStatus,
+	listShownRuns,
+	PEER_RUN_SHOWN_MS,
+	readInitials,
+	readSessionColor,
 	hasHiddenAlarm,
 	classifyDiffLine,
 	listDocs,
@@ -642,4 +648,115 @@ describe('session groups', () => {
 		expect(hasHiddenAlarm(asking, ['a/main', 'e/main'])).toBe(false);
 		expect(hasHiddenAlarm(state(), ['a/main'])).toBe(false);
 	});
+});
+
+describe('sessions asking sessions', () => {
+	const card = (patch: Record<string, unknown>) =>
+		({
+			id: 'c',
+			at: 1_000,
+			kind: 'session_ask',
+			requestId: 'r1',
+			request: 'ask',
+			peer: 'checkout',
+			text: 'q',
+			status: 'asking',
+			...patch,
+		}) as Parameters<typeof describePeerCard>[0];
+
+	it('an ask: Asking while waiting, then Answered with how long the copy took', () => {
+		expect(describePeerCard(card({}))).toMatchObject({
+			verb: 'Asking',
+			pill: { tone: 'wait', label: 'Waiting' },
+			isWaiting: true,
+		});
+		expect(describePeerCard(card({ status: 'answered', settledAt: 9_400 }))).toMatchObject({
+			verb: 'Asked',
+			pill: { tone: 'ok', label: 'Answered · 8s' },
+		});
+	});
+
+	it('a secret: Asked … for a secret; copying is waiting', () => {
+		expect(describePeerCard(card({ request: 'secret', status: 'asking' }))).toMatchObject({
+			verb: 'Asked',
+			after: 'for a secret',
+			pill: { label: 'Copying' },
+			isWaiting: true,
+		});
+	});
+
+	const run = (patch: Record<string, unknown>) =>
+		({
+			requestId: 'r',
+			kind: 'ask',
+			fromRef: 'a',
+			fromLabel: 'a',
+			text: 'q',
+			status: 'answered',
+			startedAt: 0,
+			settledAt: 0,
+			step: null,
+			items: [],
+			answer: null,
+			...patch,
+		}) as Parameters<typeof describePeerRunStatus>[0];
+
+	it('a row settled ten minutes ago or more → hidden; one still going → shown however old', () => {
+		const now = PEER_RUN_SHOWN_MS;
+
+		expect(listShownRuns([run({ settledAt: 0 })], now)).toEqual([]);
+		expect(listShownRuns([run({ settledAt: 1 })], now)).toHaveLength(1);
+		expect(listShownRuns([run({ settledAt: null, status: 'asking' })], now * 10)).toHaveLength(1);
+	});
+
+	it("a row's words: a secret's are its own", () => {
+		expect(describePeerRunStatus(run({ status: 'asking' }))).toBe('looking');
+		expect(describePeerRunStatus(run({ kind: 'secret', status: 'answered' }))).toBe('copied');
+	});
+
+	it('initials: a workspace of words → their first letters; one word → its first two', () => {
+		expect(readInitials('store-front/main')).toBe('SF');
+		expect(readInitials('checkout')).toBe('CH');
+		expect(readInitials('vm1 api work')).toBe('VA');
+	});
+
+	it('a session always gets the same colour, one of the group palette; different sessions spread out', () => {
+		const refs = [
+			'store-front/main',
+			'checkout-api/main',
+			'admin/main',
+			'signals/wrk1',
+			'infra-ops/main',
+		];
+
+		for (const ref of refs) {
+			expect(GROUP_COLORS).toContain(readSessionColor(ref));
+			expect(readSessionColor(ref)).toBe(readSessionColor(ref));
+		}
+
+		expect(new Set(refs.map(readSessionColor)).size).toBeGreaterThan(1);
+	});
+
+	it.each<[string, string, Record<string, unknown>, string]>([
+		['ask', 'asking', {}, 'Waiting'],
+		['ask', 'needs_work', {}, 'Needs your OK'],
+		['ask', 'queued', {}, 'Allowed · queued'],
+		['ask', 'delivered', {}, 'Allowed · sent'],
+		['ask', 'refused', {}, 'Not asked'],
+		['ask', 'refused', { peerRef: 'checkout' }, 'Not allowed'],
+		['ask', 'failed', {}, 'No answer'],
+		['ask', 'answered', {}, 'Answered'],
+		['tell', 'queued', {}, 'Queued'],
+		['tell', 'delivered', {}, 'Delivered'],
+		['tell', 'failed', {}, 'Not delivered'],
+		['tell', 'refused', {}, 'Not sent'],
+		['secret', 'waiting_ok', {}, 'Needs your OK'],
+		['secret', 'asking', {}, 'Copying'],
+		['secret', 'answered', {}, 'Copied'],
+		['secret', 'refused', {}, 'Refused'],
+		['secret', 'failed', {}, 'Not copied'],
+		['tell', 'needs_work', {}, '…'],
+	])('%s %s %o → %s', (request, status, patch, label) =>
+		expect(describePeerCard(card({ request, status, ...patch })).pill.label).toBe(label),
+	);
 });
