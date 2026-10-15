@@ -151,8 +151,8 @@ h1 {
 /* A session at work: a turning ring, so working never reads as a still dot. */
 .dot.running {
 	background: none;
-	box-shadow: inset 0 0 0 1.5px var(--amber);
-	border-top: 1.5px solid transparent;
+	border: 1.5px solid var(--amber);
+	border-top-color: transparent;
 	animation: dot-turn 1s linear infinite;
 }
 @keyframes dot-turn {
@@ -162,6 +162,7 @@ h1 {
 }
 @media (prefers-reduced-motion: reduce) {
 	.dot.running {
+		border-top-color: var(--amber);
 		animation: none;
 	}
 }

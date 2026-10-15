@@ -2531,8 +2531,8 @@ button.line.opens:hover .opens-hint {
 	margin-left: auto;
 }
 
-/* The working line at the foot of a session's stream: soft dots for the whole turn, amber when it
-   waits on you. */
+/* The working line at the foot of a session's stream: soft dots for the whole turn, red, like its
+   tab, when it waits on you. */
 .line.working {
 	display: flex;
 	align-items: center;

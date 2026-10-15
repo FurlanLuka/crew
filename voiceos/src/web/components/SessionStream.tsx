@@ -1,6 +1,7 @@
 // A session's stream as every page draws it: its lines, the reply still arriving with its caret, the
-// compaction bar and the working line, kept at the end as it grows. Voice OS's session and Set up's chat both draw it;
-// what each adds (a line under an item, a note at the end) comes in through the slots.
+// compaction bar and the working line, kept at the end as it grows. Voice OS's session and Set up's
+// chat both draw it; what each adds (a line under an item, a note at the end) comes in through the
+// slots.
 import type { ReactNode } from 'react';
 import type { Session, StreamItem } from '../../shared/protocol.js';
 import { stripStreamingTag } from '../../shared/spoken-tags.js';

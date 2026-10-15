@@ -3633,6 +3633,19 @@ describe('slash commands', () => {
 		await chip.waitFor({ timeout: 5000 });
 		expect(await chip.textContent()).toBe('Opus 5.5 · 1M');
 
+		// The model it already runs on: the menu closes, nothing is sent.
+		await chip.click();
+		await page.getByRole('menuitemradio', { name: /Opus 5\.5/ }).click();
+		await page.getByRole('menu').waitFor({ state: 'detached', timeout: 5000 });
+		await Bun.sleep(150);
+		expect(
+			received
+				.slice(before)
+				.some(
+					(entry) => entry.message.type === 'action' && entry.message.action.type === 'set_model',
+				),
+		).toBe(false);
+
 		await chip.click();
 		await page.getByRole('menuitemradio', { name: /Sonnet 5\.5/ }).click();
 		await waitUntil(() =>
