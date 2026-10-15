@@ -616,6 +616,8 @@
 .vo-home-main {
 	flex: 999 1 560px;
 	min-width: 0;
+	display: grid;
+	gap: 22px;
 }
 .vo-home-main .vo-list,
 .vo-home-main .vo-empty {
@@ -687,6 +689,68 @@
 }
 .vo-answer {
 	pointer-events: none;
+}
+/* Home with groups: one list per group, always open, its name and ring in the group's colour. */
+.vo-hgroup {
+	display: grid;
+	gap: 8px;
+	min-width: 0;
+}
+.vo-hgroup-head {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	min-width: 0;
+	padding: 0 4px;
+	border: 0;
+	background: none;
+	color: var(--label);
+	text-align: left;
+	font: inherit;
+}
+.vo-hgroup-head b {
+	font: 650 15px var(--sys);
+	color: color-mix(in srgb, var(--g) 75%, #fff);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.vo-hgroup.plain .vo-hgroup-head b {
+	color: var(--label-2);
+}
+.vo-hgroup-swatch {
+	flex: none;
+	width: 10px;
+	height: 10px;
+	border-radius: 3px;
+	background: var(--g);
+}
+.vo-hgroup-count {
+	flex: none;
+	font-size: 13px;
+	color: var(--label-3);
+}
+.vo-hgroup-count.alarm {
+	color: var(--crit-text);
+}
+.vo-hgroup-open {
+	flex: none;
+	margin-left: auto;
+	padding: 3px 10px;
+	border-radius: 12px;
+	font-size: 12.5px;
+	color: color-mix(in srgb, var(--g) 70%, #fff);
+	background: color-mix(in srgb, var(--g) 14%, transparent);
+}
+.vo-hgroup-head:hover .vo-hgroup-open {
+	background: color-mix(in srgb, var(--g) 24%, transparent);
+}
+.vo-hgroup[data-color] .vo-list {
+	background: color-mix(in srgb, var(--g) 5%, transparent);
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--g) 32%, transparent);
+}
+.vo-hgroup[data-color] .box-row + .box-row {
+	box-shadow: inset 0 1px 0 color-mix(in srgb, var(--g) 16%, transparent);
 }
 
 /* A machine's page: which machine, what it is, then its plain sessions and worktrees. */
@@ -1962,6 +2026,10 @@
 
 /* Phone: one column, the page scrolls, every bar stays inside the screen. */
 @media (max-width: 860px) {
+	/* The header itself opens the group: the pill would cut the name short. */
+	.vo-hgroup-open {
+		display: none;
+	}
 	.vo-top {
 		padding-left: 14px;
 		padding-right: 8px;
