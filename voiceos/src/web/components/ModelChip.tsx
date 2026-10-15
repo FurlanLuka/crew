@@ -3,7 +3,7 @@
 // the session has taken it.
 import { useCallback, useRef, useState } from 'react';
 import type { ClientMessage, State } from '../../shared/protocol.js';
-import { MODEL_CHOICES, describeModel, describeSessionModel, isSameModel } from '../models.js';
+import { MODEL_CHOICES, describeModel, describeSessionModel, isCurrentChoice } from '../models.js';
 import { useDismiss } from '../use-dismiss.js';
 
 interface ModelChipProps {
@@ -25,12 +25,13 @@ export const ModelChip = ({ state, sessionRef, send }: ModelChipProps) => {
 		return null;
 	}
 
-	const said = describeSessionModel(model, session?.context?.max ?? null);
+	const windowTokens = session?.context?.max ?? null;
+	const said = describeSessionModel(model, windowTokens);
 
 	const pick = (next: string) => {
 		setIsOpen(false);
 
-		if (!isSameModel(next, model)) {
+		if (!isCurrentChoice(next, model, windowTokens)) {
 			send({ type: 'action', action: { type: 'set_model', ref: sessionRef, model: next } });
 		}
 	};
@@ -51,7 +52,7 @@ export const ModelChip = ({ state, sessionRef, send }: ModelChipProps) => {
 			{isOpen ? (
 				<div className="perm-menu" role="menu">
 					{MODEL_CHOICES.map((choice) => {
-						const isOn = isSameModel(choice.id, model);
+						const isOn = isCurrentChoice(choice.id, model, windowTokens);
 
 						return (
 							<button

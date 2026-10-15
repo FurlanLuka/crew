@@ -28,13 +28,6 @@ export const describeModel = (id: string): string => {
 	return /^[a-z]+$/i.test(id) ? capitalize(id) : id;
 };
 
-const WITHOUT_WINDOW = (said: string): string => said.replace(' · 1M', '');
-
-// Two ids for the same model are the same pick: a date stamp, or the [1m] window, which Claude Code
-// leaves out of the id it reports even when the session runs on it.
-export const isSameModel = (a: string, b: string): boolean =>
-	WITHOUT_WINDOW(describeModel(a)) === WITHOUT_WINDOW(describeModel(b));
-
 const ONE_MILLION = 1_000_000;
 
 // The chip's words: the reported id said short, with the 1M window when the context meter's reading
@@ -46,3 +39,11 @@ export const describeSessionModel = (id: string, windowTokens: number | null): s
 		? `${said} · 1M`
 		: said;
 };
+
+// The menu's choice the session is on. Claude Code leaves [1m] out of the id it reports, so the window
+// comes from the context reading: Opus at 200k is not the 1M choice, and picking that one switches it.
+export const isCurrentChoice = (
+	choiceId: string,
+	model: string,
+	windowTokens: number | null,
+): boolean => describeModel(choiceId) === describeSessionModel(model, windowTokens);

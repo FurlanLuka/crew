@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { describeModel, describeSessionModel, isSameModel } from './models.js';
+import { describeModel, describeSessionModel, isCurrentChoice } from './models.js';
 
 describe('describeModel', () => {
 	it.each([
@@ -11,12 +11,6 @@ describe('describeModel', () => {
 		['opus', 'Opus'],
 		['some-proxy/model:v2', 'some-proxy/model:v2'],
 	])('%s → %s', (id, said) => expect(describeModel(id)).toBe(said));
-
-	it('a dated id, or the [1m] window Claude Code leaves out of its report, is the same pick', () => {
-		expect(isSameModel('claude-haiku-5-5-20260901', 'claude-haiku-5-5')).toBe(true);
-		expect(isSameModel('claude-opus-5-5', 'claude-opus-5-5[1m]')).toBe(true);
-		expect(isSameModel('claude-opus-5-5', 'claude-sonnet-5-5')).toBe(false);
-	});
 });
 
 describe('describeSessionModel', () => {
@@ -25,5 +19,15 @@ describe('describeSessionModel', () => {
 		expect(describeSessionModel('claude-opus-5-5[1m]', 1_000_000)).toBe('Opus 5.5 · 1M');
 		expect(describeSessionModel('claude-sonnet-5-5', 200_000)).toBe('Sonnet 5.5');
 		expect(describeSessionModel('claude-opus-5-5', null)).toBe('Opus 5.5');
+		expect(describeSessionModel('claude-opus-5-5', 999_999)).toBe('Opus 5.5');
+	});
+});
+
+describe('isCurrentChoice', () => {
+	it('the reported id with its window from the reading; a dated id is the same model', () => {
+		expect(isCurrentChoice('claude-opus-5-5[1m]', 'claude-opus-5-5', 1_000_000)).toBe(true);
+		expect(isCurrentChoice('claude-opus-5-5[1m]', 'claude-opus-5-5', 200_000)).toBe(false);
+		expect(isCurrentChoice('claude-haiku-5-5', 'claude-haiku-5-5-20260901', 200_000)).toBe(true);
+		expect(isCurrentChoice('claude-sonnet-5-5', 'claude-opus-5-5', 200_000)).toBe(false);
 	});
 });
