@@ -3,7 +3,7 @@
 // the session has taken it.
 import { useCallback, useRef, useState } from 'react';
 import type { ClientMessage, State } from '../../shared/protocol.js';
-import { MODEL_CHOICES, describeModel, isSameModel } from '../models.js';
+import { MODEL_CHOICES, describeModel, describeSessionModel, isSameModel } from '../models.js';
 import { useDismiss } from '../use-dismiss.js';
 
 interface ModelChipProps {
@@ -16,7 +16,8 @@ export const ModelChip = ({ state, sessionRef, send }: ModelChipProps) => {
 	const [isOpen, setIsOpen] = useState(false);
 	const wrapRef = useRef<HTMLDivElement | null>(null);
 	const closeMenu = useCallback(() => setIsOpen(false), []);
-	const model = state.sessions[sessionRef]?.model ?? null;
+	const session = state.sessions[sessionRef];
+	const model = session?.model ?? null;
 
 	useDismiss(isOpen, wrapRef, closeMenu);
 
@@ -24,7 +25,7 @@ export const ModelChip = ({ state, sessionRef, send }: ModelChipProps) => {
 		return null;
 	}
 
-	const said = describeModel(model);
+	const said = describeSessionModel(model, session?.context?.max ?? null);
 
 	const pick = (next: string) => {
 		setIsOpen(false);
