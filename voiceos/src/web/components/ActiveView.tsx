@@ -52,7 +52,7 @@ export const countMachines = (refs: string[]): number =>
 // Things to say that do what this page's buttons do.
 const SAY_IT = [
 	'“New session on Build box called logs”',
-	'“Activate signals main”',
+	'“Activate store main”',
 	'“What’s waiting on me?”',
 ];
 

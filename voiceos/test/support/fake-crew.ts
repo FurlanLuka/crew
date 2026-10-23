@@ -79,6 +79,10 @@ export interface FakeMachine {
 	chats: FakeChat[];
 	// Workspaces from before crew 2.0, which crew migrate moves.
 	flatWorkspaces: string[];
+	// A project's install steps as crew names them (mise install, npm ci): its setup, or install.
+	installSteps: Record<string, string[]>;
+	// Where its worktrees' checkouts are, as ls worktrees and show print them.
+	worktreesDir: string;
 }
 
 interface MachineFailure {
@@ -114,8 +118,15 @@ export interface FakeCrew {
 	// Every command for this machine fails the way the link fails it (out of reach, an older crew),
 	// until reset; null puts it back.
 	failMachine: (id: string, failure: MachineFailure | null) => void;
+	// What a read answers from now on instead of its golden (crew's JSON shape, or one per command):
+	// the docs screenshots' own example. Until reset.
+	setAnswer: <T extends SetupCommand['type']>(type: T, answer: FakeAnswer<T>) => void;
 	reset: (seed?: 'golden' | 'empty') => void;
 }
+
+export type FakeAnswer<T extends SetupCommand['type']> =
+	| unknown
+	| ((command: Extract<SetupCommand, { type: T }>) => unknown);
 
 const INSTALL_ERROR = 'pnpm install:\nERR_PNPM_NO_MATCHING_VERSION';
 
@@ -135,6 +146,8 @@ const seedMachine = (seed: 'golden' | 'empty'): FakeMachine => {
 			isDiscordSetUp: readGolden<{ set_up: boolean }>('server-discord-off.json').set_up,
 			chats: [],
 			flatWorkspaces: [],
+			installSteps: {},
+			worktreesDir: '/w',
 		};
 	}
 
@@ -173,6 +186,8 @@ const seedMachine = (seed: 'golden' | 'empty'): FakeMachine => {
 		isDiscordSetUp: readGolden<{ set_up: boolean }>('server-discord-status.json').set_up,
 		chats: readGolden<FakeChat[]>('ls-chats.json'),
 		flatWorkspaces: [],
+		installSteps: {},
+		worktreesDir: '/w',
 	};
 };
 
@@ -245,9 +260,9 @@ const repoKey = (remote: string): string => {
 	return slash < 0 ? key.toLowerCase() : key.slice(0, slash).toLowerCase() + key.slice(slash);
 };
 
-const STEP_NAMES = (project: CrewProject | undefined): string[] => [
+const STEP_NAMES = (project: CrewProject | undefined, installSteps: Record<string, string[]>) => [
 	'checkout',
-	project?.setup ?? 'install',
+	...((project && installSteps[project.name]) ?? [project?.setup ?? 'install']),
 	...(project?.dev_servers ?? []).map((server) => `smoke ${server.name}`),
 ];
 
@@ -257,10 +272,11 @@ const readRun = (
 	projects: CrewProject[],
 	runMs: number,
 	now: number,
+	installSteps: Record<string, string[]> = {},
 ): CrewProjectStatus[] =>
 	run.projects.map((name) => {
 		const project = projects.find((row) => row.name === name);
-		const steps = STEP_NAMES(project);
+		const steps = STEP_NAMES(project, installSteps);
 		const elapsed = now - run.startedAt;
 		const isFailing = run.failing.includes(name);
 		const at = new Date(run.startedAt).toISOString();
@@ -349,6 +365,7 @@ export const createFakeCrew = ({
 	const heldCommands = new Map<string, PromiseWithResolvers<void>>();
 	const refusedCommands = new Map<string, string>();
 	const failing = new Map<string, MachineFailure>();
+	const answers = new Map<string, unknown>();
 
 	const reset = (next: 'golden' | 'empty' = seed) => {
 		devLogs.clear();
@@ -361,6 +378,7 @@ export const createFakeCrew = ({
 		heldLogs.clear();
 		heldCommands.clear();
 		refusedCommands.clear();
+		answers.clear();
 
 		for (const id of [LOCAL_MACHINE, ...remotes]) {
 			machines[id] = seedMachine(next);
@@ -383,9 +401,9 @@ export const createFakeCrew = ({
 	};
 
 	// Every project's last result on a worktree: the kept ones, then this run's.
-	const readWorktreeRun = (run: FakeRun, projects: CrewProject[], now: number) => [
+	const readWorktreeRun = (run: FakeRun, machine: FakeMachine, now: number) => [
 		...run.kept,
-		...readRun(run, projects, runMs, now),
+		...readRun(run, machine.projects, runMs, now, machine.installSteps),
 	];
 
 	// A runner's verdict lands on the worktree, as crew records health.
@@ -394,7 +412,7 @@ export const createFakeCrew = ({
 			return;
 		}
 
-		const statuses = readWorktreeRun(worktree.run, machine.projects, now);
+		const statuses = readWorktreeRun(worktree.run, machine, now);
 		worktree.issues = statuses.flatMap((status) => status.issues);
 	};
 
@@ -591,6 +609,12 @@ export const createFakeCrew = ({
 			};
 		};
 
+		if (answers.has(command.type)) {
+			const answer = answers.get(command.type);
+
+			return json(typeof answer === 'function' ? answer(command) : answer);
+		}
+
 		switch (command.type) {
 			case 'ls_projects':
 				return json(machine.projects);
@@ -631,7 +655,7 @@ export const createFakeCrew = ({
 
 						return {
 							ref: worktree.ref,
-							path: `/w/${worktree.ref}`,
+							path: `${machine.worktreesDir}/${worktree.ref}`,
 							dev_running: worktree.devRunning,
 							installing: isInstalling,
 							...(command.size ? { size_bytes: worktree.sizeBytes } : {}),
@@ -644,7 +668,7 @@ export const createFakeCrew = ({
 						};
 					});
 				const checks = Object.entries(machine.checks).flatMap(([project, check]) => {
-					const status = readRun(check, machine.projects, runMs, now)[0];
+					const status = readRun(check, machine.projects, runMs, now, machine.installSteps)[0];
 
 					return status?.state === 'failed'
 						? [
@@ -670,7 +694,7 @@ export const createFakeCrew = ({
 					? json(
 							workspace.projects.map((project) => ({
 								name: project.name,
-								path: `/w/${command.ref}/${project.name}`,
+								path: `${machine.worktreesDir}/${command.ref}/${project.name}`,
 								mode: project.mode,
 							})),
 						)
@@ -714,7 +738,7 @@ export const createFakeCrew = ({
 					const check = machine.checks[command.ref.slice('check/'.length)];
 					const { doc, code } = toStatus(
 						command.ref,
-						check ? readRun(check, machine.projects, runMs, now) : [],
+						check ? readRun(check, machine.projects, runMs, now, machine.installSteps) : [],
 						now,
 					);
 
@@ -724,7 +748,7 @@ export const createFakeCrew = ({
 				const worktree = findWorktree(command.ref);
 				const { doc, code } = toStatus(
 					command.ref,
-					worktree?.run ? readWorktreeRun(worktree.run, machine.projects, now) : [],
+					worktree?.run ? readWorktreeRun(worktree.run, machine, now) : [],
 					now,
 				);
 
@@ -743,7 +767,7 @@ export const createFakeCrew = ({
 					});
 				}
 
-				const [status] = readRun(check, machine.projects, runMs, now);
+				const [status] = readRun(check, machine.projects, runMs, now, machine.installSteps);
 				const state =
 					status?.state === 'running'
 						? 'running'
@@ -1202,7 +1226,7 @@ export const createFakeCrew = ({
 				const [workspaceName = ''] = command.ref.split('/');
 				const members = findWorkspace(workspaceName)?.projects.map((project) => project.name) ?? [];
 				const projects = command.projects?.length ? command.projects : members;
-				const before = worktree.run ? readWorktreeRun(worktree.run, machine.projects, clock()) : [];
+				const before = worktree.run ? readWorktreeRun(worktree.run, machine, clock()) : [];
 				worktree.run = {
 					...startRun(projects),
 					kept: before.filter((status) => !projects.includes(status.project)),
@@ -1481,6 +1505,9 @@ export const createFakeCrew = ({
 			} else {
 				failing.delete(id);
 			}
+		},
+		setAnswer: (type, answer) => {
+			answers.set(type, answer);
 		},
 		reset,
 	};

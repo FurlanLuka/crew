@@ -195,16 +195,21 @@ the model underneath.
   never acted on by the kernel itself. Sessions write their own short spoken lines; when a
   reply comes without one, the **narrator** decides what to say and whether the session now
   waits on you. Both run on your Anthropic API key; speech in and out runs on Soniox.
-- **Auto mode.** Sessions run in Claude Code's auto permission mode: routine steps go ahead,
-  and Claude Code's own safety check blocks what looks risky. A blocked action is shown and
-  said with its reason; "allow it" approves exactly that one retried call and then auto mode
-  is back. Plans (`ExitPlanMode`) and questions (`AskUserQuestion`) always wait for you.
+- **Permission modes.** Each session has its own mode, picked on the chip by its text box, with
+  `/mode` or by voice, and kept across restarts: **Auto** (the default; Claude Code's auto mode,
+  where routine steps go ahead and its own safety check blocks what looks risky), **Plan**
+  (plans, changes nothing; an approved plan returns to the mode before it), **Ask** (every
+  permission comes to you) and **Skip** (Claude Code's skip-permissions; asked first by voice,
+  refused when Claude runs as root). In Auto a blocked action is shown and said with its reason;
+  "allow it" approves exactly that one retried call and then auto mode is back. Plans
+  (`ExitPlanMode`) and questions (`AskUserQuestion`) always wait for you. Set up's chat stays in
+  Auto.
 - **Active sessions and names.** Only **active** sessions exist for voice: Voice OS runs their
   Claude, starts them again after a restart (a remote's when its link is up) and hears from
   them. An inactive session has no process and says nothing; you browse it on the page and
   activate it there or by voice ("activate checkout"). Deactivating stops it and keeps its
-  conversation for next time. The **Active** view
-  gathers them from every machine. A name you give a session replaces its crew ref everywhere
+  conversation for next time. **Home**
+  gathers them from every machine, one list per tab group when there are groups. A name you give a session replaces its crew ref everywhere
   on the page and in what you can say. Both are Voice OS preferences, not crew state: they have
   no crew command, and crew never sees them.
 - **Other machines.** Voice OS can drive the sessions of another machine's worktrees — a VM,
@@ -220,9 +225,12 @@ the model underneath.
 
 **Where its state lives.** `~/.crew/voiceos/`: `token` (the page's sign-in, owner-only),
 `sessions.json` (which Claude session each worktree resumes), `active.json`, `names.json`,
-`view.json` (the screen a restart comes back to), `machines.json` (written by
-`crew server machines`), `notes/<workspace>.md`, `journal/` (every turn, for "what did checkout
-do yesterday"), `media/` (images sessions showed, swept after 30 days) and `logs/` (the log and
+`modes.json` (each session's permission mode), `groups.json` (the top bar's tab groups),
+`voice-off.json`, `view.json` (the screen a restart comes back to), `machines.json` (written by
+`crew server machines`), `discord.json` and `discord-status.json` (when Discord is set up),
+`notes/<workspace>.md`, `journal/` (every turn, for "what did checkout do yesterday"), `media/`
+(images sessions showed, swept after 30 days), `attachments/` (files you attached, 30 days),
+`secrets/` (secrets one session copied for another, gone when it stops) and `logs/` (the log and
 your debug notes). A remote keeps its own under `~/.crew/voiceos/remote/`. The binary is
 `~/.crew/bin/voiceos`, and the API keys are in `~/.config/crew-voiceos/` (owner-only, never in
 the environment: an exported `ANTHROPIC_API_KEY` would switch every Claude Code session to
