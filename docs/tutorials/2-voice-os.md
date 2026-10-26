@@ -213,12 +213,11 @@ asking session's stream, with where it stands and what came back.
 for a call or a quiet office. It shows struck through; click it again to come back. Typing works
 the whole time, and nothing from the quiet time is read out later.
 
-On a phone the page fits the width, with the tabs scrolling sideways. Browsers give the microphone
-only to `localhost` or HTTPS, so on a phone open the proxy link, after trusting crew's
-certificate on that phone ([tutorial 4](4-from-anywhere.md) walks through both). Until then the
-link works for text and clicks.
+Voice OS has a phone layout too. Settings → **Your phone** shows a QR code: scan it, save the page
+to the home screen, and it opens like an app, signed in ([tutorial 4](4-from-anywhere.md#on-a-phone)
+walks through it).
 
-![Voice OS on a phone: store/main's stream adding a search box to the catalog, with a diff, its spoken line and the input](../images/voice-os/phone.png)
+![store/main on a phone: back, the name and ⋯ at the top, the stream adding a search box to the catalog with a diff of CatalogPage.tsx, and Hold the mic to talk at the bottom](../images/voice-os/phone.png)
 
 ## Next
 

@@ -87,6 +87,9 @@ export const useVoiceInput = ({
 		onMicStatusChange,
 	});
 
+	// Text only stays quiet in this tab: speech is acknowledged unplayed, so the server never waits on it.
+	useEffect(() => player.setMuted(listenMode === 'text'), [player, listenMode]);
+
 	// Voice off: what plays stops and the device is let go, so the browser's recording light goes out.
 	useEffect(() => {
 		if (!isVoiceOff) {
@@ -107,7 +110,10 @@ export const useVoiceInput = ({
 		}
 
 		void isMicAllowed().then((isAllowed) =>
-			isAllowed && !isListeningMode(listenModeRef.current) && !isVoiceOffRef.current
+			isAllowed &&
+			!isListeningMode(listenModeRef.current) &&
+			listenModeRef.current !== 'text' &&
+			!isVoiceOffRef.current
 				? getMic()
 						.ensure()
 						.catch(() => {
@@ -119,10 +125,11 @@ export const useVoiceInput = ({
 
 	const handleTalkStart = useCallback(
 		async ({ isDictation = false }: { isDictation?: boolean } = {}) => {
-			// The mic already streams in the listening modes, or Discord has it.
+			// The mic already streams in the listening modes, or Discord has it; text has none.
 			if (
 				isPressedRef.current ||
 				isListeningMode(listenModeRef.current) ||
+				listenModeRef.current === 'text' ||
 				isOnDiscordRef.current ||
 				isVoiceOffRef.current
 			) {
@@ -215,6 +222,11 @@ export const useVoiceInput = ({
 				handleTalkStop();
 			}
 
+			// Text only: the device is let go, so the recording light goes out.
+			if (mode === 'text') {
+				micRef.current?.close();
+			}
+
 			chooseListenMode(mode);
 		},
 		[isDictating, handleTalkStop, chooseListenMode],
@@ -225,6 +237,7 @@ export const useVoiceInput = ({
 			if (
 				event.code !== 'Space' ||
 				event.repeat ||
+				listenModeRef.current === 'text' ||
 				isTypingInField(event) ||
 				isOnOwnControl(event) ||
 				isInDialog(event)

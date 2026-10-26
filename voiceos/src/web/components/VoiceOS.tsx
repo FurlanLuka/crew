@@ -10,6 +10,7 @@ import { isInDialog } from '../in-dialog.js';
 import type { Dispatch, ListenCommand, MicStatus } from '../types.js';
 import type { ConnectionStatus, KeptDictation, OpenRequest } from '../use-connection.js';
 import type { PcmPlayer } from '../use-speech-player.js';
+import { IS_PHONE, IS_PHONE_LINK, shouldShowInstall } from '../phone.js';
 import { useVoiceInput } from '../use-voice-input.js';
 import { Activate } from './Activate.js';
 import { ActiveView } from './ActiveView.js';
@@ -18,6 +19,8 @@ import { BottomBar } from './BottomBar.js';
 import { ConnectionBanner } from './ConnectionBanner.js';
 import { Cockpit } from './Cockpit.js';
 import { NewSessionDialog } from './NewSessionDialog.js';
+import { isStandalone, readInstallDismissed } from './phone/InstallGuide.js';
+import { PhoneVoiceOS } from './phone/PhoneVoiceOS.js';
 import { Settings } from './Settings.js';
 import { TopBar } from './TopBar.js';
 
@@ -99,6 +102,14 @@ export const VoiceOS = ({
 	const [isSheetOpen, setIsSheetOpen] = useState(
 		() => missingKeys.length > 0 && !readKeySheetDismissed(),
 	);
+	// The install guide comes first on a phone's link in the browser: the keys can wait for the saved app.
+	const [isInstallShown, setIsInstallShown] = useState(() =>
+		shouldShowInstall({
+			isPhoneLink: IS_PHONE_LINK,
+			isStandalone: isStandalone(),
+			isDismissed: readInstallDismissed(),
+		}),
+	);
 	const stateRef = useRef(state);
 	stateRef.current = state;
 	const dispatch: Dispatch = (action) => send({ type: 'action', action });
@@ -172,6 +183,89 @@ export const VoiceOS = ({
 		);
 	};
 
+	const notices = (
+		<div className="vo-notices">
+			<ConnectionBanner status={connectionStatus} isInline />
+			{blockedOpen && (
+				<div className="vo-notice">
+					<a href={blockedOpen.url} target="_blank" rel="noopener noreferrer">
+						Open {blockedOpen.title} ↗
+					</a>{' '}
+					— the browser held back opening it for you.
+				</div>
+			)}
+			{newSessionLine && (
+				<div className="vo-notice" role="status">
+					{newSessionLine}
+				</div>
+			)}
+			{micStatus === 'denied' && (
+				<div className="vo-notice">
+					Microphone blocked. Allow it in the browser's site settings, or type below.
+				</div>
+			)}
+			{!isSheetOpen && missingKeys.length > 0 && (
+				<div className="vo-notice">
+					Voice is off until its keys are set: {missingKeys.join(' and ')}.{' '}
+					<button type="button" className="linkish" onClick={() => setIsSheetOpen(true)}>
+						Add them
+					</button>{' '}
+					· Text and clicks still work.
+				</div>
+			)}
+		</div>
+	);
+
+	const dialogs = (
+		<>
+			{newSessionOn !== null && (
+				<NewSessionDialog
+					state={state}
+					machine={newSessionOn}
+					dispatch={dispatch}
+					onClose={(line) => {
+						setNewSessionOn(null);
+						setNewSessionLine(line || null);
+						newSessionOpener.current?.focus();
+					}}
+				/>
+			)}
+			{isSheetOpen && missingKeys.length > 0 && !isInstallShown && (
+				<BeforeYouTalk
+					state={state}
+					onClose={() => setIsSheetOpen(false)}
+					onNotNow={() => {
+						// Stays in Voice OS: text and clicks work without the keys, and the notice above
+						// keeps the way back to this sheet.
+						writeKeySheetDismissed();
+						setIsSheetOpen(false);
+					}}
+				/>
+			)}
+		</>
+	);
+
+	if (IS_PHONE) {
+		return (
+			<>
+				<PhoneVoiceOS
+					state={state}
+					dispatch={dispatch}
+					send={send}
+					voice={voice}
+					isAwake={isAwake && isConnected}
+					keptDictation={keptDictation}
+					notices={notices}
+					isInstallShown={isInstallShown}
+					onInstallDismissed={() => setIsInstallShown(false)}
+					onNewSession={openNewSession}
+					onSetUp={onSetUp}
+				/>
+				{dialogs}
+			</>
+		);
+	}
+
 	return (
 		<div className="vo">
 			<TopBar
@@ -181,36 +275,7 @@ export const VoiceOS = ({
 				onNewSession={() => openNewSession()}
 			/>
 			<main className={`vo-main ${session ? 'in-session' : ''}`}>
-				<div className="vo-notices">
-					<ConnectionBanner status={connectionStatus} isInline />
-					{blockedOpen && (
-						<div className="vo-notice">
-							<a href={blockedOpen.url} target="_blank" rel="noopener noreferrer">
-								Open {blockedOpen.title} ↗
-							</a>{' '}
-							— the browser held back opening it for you.
-						</div>
-					)}
-					{newSessionLine && (
-						<div className="vo-notice" role="status">
-							{newSessionLine}
-						</div>
-					)}
-					{micStatus === 'denied' && (
-						<div className="vo-notice">
-							Microphone blocked. Allow it in the browser's site settings, or type below.
-						</div>
-					)}
-					{!isSheetOpen && missingKeys.length > 0 && (
-						<div className="vo-notice">
-							Voice is off until its keys are set: {missingKeys.join(' and ')}.{' '}
-							<button type="button" className="linkish" onClick={() => setIsSheetOpen(true)}>
-								Add them
-							</button>{' '}
-							· Text and clicks still work.
-						</div>
-					)}
-				</div>
+				{notices}
 				{session ? (
 					<Cockpit key={session.ref} session={session} state={state} dispatch={dispatch} />
 				) : view.kind === 'activate' ? (
@@ -242,30 +307,7 @@ export const VoiceOS = ({
 				keptDictation={keptDictation}
 				send={send}
 			/>
-			{newSessionOn !== null && (
-				<NewSessionDialog
-					state={state}
-					machine={newSessionOn}
-					dispatch={dispatch}
-					onClose={(line) => {
-						setNewSessionOn(null);
-						setNewSessionLine(line || null);
-						newSessionOpener.current?.focus();
-					}}
-				/>
-			)}
-			{isSheetOpen && missingKeys.length > 0 && (
-				<BeforeYouTalk
-					state={state}
-					onClose={() => setIsSheetOpen(false)}
-					onNotNow={() => {
-						// Stays in Voice OS: text and clicks work without the keys, and the notice above
-						// keeps the way back to this sheet.
-						writeKeySheetDismissed();
-						setIsSheetOpen(false);
-					}}
-				/>
-			)}
+			{dialogs}
 		</div>
 	);
 };

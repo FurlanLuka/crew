@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'bun:test';
-import { describeListening, listenStartMessage, readStoredListenMode } from './listen-mode.js';
+import {
+	applyListenCommand,
+	describeListening,
+	isInputMode,
+	listenStartMessage,
+	readStoredListenMode,
+} from './listen-mode.js';
 
 const storageWith = (items: Record<string, string>) => ({
 	getItem: (key: string) => items[key] ?? null,
@@ -11,6 +17,7 @@ describe('readStoredListenMode', () => {
 		[{ 'voiceos.listenMode': 'on-demand' }, 'on-demand'],
 		[{ 'voiceos.listenMode': 'hands-free' }, 'hands-free'],
 		[{ 'voiceos.listenMode': 'dictation' }, 'dictation'],
+		[{ 'voiceos.listenMode': 'text' }, 'text'],
 		[{ 'voiceos.listenMode': 'nonsense' }, 'push'],
 		// A tab from before the modes: its hands-free switch carries over.
 		[{ 'voiceos.handsFree': '1' }, 'hands-free'],
@@ -44,4 +51,23 @@ describe('describeListening', () => {
 			'Send when you are done',
 		);
 	});
+});
+
+describe('text mode', () => {
+	it('is an input mode', () => expect(isInputMode('text')).toBe(true));
+
+	it('a listen_off from the server leaves it alone: it has no mic to hand back', () =>
+		expect(applyListenCommand('text', 'push')).toBe('text'));
+
+	it('a listen_on still switches it, as it does every other mode', () =>
+		expect(applyListenCommand('text', 'hands-free')).toBe('hands-free'));
+
+	it('every other mode follows the server', () => {
+		expect(applyListenCommand('hands-free', 'push')).toBe('push');
+		expect(applyListenCommand('dictation', 'push')).toBe('push');
+		expect(applyListenCommand('push', 'on-demand')).toBe('on-demand');
+	});
+
+	it('the box only takes typing', () =>
+		expect(describeListening({ mode: 'text', isAwake: false })).toBe('Type a message…'));
 });

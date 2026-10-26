@@ -8,13 +8,19 @@ import {
 const LISTEN_MODE_STORAGE_KEY = 'voiceos.listenMode';
 
 // How this tab takes speech: the server's listening modes, plus dictation — a press held open for a
-// brain dump, which the server sees as a press and this page alone knows as a mode.
-export type InputMode = ListenMode | 'dictation';
+// brain dump, which the server sees as a press and this page alone knows as a mode — and text, for
+// where talking isn't an option: no mic, nothing played, typing only.
+export type InputMode = ListenMode | 'dictation' | 'text';
 
-export const INPUT_MODES: InputMode[] = ['push', 'on-demand', 'hands-free', 'dictation'];
+export const INPUT_MODES: InputMode[] = ['push', 'on-demand', 'hands-free', 'dictation', 'text'];
 
 export const isInputMode = (value: unknown): value is InputMode =>
-	value === 'dictation' || isListenMode(value);
+	value === 'dictation' || value === 'text' || isListenMode(value);
+
+// The server switching this tab (another tab took listening, or its stream failed) only ever ends a
+// listening mode; a tab that chose text has no mic to hand back, so listen_off leaves it as it is.
+export const applyListenCommand = (current: InputMode, commanded: ListenMode): InputMode =>
+	current === 'text' && commanded === 'push' ? current : commanded;
 
 // Only the listening modes keep a stream open; push and dictation open one per press.
 export const isListeningMode = (mode: InputMode): mode is ListeningMode =>
@@ -58,6 +64,8 @@ export const describeListening = ({
 	isDictating = false,
 }: DescribeListeningParams): string => {
 	switch (mode) {
+		case 'text':
+			return 'Type a message…';
 		case 'dictation':
 			return isDictating
 				? 'Dictating — take your time, pauses are fine. Send when you are done…'

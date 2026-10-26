@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ClientMessage } from '../shared/protocol.js';
 import type { Mic } from './audio.js';
 import {
+	applyListenCommand,
 	type InputMode,
 	isListeningMode,
 	listenModeStorageKey,
@@ -53,7 +54,7 @@ export const useListenMode = ({
 
 	useEffect(() => {
 		if (listenCommand) {
-			setListenMode(listenCommand.mode);
+			setListenMode((current) => applyListenCommand(current, listenCommand.mode));
 		}
 	}, [listenCommand]);
 
@@ -96,8 +97,8 @@ export const useListenMode = ({
 		(mode: InputMode) => {
 			setListenMode(mode);
 
-			// Back to the raw mic for a press, open before the next one.
-			if (!isListeningMode(mode)) {
+			// Back to the raw mic for a press, open before the next one. Text keeps it closed.
+			if (!isListeningMode(mode) && mode !== 'text') {
 				void getMic()
 					.ensure()
 					.catch(() => {

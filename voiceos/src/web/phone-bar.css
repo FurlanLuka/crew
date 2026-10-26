@@ -1,0 +1,149 @@
+/* The phone's bar (PhoneBar) and its listening-mode sheet: the mode on the left, the words in the
+   middle, the mode's one action on the right. Under .vo.phone like the rest of phone.css. */
+
+/* The bar: mode left, words middle, the mode's one action right. Full width, under the stream. */
+.vo.phone .phone-bar {
+	padding: 6px 18px max(12px, env(safe-area-inset-bottom, 0px));
+	background: transparent;
+	box-shadow: none;
+}
+.vo.phone .phone-bar .vo-offer {
+	margin: 0 -18px 8px;
+	padding: 10px 18px;
+}
+.vo.phone .mbar {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-height: 46px;
+	padding: 5px;
+	border-radius: 23px;
+	background: var(--elev-2);
+	box-shadow: inset 0 0 0 1px var(--hair);
+}
+.vo.phone .mbar:focus-within {
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+}
+.vo.phone .mbar.tall {
+	align-items: flex-end;
+	border-radius: 22px;
+}
+/* Holding or hearing: the outline brightens a little; nothing turns green. */
+.vo.phone .mbar.hot {
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+}
+.vo.phone .mbar.inactive {
+	padding-left: 14px;
+	justify-content: space-between;
+}
+.vo.phone .mbar .mode-btn,
+.vo.phone .mbar .talk-btn,
+.vo.phone .mbar .send-btn {
+	width: 36px;
+	height: 36px;
+	border-radius: 18px;
+	display: grid;
+	place-items: center;
+	flex: none;
+	border: 0;
+	padding: 0;
+}
+.vo.phone .mbar .mode-btn {
+	background: var(--fill);
+	color: #fff;
+}
+.vo.phone .mbar .mode-btn svg {
+	width: 16px;
+	height: 16px;
+}
+.vo.phone .mbar .mode-btn.open {
+	background: #fff;
+	color: #000;
+}
+.vo.phone .mbar .talk-btn,
+.vo.phone .mbar .send-btn {
+	background: #fff;
+	color: #000;
+}
+.vo.phone .mbar .send-btn:disabled {
+	opacity: 0.45;
+}
+/* Held, not tapped: no selection, no callout, no scrolling the page from it. */
+.vo.phone .mbar .talk-btn {
+	touch-action: none;
+	user-select: none;
+	-webkit-user-select: none;
+	-webkit-touch-callout: none;
+}
+.vo.phone .mbar .talk-btn.live {
+	box-shadow: 0 0 0 5px rgba(255, 255, 255, 0.14);
+}
+.vo.phone .mbar.tall .mode-btn,
+.vo.phone .mbar.tall .send-btn,
+.vo.phone .mbar.tall .talk-btn {
+	align-self: flex-end;
+}
+.vo.phone .mbar .words {
+	flex: 1;
+	min-width: 0;
+	max-height: 132px;
+	overflow-y: auto;
+	padding: 7px 4px;
+	font: 15px / 1.4 var(--sys);
+	color: #fff;
+	overflow-wrap: anywhere;
+}
+.vo.phone .mbar .words.hint {
+	color: var(--label-3);
+}
+.vo.phone .mbar textarea {
+	flex: 1;
+	min-width: 0;
+	max-height: 132px;
+	padding: 7px 4px;
+	border: 0;
+	background: transparent;
+	color: #fff;
+	font: 15px / 1.4 var(--sys);
+	resize: none;
+	overflow-y: auto;
+}
+.vo.phone .mbar textarea:focus-visible {
+	outline: none;
+}
+.vo.phone .mbar textarea::placeholder {
+	color: var(--label-3);
+}
+.vo.phone .phone-note {
+	margin: 6px 4px 0;
+	color: var(--amber);
+	font-size: 12px;
+}
+
+/* The listening modes, as a sheet over the conversation. */
+.vo.phone .mscrim {
+	position: fixed;
+	inset: 0;
+	z-index: 40;
+	background: rgba(0, 0, 0, 0.5);
+}
+.vo.phone .msheet {
+	position: fixed;
+	left: 10px;
+	right: 10px;
+	bottom: calc(70px + max(12px, env(safe-area-inset-bottom, 0px)));
+	z-index: 41;
+}
+.vo.phone .msheet .mode-menu {
+	position: static;
+	width: auto;
+}
+.vo.phone .msheet .mode-item {
+	min-height: 58px;
+}
+.vo.phone .msheet .mode-name {
+	font-size: 15px;
+}
+.vo.phone .msheet .mode-desc {
+	font-size: 13.5px;
+}

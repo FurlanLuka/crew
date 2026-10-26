@@ -35,14 +35,39 @@ export const parseCookies = (header: string | null): Record<string, string> => {
 	return cookies;
 };
 
-export const createSessionCookie = (token: string): string => {
+export const createSessionCookie = (token: string, secure = false): string => {
 	// Host-only and SameSite=Strict: dev servers share the proxy's parent domain and must never ride it.
-	return `${COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000`;
+	const cookie = `${COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000`;
+
+	return secure ? `${cookie}; Secure` : cookie;
 };
 
-export const isAuthorized = (request: Request, token: string): boolean => {
-	return areTokensEqual(parseCookies(request.headers.get('cookie'))[COOKIE_NAME], token);
+export const readSessionCookie = (request: Request): string | undefined =>
+	parseCookies(request.headers.get('cookie'))[COOKIE_NAME];
+
+export type Authorization<P> = 'token' | P | null;
+
+// The main token, or the key of a phone still in phones.json: looked up per request, so a removed
+// phone gets no new request or connection (its open sockets are swept in server.ts). One lookup,
+// and the caller learns which.
+export const authorizeRequest = <P>(
+	request: Request,
+	token: string,
+	findPhone?: (key: string) => P | null,
+): Authorization<P> => {
+	const provided = readSessionCookie(request);
+
+	if (areTokensEqual(provided, token)) {
+		return 'token';
+	}
+
+	return (provided && findPhone?.(provided)) || null;
 };
+
+// Behind Tailscale or crew's TLS proxy the gateway itself sees plain http; the proxy says what the phone used.
+export const isSecureRequest = (request: Request): boolean =>
+	request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim() === 'https' ||
+	request.url.startsWith('https:');
 
 export const isOriginAllowed = (origin: string | null, allowed: string[]): boolean => {
 	// A WebSocket handshake gets no CORS check: without an exact Origin match any proxied page could drive workers.
@@ -79,6 +104,7 @@ export interface ListAllowedOriginsParams {
 	proxyHost: string | null;
 	proxyPort: number | null;
 	proxyHttpsPort?: number | null;
+	tailscaleHost?: string | null;
 }
 
 export const listAllowedOrigins = ({
@@ -86,6 +112,7 @@ export const listAllowedOrigins = ({
 	proxyHost,
 	proxyPort,
 	proxyHttpsPort = null,
+	tailscaleHost = null,
 }: ListAllowedOriginsParams): string[] => {
 	const origins = [`http://localhost:${port}`, `http://127.0.0.1:${port}`];
 
@@ -100,6 +127,11 @@ export const listAllowedOrigins = ({
 		origins.push(
 			proxyHttpsPort === 443 ? `https://${proxyHost}` : `https://${proxyHost}:${proxyHttpsPort}`,
 		);
+	}
+
+	// Tailscale serve terminates TLS on 443 of the machine's tailnet name.
+	if (tailscaleHost) {
+		origins.push(`https://${tailscaleHost}`);
 	}
 
 	return origins;

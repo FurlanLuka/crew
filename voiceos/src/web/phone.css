@@ -1,0 +1,349 @@
+/* Voice OS on a phone (PhoneVoiceOS): the same tokens, type and parts as the desktop; only the
+   arrangement changes. Everything is under .vo.phone, so the desktop never sees a rule of it. */
+
+/* Phones overlay their own scroll indicator while you scroll; nothing sits in the layout. */
+.vo.phone,
+.vo.phone * {
+	scrollbar-width: none;
+}
+.vo.phone *::-webkit-scrollbar {
+	display: none;
+}
+.vo.phone {
+	-webkit-tap-highlight-color: transparent;
+}
+
+/* The top bar: back, the name and ⋯ in a session; crew's mark, New and the gear on Home. */
+.vo.phone .mtop {
+	position: relative;
+	z-index: 20;
+	display: grid;
+	grid-template-columns: 44px minmax(0, 1fr) 44px;
+	align-items: center;
+	gap: 6px;
+	padding: calc(10px + env(safe-area-inset-top, 0px)) 10px 10px;
+	background: color-mix(in srgb, #000 82%, transparent);
+	-webkit-backdrop-filter: blur(18px);
+	backdrop-filter: blur(18px);
+	box-shadow: 0 1px 0 var(--hair);
+}
+.vo.phone .mtop.home {
+	grid-template-columns: minmax(0, 1fr) auto;
+	padding-left: 18px;
+}
+.vo.phone .mtop .ic {
+	width: 40px;
+	height: 40px;
+	border-radius: 12px;
+	display: grid;
+	place-items: center;
+	color: var(--label-2);
+	background: none;
+	border: 0;
+}
+.vo.phone .mtop .ic.fill {
+	background: var(--fill);
+	color: #fff;
+}
+.vo.phone .mtop .ttl {
+	min-width: 0;
+	text-align: center;
+	display: grid;
+	gap: 1px;
+	justify-items: center;
+}
+.vo.phone .mtop .ttl b {
+	font: 650 16px / 1.2 var(--sys);
+	color: #fff;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	max-width: 100%;
+}
+.vo.phone .mtop .ttl b span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.vo.phone .mtop .ttl .m {
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font: 11px var(--mono);
+	color: var(--label-3);
+}
+.vo.phone .mbrand {
+	font: 700 17px var(--sys);
+	color: #fff;
+	display: flex;
+	align-items: baseline;
+	gap: 7px;
+}
+.vo.phone .mbrand span {
+	font: 10.5px var(--mono);
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: var(--label-3);
+}
+.vo.phone .mtop .acts {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+.vo.phone .mtop .vo-newmenu {
+	position: static;
+	margin: 0;
+	background: none;
+	box-shadow: none;
+}
+.vo.phone .mtop .vo-new {
+	height: 36px;
+	padding: 0 14px;
+	border-radius: 10px;
+	font: 600 14px var(--sys);
+}
+.vo.phone .mtop .vo-new-caret {
+	display: none;
+}
+.vo.phone .nm-menu {
+	left: 12px !important;
+	right: 12px;
+	width: auto;
+}
+
+/* A session: only the conversation, its name in the top bar, the side panel behind ⋯. The history
+   scrolls inside itself and, like any chat, a short one sits on the bar instead of at the top. */
+.vo.phone .vo-main.in-session {
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+}
+.vo.phone .vo-main.in-session > .vo-session {
+	flex: 1;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+}
+.vo.phone .vo-session > .vo-stream {
+	margin-top: auto;
+	min-height: 0;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	padding: 14px 18px 10px;
+	border-bottom: 0;
+	font-size: 15px;
+}
+/* A question or an approval is the last thing in the history, not part of the bar. */
+.vo.phone .vo-stream > .sheet {
+	margin: 14px 0 0;
+	max-height: none;
+}
+
+/* Home: the list, without the machine cards and the say-it hints. */
+.vo.phone .vo-home .vo-head {
+	padding: 18px 18px 12px;
+}
+.vo.phone .vo-home .vo-head .row-actions,
+.vo.phone .vo-home-side,
+.vo.phone .vo-hgroup-open {
+	display: none;
+}
+.vo.phone .vo-home .vo-head h1 {
+	font-size: 30px;
+}
+.vo.phone .vo-home-body {
+	display: block;
+	padding: 0 14px 24px;
+}
+
+/* ⋯: the side panel, full screen. */
+.vo.phone .mpanel {
+	position: fixed;
+	inset: 0;
+	z-index: 50;
+	display: flex;
+	flex-direction: column;
+	background: var(--base);
+}
+.vo.phone .mpanel .mtop {
+	flex: none;
+}
+.vo.phone .mpanel .scroll {
+	flex: 1;
+	min-height: 0;
+	display: block;
+	overflow-y: auto;
+	padding: 4px 0 calc(24px + env(safe-area-inset-bottom, 0px));
+	border: 0;
+}
+.vo.phone .mpanel .panel {
+	display: grid;
+	gap: 6px;
+	margin: 0;
+	padding: 16px 20px;
+	border-radius: 0;
+	background: none;
+	box-shadow: inset 0 -1px 0 var(--hair);
+}
+.vo.phone .mpanel .kv {
+	font-size: 15px;
+}
+.vo.phone .mpanel .row {
+	font-size: 14px;
+}
+.vo.phone .mchips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: 8px;
+}
+/* The 860 px rules hide these from the bar; here they are the session's settings. */
+.vo.phone .mchips .perm-wrap,
+.vo.phone .mchips .model-wrap,
+.vo.phone .mchips .ctx-wrap {
+	display: block;
+}
+.vo.phone .mchips .perm-chip,
+.vo.phone .mchips .ctx-meter {
+	height: 34px;
+	padding: 0 14px;
+	font-size: 12.5px;
+}
+/* At the top of the screen, their menus open downwards. */
+.vo.phone .mchips .perm-menu,
+.vo.phone .mchips .ctx-menu {
+	top: calc(100% + 8px);
+	bottom: auto;
+}
+.vo.phone .mfoot {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	padding: 18px 20px;
+}
+.vo.phone .mfoot .btn {
+	flex: 1;
+	min-height: 44px;
+	border-radius: 12px;
+	font-size: 15px;
+}
+.vo.phone .mfoot .session-rename {
+	flex: 1;
+}
+
+/* A sub-agent's transcript, an asked copy's steps, a dev server's log: full screen. */
+.vo.phone dialog.sd {
+	width: 100vw;
+	max-width: none;
+	height: 100dvh;
+	max-height: none;
+	margin: 0;
+	border-radius: 0;
+	padding-top: env(safe-area-inset-top, 0px);
+	padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* The install guide: a phone's link opened in the browser. */
+.vo.phone .inst {
+	position: fixed;
+	inset: 0;
+	display: flex;
+	flex-direction: column;
+	background:
+		radial-gradient(600px 400px at 20% -10%, rgba(255, 255, 255, 0.06), transparent 60%), #0b0d10;
+	color: var(--label);
+	font-family: var(--sys);
+	overflow-y: auto;
+}
+.vo.phone .inst .in {
+	display: flex;
+	flex-direction: column;
+	gap: 22px;
+	padding: calc(40px + env(safe-area-inset-top, 0px)) 24px 32px;
+}
+.vo.phone .inst .wm {
+	font: 700 20px var(--sys);
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+}
+.vo.phone .inst .wm span {
+	font: 10.5px var(--mono);
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: var(--label-3);
+}
+.vo.phone .inst h1 {
+	margin: 0;
+	font: 650 28px / 1.15 var(--sys);
+	letter-spacing: -0.02em;
+}
+.vo.phone .inst .lead {
+	margin: 0;
+	color: var(--label-2);
+	font-size: 15px;
+	line-height: 1.45;
+}
+.vo.phone .inst ol {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	display: grid;
+	gap: 10px;
+}
+.vo.phone .inst li {
+	display: grid;
+	grid-template-columns: 28px 1fr;
+	gap: 12px;
+	align-items: center;
+	padding: 12px 14px;
+	border-radius: 14px;
+	background: var(--elev-1);
+	box-shadow: inset 0 0 0 1px var(--hair);
+	font-size: 15px;
+}
+.vo.phone .inst li .n {
+	width: 28px;
+	height: 28px;
+	border-radius: 9px;
+	background: var(--fill);
+	display: grid;
+	place-items: center;
+	font: 12px var(--mono);
+	color: var(--label-2);
+}
+.vo.phone .inst li b {
+	font-weight: 600;
+}
+.vo.phone .inst li .ico {
+	display: inline-flex;
+	vertical-align: -4px;
+	margin: 0 2px;
+	color: #64a0ff;
+}
+.vo.phone .inst .cta {
+	height: 50px;
+	border-radius: 14px;
+	border: 0;
+	background: #fff;
+	color: #000;
+	font: 600 16px var(--sys);
+}
+.vo.phone .inst .alt {
+	align-self: center;
+	padding: 6px;
+	border: 0;
+	background: none;
+	color: var(--label-2);
+	font: 14px var(--sys);
+	text-decoration: underline;
+	text-decoration-color: var(--label-3);
+	text-underline-offset: 3px;
+}
+.vo.phone .inst .small {
+	margin: 0;
+	font-size: 13px;
+	color: var(--label-3);
+	text-align: center;
+}

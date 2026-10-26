@@ -57,6 +57,12 @@ func TestWalkArgv(t *testing.T) {
 		"verify store-front/main a b c":          "",
 		"run store-front/main store-api -- x -y": "",
 		"server machines add vm1 --name=box":     "",
+		"voice phones ls --json":                 "",
+		"voice phones add --name=Work --json":    "",
+		"voice phones rm p3fa9c1":                "",
+		"voice tailscale status --json":          "",
+		"voice tailscale serve":                  "",
+		"voice tailscale off":                    "",
 		"dev logs a/b web -f --lines=10":         "",
 	} {
 		if got := walkArgv(strings.Fields(argv)); got != want {

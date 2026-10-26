@@ -20,9 +20,18 @@ export class PcmPlayer {
 		// Nothing listens until setNotify is called.
 	};
 	private chimes = new Map<ChimeKind, Float32Array>();
+	private isMuted = false;
 
 	setNotify(listener: ClipDoneListener): void {
 		this.notify = listener;
+	}
+
+	setMuted(isMuted: boolean): void {
+		this.isMuted = isMuted;
+
+		if (isMuted) {
+			this.stop();
+		}
 	}
 
 	resume(): void {
@@ -37,6 +46,15 @@ export class PcmPlayer {
 	receive(message: SpeechMessage): void {
 		if (message.type === 'audio_cancel') {
 			this.cancel(message.id);
+
+			return;
+		}
+
+		// Muted: nothing plays, and the clip is done the moment its last chunk arrives.
+		if (this.isMuted) {
+			if (message.isLast) {
+				this.notify(message.id);
+			}
 
 			return;
 		}
@@ -63,6 +81,10 @@ export class PcmPlayer {
 
 	// A chime of its own (the call was heard), not part of a clip the server waits on.
 	playChime(): void {
+		if (this.isMuted) {
+			return;
+		}
+
 		const context = this.getAudioContext();
 		const samples = this.chimes.get('plain') ?? createChimeSamples(SPEECH_SAMPLE_RATE, 'plain');
 		this.chimes.set('plain', samples);

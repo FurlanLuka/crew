@@ -18,7 +18,7 @@ import (
 )
 
 // cmdServer is crew's server — Voice OS and the Set up page in one process:
-// crew server [start|stop|restart|status|logs|debug-notes|notes|keys|remote|machines|discord|dev].
+// crew server [start|stop|restart|status|logs|debug-notes|notes|keys|remote|machines|discord|phones|tailscale|dev].
 // Bare `crew server` is its status; bare `crew` is the start with the
 // browser (cmdBare).
 func cmdServer() { serverDispatch(os.Args[2:], "status") }
@@ -98,13 +98,17 @@ func serverDispatch(args []string, bare string) {
 		voiceMachines(args)
 	case "discord":
 		voiceDiscord(args)
+	case "phones":
+		voicePhones(args)
+	case "tailscale":
+		voiceTailscale(args)
 	case "dev":
 		voiceDev(args)
 	case "_dev-push":
 		// The detached dev push runner (voice.StartDevPush): nothing waits on its output.
 		voiceDevRunner(args)
 	default:
-		fmt.Fprintf(os.Stderr, "Usage: crew server [start|stop|restart|status|logs|debug-notes|notes|keys|remote|machines|discord|dev] [--no-open]\n")
+		fmt.Fprintf(os.Stderr, "Usage: crew server [start|stop|restart|status|logs|debug-notes|notes|keys|remote|machines|discord|phones|tailscale|dev] [--no-open]\n")
 		os.Exit(1)
 	}
 }

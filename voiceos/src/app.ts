@@ -11,6 +11,7 @@ import { CrewAdapter, spawnRunner, startDetached } from './crew/adapter.js';
 import { createSetupRunner } from './crew/api.js';
 import { listAllowedOrigins } from './gateway/auth.js';
 import { startGateway } from './gateway/server.js';
+import { createPhones, createTailscaleHostReader } from './gateway/phones.js';
 import { attachFileTo } from './gateway/attach.js';
 import { configureLog, createLogger } from './log.js';
 import { UtteranceRouter } from './router/router.js';
@@ -442,9 +443,15 @@ const runSetupCommand = createSetupRunner({
 	getLink: machines.getLink,
 });
 
+const phones = createPhones({ phonesFile: paths.phonesFile, seenFile: paths.phonesSeenFile });
+const readTailscaleHost = createTailscaleHostReader(paths.tailscaleFile);
+
 gateway = startGateway({
 	store,
 	token,
+	findPhone: phones.findPhone,
+	hasPhone: phones.hasPhone,
+	recordPhoneSeen: phones.recordSeen,
 	port: Number(process.env.PORT) || 0,
 	index,
 	readMedia: (name) => readMediaFile({ name, dir: mediaDir }),
@@ -460,6 +467,7 @@ gateway = startGateway({
 			proxyHost: process.env.VOICEOS_PROXY_HOST ?? null,
 			proxyPort,
 			proxyHttpsPort,
+			tailscaleHost: readTailscaleHost(),
 		}),
 	onMessage: (message, client) => {
 		seat.pageUsed(client);

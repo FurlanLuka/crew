@@ -1108,7 +1108,7 @@ crew uninstall --purge
 crew's server: one process serving crew's page — Home, Set up (every project, workspace, worktree, machine and setting, with a Setup with Claude chat per machine) and Voice OS, the voice and web cockpit for the Claude Code sessions of every worktree. Bare crew starts it and opens the page; bare crew server is its status. It runs in tmux session crew-server on a remembered port with a route on the dev proxy; crew dev stop and crew kill leave it alone, and a server started before the rename (crew-dev-os) is still recognised and stopped. The first start downloads Voice OS from the release matching this crew (crew update refreshes it once installed, never restarting a running one). Voice needs an Anthropic key (kernel and narrator) and a Soniox key (speech): the page asks for them, crew server keys set takes one on stdin, and crew server start at a terminal asks for any that is missing; a running server picks a new key up from your next words. Keys live in ~/.config/crew-voiceos, readable by you alone, never in the shell environment.
 
 ```
-crew server [start|stop|restart|status|logs|debug-notes|notes|keys|remote|machines|discord|dev] [--no-open]
+crew server [start|stop|restart|status|logs|debug-notes|notes|keys|remote|machines|discord|phones|tailscale|dev] [--no-open]
 ```
 
 Output: `<up|up (not answering)|down>\t<port>\t<localhost url>\t<proxy url>`
@@ -1484,6 +1484,133 @@ Output: `removed\t<path>`
 
 ```bash
 crew server discord off
+```
+
+### `crew server phones`
+
+Phones that open Voice OS by a link of their own (~/.crew/voiceos/phones.json, which a running Voice OS watches). add makes the link once — only the key's sha256 is kept, so it is never shown again — and ls shows each phone with the device and the time Voice OS last saw it (~/.crew/voiceos/phones-seen.json). rm stops a phone's link at once.
+
+```
+crew server phones [ls] | add [--name=<name>] | rm <id>
+```
+
+Output: `<id>\t<name>\t<created>\t<device|->\t<last_seen|->`
+
+```bash
+crew server phones add
+crew server phones add --name="Work phone" --json
+crew server phones
+crew server phones rm p3fa9c1
+```
+
+#### `crew server phones ls`
+
+Each phone with the device and the time Voice OS last saw it.
+
+```
+crew server phones ls [--json]
+```
+
+Output: `<id>\t<name>\t<created>\t<device|->\t<last_seen|->`
+
+--json: [{id,name,created,device?,last_seen?}], [] when there are none.
+
+```bash
+crew server phones ls --json
+```
+
+#### `crew server phones add`
+
+Adds a phone and prints its link, <base>/phone/<key>, the one time it exists. The base is Voice OS on your tailnet when crew server tailscale serve shares it (HTTPS from anywhere), else the dev proxy when it answers for Voice OS under a name other devices resolve (the same network), else localhost (this machine only). A second line says which.
+
+```
+crew server phones add [--name=<name>] [--json]
+```
+
+Output: `<link> / <name> (<id>) via <Tailscale|the dev proxy|localhost>: …`
+
+- `--name=<name>` — What the phone is called (default Phone, then Phone 2…)
+
+The key is 24 random bytes (base64url); phones.json keeps only its sha256. A lost link is a new phone: rm the old one, add again.
+
+--json: {"id","name","link","address":<the base's host>,"via":"tailscale"|"proxy"|"local"}; the line goes to stderr.
+
+```bash
+crew server phones add --name="Work phone"
+```
+
+#### `crew server phones rm`
+
+Removes a phone; its link no longer opens Voice OS. An unknown id lists the ids there are.
+
+```
+crew server phones rm <id>
+```
+
+```bash
+crew server phones rm p3fa9c1
+```
+
+### `crew server tailscale`
+
+Voice OS on your tailnet over HTTPS, so a phone link works from anywhere your phone is signed in to Tailscale. Uses the tailscale CLI (on PATH, or inside the Mac app). Optional — nothing else needs it.
+
+```
+crew server tailscale [status] | serve | off
+```
+
+Output: `<check>\t<value>`
+
+```bash
+crew server tailscale
+crew server tailscale serve
+crew server tailscale off
+```
+
+#### `crew server tailscale status`
+
+Whether Tailscale is installed, running and signed in, whether HTTPS certificates are on for the tailnet, and whether crew serves Voice OS there; detail names the first thing in the way in plain words.
+
+```
+crew server tailscale status [--json]
+```
+
+Output: `<check>\t<value>`
+
+--json: {"installed","running","signed_in","user","host","https","serving","url","detail"}.
+
+```bash
+crew server tailscale status --json
+```
+
+#### `crew server tailscale serve`
+
+Refuses, naming why, unless Tailscale is installed, running, signed in and has HTTPS, and when 443 already serves a share crew did not record (it never replaces one); then runs tailscale serve --bg --https=443 http://127.0.0.1:<Voice OS port> (the port crew's server remembers), records ~/.crew/voiceos/tailscale.json {host,url} and prints the url. Phone links made after it use that url.
+
+```
+crew server tailscale serve
+```
+
+Output: `https://<host>`
+
+--json: {"host","url"}.
+
+```bash
+crew server tailscale serve
+```
+
+#### `crew server tailscale off`
+
+Stops serving Voice OS on the tailnet (tailscale serve --https=443 off) and removes tailscale.json. With nothing recorded it leaves 443 alone.
+
+```
+crew server tailscale off
+```
+
+Output: `removed\t<path>`
+
+```bash
+crew server tailscale off
 ```
 
 ### `crew server dev`

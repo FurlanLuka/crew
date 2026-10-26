@@ -368,8 +368,36 @@
 		"argv": ["voice", "discord", "setup", "--text-channel=1001", "--json"]
 	},
 	{
+		"type": "phones_ls",
+		"argv": ["voice", "phones", "ls", "--json"]
+	},
+	{
+		"type": "phones_add",
+		"argv": ["voice", "phones", "add", "--name=iPhone", "--json"]
+	},
+	{
+		"type": "phones_rm",
+		"argv": ["voice", "phones", "rm", "p1a2b3"]
+	},
+	{
+		"type": "tailscale_status",
+		"argv": ["voice", "tailscale", "status", "--json"]
+	},
+	{
+		"type": "tailscale_serve",
+		"argv": ["voice", "tailscale", "serve"]
+	},
+	{
+		"type": "tailscale_off",
+		"argv": ["voice", "tailscale", "off"]
+	},
+	{
 		"type": "chat_add",
 		"argv": ["chat", "add", "--json"]
+	},
+	{
+		"type": "phones_add",
+		"argv": ["voice", "phones", "add", "--json"]
 	},
 	{
 		"type": "uninstall",

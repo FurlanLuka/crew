@@ -145,6 +145,13 @@ opens here but not on a phone is almost always DNS refusing `nip.io` or a differ
 `crew help dev start` has the two-minute test; `crew dev proxy status` says whether the proxy
 is actually answering. Tailscale users: `crew config set server_ip $(tailscale ip -4)`.
 
+A phone gets Voice OS through a link of its own, `<base>/phone/<key>`, made by Settings → Your
+phone (`crew server phones add`) and saved to its home screen. crew keeps only the key's hash, and
+revoking the phone (`crew server phones rm <id>`) cuts it off on its next request. The base is
+Voice OS on your tailnet when `crew server tailscale serve` shares it there (HTTPS from anywhere,
+nothing to trust), else crew's proxy on the same network, after the phone trusts crew's
+certificate.
+
 ## Another machine
 
 A project is its git remote; the path is where crew keeps the clone. `crew export --all`

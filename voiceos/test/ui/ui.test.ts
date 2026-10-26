@@ -1,7 +1,8 @@
 // The real UI bundle and gateway, with a store the test drives instead of Claude workers and the
 // fake crew behind /api/crew. Voice OS's half; Set up's is setup.test.ts.
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
@@ -9,9 +10,16 @@ import index from '../../src/web/index.html';
 import { listAllowedOrigins } from '../../src/gateway/auth.js';
 import { startGateway, type Gateway } from '../../src/gateway/server.js';
 import { attachFileTo } from '../../src/gateway/attach.js';
+import { createPhones } from '../../src/gateway/phones.js';
 import { storeAttachment } from '../../src/sessions/attachments.js';
 import { configureLog } from '../../src/log.js';
-import type { Action, ClientMessage, PendingAsk, WorktreeInfo } from '../../src/shared/protocol.js';
+import type {
+	Action,
+	ClientMessage,
+	PendingAsk,
+	View,
+	WorktreeInfo,
+} from '../../src/shared/protocol.js';
 import { isActive } from '../../src/shared/active.js';
 import { Store } from '../../src/state/store.js';
 import { createFakeCrew } from '../support/fake-crew.js';
@@ -81,10 +89,29 @@ const ensureIdle = async (ref: string): Promise<void> => {
 
 const crew = createFakeCrew();
 const filesRoot = mkdtempSync(join(tmpdir(), 'voiceos-ui-files-'));
+// A phone signed in with its own key, as crew's phones add writes it: only the key's hash on disk.
+const PHONE_KEY = 'phone-key-0123456789abcdefghijkl';
+const phonesFile = join(filesRoot, 'phones.json');
+writeFileSync(
+	phonesFile,
+	JSON.stringify({
+		phones: [
+			{
+				id: 'p3fa9c1',
+				name: 'Phone',
+				key_sha256: createHash('sha256').update(PHONE_KEY).digest('hex'),
+				created: '2026-10-26T09:00:00Z',
+			},
+		],
+	}),
+);
+const phones = createPhones({ phonesFile, seenFile: join(filesRoot, 'phones-seen.json') });
 
 const startServer = (port = 0): Gateway => {
 	return startGateway({
 		runCrew: crew.runCrew,
+		findPhone: phones.findPhone,
+		recordPhoneSeen: phones.recordSeen,
 		attachFile: attachFileTo({
 			readState: () => store.state,
 			dispatch: (observation) => store.dispatch(observation),
@@ -552,7 +579,7 @@ describe('voice os ui', () => {
 		}
 	}, 30_000);
 
-	it('on a phone: a long press opens the menu and its tap does nothing else; a press that moves does not; a tap opens; an open group fits the width', async () => {
+	it('a narrow window (390, loaded wide): a long press opens the menu and its tap does nothing else; a press that moves does not; a tap opens; an open group fits the width', async () => {
 		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		store.dispatch({
 			type: 'create_group',
@@ -560,18 +587,16 @@ describe('voice os ui', () => {
 			name: 'store and checkout together',
 			color: 'violet',
 		});
-		const context = await browser.newContext({
-			permissions: ['microphone'],
-			viewport: { width: 390, height: 844 },
-			hasTouch: true,
-			isMobile: true,
-		});
+		// Loaded wide, then narrowed: the desktop arrangement at 390. A page that opens that narrow is
+		// a phone, and gets the phone's own layout (the phone block).
+		const context = await browser.newContext({ permissions: ['microphone'], hasTouch: true });
 		const page = await context.newPage();
 		watchErrors(page);
 
 		try {
 			await page.goto(`http://localhost:${gateway.port}/login?token=${TOKEN}`);
 			await page.goto(`http://localhost:${gateway.port}/voice`);
+			await page.setViewportSize({ width: 390, height: 844 });
 			const chip = page.locator('.vo-gchip');
 			await chip.waitFor({ timeout: 5000 });
 			const box = await chip.boundingBox();
@@ -1936,15 +1961,12 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
-	it('on a phone: an asking card with a wide answer, and the asked side panel, never scroll the page sideways', async () => {
+	it('a narrow window (390, loaded wide): an asking card with a wide answer, and the asked side panel, never scroll the page sideways', async () => {
 		const ASKER = 'store-front/main';
 		const ASKED = 'checkout-api/main';
-		const context = await browser.newContext({
-			permissions: ['microphone'],
-			viewport: { width: 390, height: 844 },
-			hasTouch: true,
-			isMobile: true,
-		});
+		// Loaded wide, then narrowed: the desktop arrangement at 390. A page that opens that narrow is
+		// a phone, and gets the phone's own layout (the phone block).
+		const context = await browser.newContext({ permissions: ['microphone'], hasTouch: true });
 		const page = await context.newPage();
 		watchErrors(page);
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: ASKER } });
@@ -1970,6 +1992,7 @@ describe('voice os ui', () => {
 		try {
 			await page.goto(`http://localhost:${gateway.port}/login?token=${TOKEN}`);
 			await page.goto(`http://localhost:${gateway.port}/voice`);
+			await page.setViewportSize({ width: 390, height: 844 });
 			await page
 				.locator('.stream .pc[data-request="ask"]')
 				.last()
@@ -2429,13 +2452,10 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
-	it('on a phone: a long command, its open field, a long question and a whole plan → nothing scrolls sideways, the answers stay on screen', async () => {
-		const context = await browser.newContext({
-			permissions: ['microphone'],
-			viewport: { width: 390, height: 844 },
-			hasTouch: true,
-			isMobile: true,
-		});
+	it('a narrow window (390, loaded wide): a long command, its open field, a long question and a whole plan → nothing scrolls sideways, the answers stay on screen', async () => {
+		// Loaded wide, then narrowed: the desktop arrangement at 390. A page that opens that narrow is
+		// a phone, and gets the phone's own layout (the phone block).
+		const context = await browser.newContext({ permissions: ['microphone'], hasTouch: true });
 		const page = await context.newPage();
 		watchErrors(page);
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
@@ -2456,6 +2476,7 @@ describe('voice os ui', () => {
 		try {
 			await page.goto(`http://localhost:${gateway.port}/login?token=${TOKEN}`);
 			await page.goto(`http://localhost:${gateway.port}/voice`);
+			await page.setViewportSize({ width: 390, height: 844 });
 			openPermission('ui-phone-perm', {
 				input: {
 					command: `pnpm --filter @store/checkout-web exec playwright test ${'e2e/checkout/totals-retry.spec.ts '.repeat(6)}&& git push origin crew/store-front/main`,
@@ -3792,7 +3813,7 @@ describe('layout', () => {
 		await context.close();
 	}, 20_000);
 
-	it('a phone (390 wide): one column, nothing wider than the screen, the voice bar docked, the mode menu stepped aside', async () => {
+	it('a narrow window (390, loaded wide): one column, nothing wider than the screen, the voice bar docked, the mode menu stepped aside', async () => {
 		// Enough active tabs to overflow 390px whatever earlier tests left active; taken back after.
 		const listed = store.state.order.flatMap((ref) => {
 			const session = store.state.sessions[ref];
@@ -3821,16 +3842,14 @@ describe('layout', () => {
 		}
 
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
-		const context = await browser.newContext({
-			permissions: ['microphone'],
-			viewport: { width: 390, height: 844 },
-			hasTouch: true,
-			isMobile: true,
-		});
+		// Loaded wide, then narrowed: the desktop arrangement at 390. A page that opens that narrow is
+		// a phone, and gets the phone's own layout (the phone block).
+		const context = await browser.newContext({ permissions: ['microphone'], hasTouch: true });
 		const page = await context.newPage();
 		watchErrors(page);
 		await page.goto(`http://localhost:${gateway.port}/login?token=${TOKEN}`);
 		await page.goto(`http://localhost:${gateway.port}/voice`);
+		await page.setViewportSize({ width: 390, height: 844 });
 		await page.locator('.vo-head h1').waitFor({ timeout: 5000 });
 
 		const layout = await page.evaluate(() => ({
@@ -4408,6 +4427,248 @@ describe('slash commands', () => {
 		await fieldOf(page).fill('/');
 		await page.getByRole('listbox', { name: 'Commands' }).waitFor({ timeout: 5000 });
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+		await context.close();
+	}, 20_000);
+});
+
+describe('phone', () => {
+	const REF = 'store-front/main';
+	const fromClient = (client: string, type: string) =>
+		received.filter((entry) => entry.client === client && entry.message.type === type);
+
+	// A phone as it signs in: its own link (/phone/<key>), so the key's cookie, the page's injected head
+	// and the socket are what the test runs on. getUserMedia is counted. The install guide is waved
+	// away, and the Esc that names the page's client goes up a level, so the screen is put back after.
+	const openPhone = async (view: View = { kind: 'active' }): Promise<MicTab> => {
+		const context = await browser.newContext({
+			permissions: ['microphone'],
+			viewport: { width: 390, height: 844 },
+			hasTouch: true,
+		});
+		await context.addInitScript(() => {
+			const probe = window as unknown as { __gum: number };
+			const getUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+			probe.__gum = 0;
+			navigator.mediaDevices.getUserMedia = (constraints) => {
+				probe.__gum++;
+
+				return getUserMedia(constraints);
+			};
+		});
+		const page = await context.newPage();
+		watchErrors(page);
+		const response = await page.goto(`http://localhost:${gateway.port}/phone/${PHONE_KEY}`);
+		expect(response?.status()).toBe(200);
+		expect(new URL(page.url()).pathname).toBe(`/phone/${PHONE_KEY}`);
+		await page.getByRole('button', { name: 'Use it in the browser instead' }).click();
+		await page.waitForSelector('.vo.phone .mtop');
+		const before = received.length;
+		await page.keyboard.press('Escape');
+		// The page's client id is whatever sent its first message.
+		await waitUntil(() => received.length > before);
+		const client = received.at(-1)?.client ?? '';
+		store.dispatch({ type: 'switch_view', view });
+
+		return { context, page, client };
+	};
+
+	const countGetUserMedia = (page: Page) =>
+		page.evaluate(() => (window as unknown as { __gum: number }).__gum);
+
+	const chooseOnPhone = async (page: Page, name: RegExp) => {
+		await page.getByRole('button', { name: 'Listening mode' }).click();
+		await page.getByRole('menuitemradio', { name }).click();
+	};
+
+	const onSession: View = { kind: 'session', ref: REF };
+
+	const isNotWider = (page: Page) =>
+		page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+
+	it('opens as a phone: the phone top bar and bar, no tab strip, nothing wider than the screen', async () => {
+		const { context, page } = await openPhone();
+
+		await page.locator('.mtop.home').waitFor({ timeout: 5000 });
+		expect(await page.locator('.vo-top').count()).toBe(0);
+		expect(await page.locator('.phone-bar').count()).toBe(1);
+		expect(await isNotWider(page)).toBe(true);
+		await context.close();
+	}, 20_000);
+
+	it('holding the mic sends ptt_start, letting go ptt_stop; the bar lights up while held', async () => {
+		await ensureIdle(REF);
+		const { context, page, client } = await openPhone(onSession);
+		const mic = page.getByRole('button', { name: 'Hold to talk' });
+		await mic.waitFor({ timeout: 5000 });
+		const box = await mic.boundingBox();
+
+		await page.mouse.move((box?.x ?? 0) + 18, (box?.y ?? 0) + 18);
+		await page.mouse.down();
+		await waitUntil(() => fromClient(client, 'ptt_start').length === 1);
+		await page.locator('.mbar.hot').waitFor({ timeout: 5000 });
+		await Bun.sleep(400);
+		await page.mouse.up();
+		await waitUntil(() => fromClient(client, 'ptt_stop').length === 1);
+		await context.close();
+	}, 20_000);
+
+	it('text only: a message box that sends what is typed, and no audio at all', async () => {
+		await ensureIdle(REF);
+		const { context, page, client } = await openPhone(onSession);
+		const chunks = audioChunks.length;
+
+		await chooseOnPhone(page, /Text only/);
+		const gumAfterChoosing = await countGetUserMedia(page);
+		const box = page.getByRole('textbox', { name: 'Type a message' });
+		await box.waitFor({ timeout: 5000 });
+		expect(await box.getAttribute('placeholder')).toBe(`Message ${REF}`);
+		await box.fill('run the catalog tests again');
+		await page.getByRole('button', { name: 'Send', exact: true }).click();
+		await waitUntil(() =>
+			fromClient(client, 'utterance').some(
+				(entry) => (entry.message as { text?: string }).text === 'run the catalog tests again',
+			),
+		);
+		await page.keyboard.down('Space');
+		await Bun.sleep(300);
+		await page.keyboard.up('Space');
+		await Bun.sleep(300);
+		expect(fromClient(client, 'ptt_start')).toHaveLength(0);
+		expect(audioChunks.length).toBe(chunks);
+		// Nothing asks for the mic once Text only is chosen.
+		expect(await countGetUserMedia(page)).toBe(gumAfterChoosing);
+		await context.close();
+	}, 20_000);
+
+	it('text only from the first load opens no mic at all, and a server listen_off leaves it alone', async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openPhone(onSession);
+
+		await chooseOnPhone(page, /Text only/);
+		await page.reload();
+		await page.getByRole('textbox', { name: 'Type a message' }).waitFor({ timeout: 5000 });
+		await Bun.sleep(500);
+		expect(await countGetUserMedia(page)).toBe(0);
+
+		// Another tab took listening: the server tells this one to go back to push to talk.
+		gateway.broadcast({ type: 'listen_off', reason: 'another tab is listening' });
+		await Bun.sleep(400);
+		expect(await page.getByRole('textbox', { name: 'Type a message' }).isVisible()).toBe(true);
+		expect(await page.getByRole('button', { name: 'Hold to talk' }).count()).toBe(0);
+		expect(await countGetUserMedia(page)).toBe(0);
+		await context.close();
+	}, 20_000);
+
+	it("a phone's link in the browser, keys missing: the install guide, never the keys sheet over it", async () => {
+		store.dispatch({ type: 'setup', missing: ['/k/anthropic.key', '/k/soniox.key'] });
+		const context = await browser.newContext({
+			viewport: { width: 390, height: 844 },
+			hasTouch: true,
+			userAgent:
+				'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1',
+		});
+		const page = await context.newPage();
+		watchErrors(page);
+
+		try {
+			await page.goto(`http://localhost:${gateway.port}/phone/${PHONE_KEY}`);
+			await page
+				.getByRole('heading', { name: 'Put Voice OS on your home screen' })
+				.waitFor({ timeout: 5000 });
+			await Bun.sleep(300);
+			expect(await page.getByRole('dialog', { name: 'Before you talk' }).count()).toBe(0);
+
+			// Waved away: Voice OS in the browser, and the keys can ask now.
+			await page.getByRole('button', { name: 'Use it in Safari instead' }).click();
+			await page.getByRole('dialog', { name: 'Before you talk' }).waitFor({ timeout: 5000 });
+		} finally {
+			store.dispatch({ type: 'setup', missing: [] });
+			await context.close();
+		}
+	}, 20_000);
+
+	it('dictation: the mic starts it, Send ends it — ptt_start with dictation, then ptt_stop', async () => {
+		await ensureIdle(REF);
+		const { context, page, client } = await openPhone(onSession);
+
+		await chooseOnPhone(page, /Dictation/);
+		await page.getByRole('button', { name: 'Start dictating' }).click();
+		await waitUntil(() => fromClient(client, 'ptt_start').length === 1);
+		expect(fromClient(client, 'ptt_start')[0]?.message).toMatchObject({ dictation: true });
+		await page.locator('.mbar.tall').waitFor({ timeout: 5000 });
+		await Bun.sleep(400);
+		await page.getByRole('button', { name: 'Send the dictation' }).click();
+		await waitUntil(() => fromClient(client, 'ptt_stop').length === 1);
+		await page.getByRole('button', { name: 'Start dictating' }).waitFor({ timeout: 5000 });
+		await context.close();
+	}, 20_000);
+
+	it('⋯ opens the side panel full screen; × closes it, and the other tabs never move', async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openPhone(onSession);
+
+		await page.getByRole('button', { name: 'More' }).click();
+		const more = page.getByRole('region', { name: 'Session details' });
+		await more.waitFor({ timeout: 5000 });
+		expect(await more.getByText('Session', { exact: true }).isVisible()).toBe(true);
+		expect(await more.getByRole('button', { name: 'Rename' }).isVisible()).toBe(true);
+		expect(await more.getByRole('button', { name: 'Deactivate' }).isVisible()).toBe(true);
+		expect(await isNotWider(page)).toBe(true);
+		expect(store.state.view).toMatchObject({ kind: 'session', ref: REF });
+		await more.getByRole('button', { name: 'Close' }).click();
+		await more.waitFor({ state: 'detached', timeout: 5000 });
+		await context.close();
+	}, 20_000);
+
+	it('a question is the last thing in the stream, the bar under it, nothing sideways', async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openPhone(onSession);
+
+		store.dispatch({
+			type: 'ask_opened',
+			ask: {
+				id: 'ui-phone-question',
+				ref: REF,
+				at: 5,
+				kind: 'question',
+				input: {},
+				questions: [
+					{
+						question: 'Where should the worker pick up the order emails from?',
+						multiSelect: false,
+						options: [{ label: 'A Redis queue' }, { label: 'A jobs table in Postgres' }],
+					},
+				],
+			},
+		});
+		const card = page.locator('.vo-stream > section[aria-label="question"]');
+		await card.waitFor({ timeout: 5000 });
+		const isLast = await page.evaluate(() => {
+			const stream = document.querySelector('.vo-stream');
+
+			return stream?.lastElementChild?.getAttribute('aria-label') === 'question';
+		});
+		expect(isLast).toBe(true);
+		expect(await page.locator('.phone-bar section[aria-label="question"]').count()).toBe(0);
+		expect(await isNotWider(page)).toBe(true);
+		store.dispatch({ type: 'ask_closed', askId: 'ui-phone-question' });
+		await context.close();
+	}, 20_000);
+
+	it('Settings → Your phone: New code shows the QR and where the phone reaches this Mac', async () => {
+		const { context, page } = await signIn();
+		store.dispatch({ type: 'switch_view', view: { kind: 'settings' } });
+		const section = page.locator('#vs-phone');
+
+		await section.waitFor({ timeout: 5000 });
+		expect(await section.getByText('No code yet').isVisible()).toBe(true);
+		await section.getByRole('button', { name: 'New code' }).click();
+		await section
+			.getByRole('img', { name: "QR code of the phone's link" })
+			.waitFor({ timeout: 5000 });
+		expect(await section.getByText('Reached at').isVisible()).toBe(true);
+		expect(await section.getByText('Recommended').isVisible()).toBe(true);
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		await context.close();
 	}, 20_000);
 });

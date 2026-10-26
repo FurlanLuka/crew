@@ -364,6 +364,13 @@ func TestGoldenServer(t *testing.T) {
 		{ID: "1001", Name: "general", Kind: "text", IsCurrent: true},
 	})
 	checkGolden(t, "server-keys-set.json", keySavedDoc("soniox", "/Users/dev/.config/crew-voiceos/soniox.key"))
+	checkGolden(t, "server-phones.json", []voice.PhoneRow{
+		{ID: "p3fa9c1", Name: "Phone", Created: "2026-10-02T09:30:00Z", Device: "iPhone", LastSeen: "2026-10-02T10:05:00Z"},
+		{ID: "pa0b1c2", Name: "Work phone", Created: "2026-10-02T09:45:00Z"},
+	})
+	checkGolden(t, "server-phones-add.json", voice.PhoneAddedFor(voice.Phone{ID: "p3fa9c1", Name: "Phone"}, "https://mac.tail1.ts.net", voice.ViaTailscale, "KEY0123456789abcdefghijklmnopqrs"))
+	checkGolden(t, "server-tailscale-status.json", voice.TailscaleStatus{Installed: true, Running: true, SignedIn: true, User: "dev@example.com",
+		Host: "mac.tail1.ts.net", HTTPS: true, Serving: true, URL: "https://mac.tail1.ts.net"})
 }
 
 // crew-lines.json is what the page shows after a mutation or a refusal:

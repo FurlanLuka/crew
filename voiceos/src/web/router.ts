@@ -146,6 +146,11 @@ export const matchRoute = (pathname: string, search = ''): Route => {
 		return { half: 'voice', view: matchVoice(rest) };
 	}
 
+	// A phone's link (/phone/<key>) is Voice OS showing what every tab shows; its key is not a screen.
+	if (half === 'phone') {
+		return { half: 'voice', view: { kind: 'active' } };
+	}
+
 	if (half === 'setup') {
 		const machine = new URLSearchParams(search).get('on') || LOCAL_MACHINE;
 

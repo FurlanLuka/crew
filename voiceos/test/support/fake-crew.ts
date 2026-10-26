@@ -63,6 +63,40 @@ export interface FakeChat {
 	created: string;
 }
 
+// crew server phones --json: one row per phone with its own key.
+export interface FakePhone {
+	id: string;
+	name: string;
+	created: string;
+	device?: string;
+	last_seen?: string;
+}
+
+// crew server tailscale status --json.
+export interface FakeTailscale {
+	installed: boolean;
+	running: boolean;
+	signed_in: boolean;
+	user: string;
+	host: string;
+	https: boolean;
+	serving: boolean;
+	url: string;
+	detail?: string;
+}
+
+// The proxy's address for this Mac, as crew's proxy names it on the local network.
+const PROXY_ADDRESS = 'voice--os.192.168.1.20.nip.io';
+
+// crew's golden is a Mac already on Tailscale; the fake starts one step earlier, signed in with HTTPS
+// still off, so the page's checklist has something to tick. A test sets https or serving itself.
+const seedTailscale = (): FakeTailscale => ({
+	...readGolden<FakeTailscale>('server-tailscale-status.json'),
+	https: false,
+	serving: false,
+	url: '',
+});
+
 export interface FakeMachine {
 	projects: CrewProject[];
 	workspaces: FakeWorkspace[];
@@ -75,6 +109,8 @@ export interface FakeMachine {
 	// crew server machines: the other machines this one's Voice OS drives.
 	voiceMachines: FakeVoiceMachine[];
 	isDiscordSetUp: boolean;
+	phones: FakePhone[];
+	tailscale: FakeTailscale;
 	// crew chat: the plain sessions this machine keeps.
 	chats: FakeChat[];
 	// Workspaces from before crew 2.0, which crew migrate moves.
@@ -144,6 +180,8 @@ const seedMachine = (seed: 'golden' | 'empty'): FakeMachine => {
 			cleanDryRun: readGolden<unknown[]>('clean-dry-run.json'),
 			voiceMachines: readGolden<FakeVoiceMachine[]>('server-machines-empty.json'),
 			isDiscordSetUp: readGolden<{ set_up: boolean }>('server-discord-off.json').set_up,
+			phones: [],
+			tailscale: seedTailscale(),
 			chats: [],
 			flatWorkspaces: [],
 			installSteps: {},
@@ -184,6 +222,8 @@ const seedMachine = (seed: 'golden' | 'empty'): FakeMachine => {
 		cleanDryRun: readGolden<unknown[]>('clean-dry-run.json'),
 		voiceMachines: readGolden<FakeVoiceMachine[]>('server-machines.json'),
 		isDiscordSetUp: readGolden<{ set_up: boolean }>('server-discord-status.json').set_up,
+		phones: readGolden<FakePhone[]>('server-phones.json'),
+		tailscale: seedTailscale(),
 		chats: readGolden<FakeChat[]>('ls-chats.json'),
 		flatWorkspaces: [],
 		installSteps: {},
@@ -878,6 +918,10 @@ export const createFakeCrew = ({
 						machine.isDiscordSetUp ? 'server-discord-status.json' : 'server-discord-off.json',
 					),
 				);
+			case 'phones_ls':
+				return json(machine.phones);
+			case 'tailscale_status':
+				return json(machine.tailscale);
 			case 'discord_channels':
 				return machine.isDiscordSetUp
 					? json(readGolden('server-discord-channels.json'))
@@ -1384,6 +1428,52 @@ export const createFakeCrew = ({
 				machine.isDiscordSetUp = false;
 
 				return json({ removed: ['discord.json', 'discord.key'] });
+			case 'phones_add': {
+				const { serving, host } = machine.tailscale;
+				const address = serving ? host : PROXY_ADDRESS;
+				const added: FakePhone = {
+					id: `p${(0x10000 + machine.phones.length).toString(16).slice(-5)}`,
+					name: command.name ?? 'Phone',
+					created: '2026-10-26T09:00:00Z',
+				};
+				machine.phones.push(added);
+
+				return json({
+					id: added.id,
+					name: added.name,
+					link: `https://${address}/phone/KEY${added.id}0f3e9a7c41d2b8e6aa`,
+					address,
+					via: serving ? 'tailscale' : 'proxy',
+				});
+			}
+			case 'phones_rm': {
+				const removed = machine.phones.find((phone) => phone.id === command.id);
+
+				if (!removed) {
+					return refuse(`no phone ${command.id} (crew server phones)`);
+				}
+
+				machine.phones = machine.phones.filter((phone) => phone !== removed);
+
+				return ok(`removed\t${removed.id}\n`);
+			}
+			case 'tailscale_serve': {
+				const { tailscale } = machine;
+
+				if (!tailscale.https) {
+					return refuse('HTTPS is off for your tailnet: turn it on in Tailscale first');
+				}
+
+				tailscale.serving = true;
+				tailscale.url = `https://${tailscale.host}`;
+
+				return ok(`${tailscale.url}\n`);
+			}
+			case 'tailscale_off':
+				machine.tailscale.serving = false;
+				machine.tailscale.url = '';
+
+				return ok('removed\t/Users/dev/.crew/voiceos/tailscale.json\n');
 			case 'discord_text_channel':
 				return json(
 					readGolden('server-discord-setup.json'),

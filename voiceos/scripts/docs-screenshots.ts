@@ -32,6 +32,14 @@ import { createFakeCrew, type FakeCrew } from '../test/support/fake-crew.js';
 const IMAGES_DIR = join(import.meta.dir, '..', '..', 'docs', 'images');
 const TOKEN = 'd'.repeat(64);
 const VIEWPORT = { width: 1440, height: 900 };
+// A page that opens this narrow is a phone: Voice OS's phone layout, shot at the phone's own density.
+const PHONE = { width: 390, height: 844 };
+const PHONE_AGENTS = {
+	iphone:
+		'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1',
+	android:
+		'Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36',
+} as const;
 // This Mac's worktrees, and the build box's: a tile shows its machine's own kind of path.
 const LOCAL_HOME = '/Users/dev';
 const REMOTE_HOME = '/home/dev';
@@ -897,6 +905,8 @@ interface Shot {
 	// What happens after the shared world, before the shot.
 	stage?: (world: State) => State;
 	view?: View;
+	// Opened from a phone's link, not yet on the home screen: the install guide, as this phone sees it.
+	phoneLink?: 'iphone' | 'android';
 	// Before the page loads: the listening mode this tab kept.
 	listenMode?: 'on-demand' | 'hands-free';
 	// Runs in the page before the screenshot.
@@ -1242,8 +1252,62 @@ const SHOTS: Shot[] = [
 	{
 		name: 'phone',
 		view: MAIN_VIEW,
-		viewport: { width: 390, height: 844 },
+		viewport: PHONE,
 		stage: withMainLine,
+	},
+	{ name: 'phone-home', view: { kind: 'active' }, viewport: PHONE, world: { isWrk1Asking: true } },
+	{ name: 'phone-session', view: MAIN_VIEW, viewport: PHONE, stage: withMainLine },
+	{
+		name: 'phone-question',
+		view: { kind: 'session', ref: WRK1 },
+		viewport: PHONE,
+		world: { isWrk1Asking: true },
+	},
+	{
+		name: 'phone-more',
+		view: MAIN_VIEW,
+		viewport: PHONE,
+		stage: withMainLine,
+		prepare: async (page) => {
+			await page.getByRole('button', { name: 'More' }).click();
+			await page.getByRole('region', { name: 'Session details' }).waitFor();
+		},
+	},
+	{
+		name: 'phone-modes',
+		view: MAIN_VIEW,
+		viewport: PHONE,
+		stage: withMainLine,
+		prepare: async (page) => {
+			await page.getByRole('button', { name: 'Listening mode' }).click();
+			await page.getByRole('menu', { name: 'Listening mode' }).waitFor();
+		},
+	},
+	{ name: 'phone-install-iphone', viewport: PHONE, phoneLink: 'iphone' },
+	{
+		name: 'phone-install-android',
+		viewport: PHONE,
+		phoneLink: 'android',
+		// Chrome offers the install once it decides the page can be one: the event it fires.
+		prepare: async (page) => {
+			await page.evaluate(() => {
+				const event = Object.assign(new Event('beforeinstallprompt'), {
+					prompt: async () => undefined,
+					userChoice: Promise.resolve({ outcome: 'dismissed' }),
+				});
+
+				window.dispatchEvent(event);
+			});
+			await page.getByRole('button', { name: 'Install' }).waitFor();
+		},
+	},
+	{
+		name: 'settings-your-phone',
+		view: { kind: 'settings' },
+		prepare: async (page) => {
+			await page.getByRole('button', { name: 'New code' }).click();
+			await page.getByRole('img', { name: "QR code of the phone's link" }).waitFor();
+		},
 	},
 	{
 		name: 'answer',
@@ -1789,8 +1853,11 @@ const ringClickTargets = async (page: Page, selectors: string[]): Promise<void> 
 };
 
 const shoot = async (browser: Browser, gateway: Gateway, shot: Shot): Promise<void> => {
+	const viewport = shot.viewport ?? VIEWPORT;
 	const context = await browser.newContext({
-		viewport: shot.viewport ?? VIEWPORT,
+		viewport,
+		...(viewport.width <= PHONE.width ? { deviceScaleFactor: 2, hasTouch: true } : {}),
+		...(shot.phoneLink ? { userAgent: PHONE_AGENTS[shot.phoneLink] } : {}),
 		permissions: ['microphone'],
 		// The page at rest: no opening, no moment, no page rise.
 		reducedMotion: 'reduce',
@@ -1800,6 +1867,13 @@ const shoot = async (browser: Browser, gateway: Gateway, shot: Shot): Promise<vo
 	await context.route('**/*', (route) =>
 		new URL(route.request().url()).hostname === 'localhost' ? route.continue() : route.abort(),
 	);
+
+	if (shot.phoneLink) {
+		// What the server's /phone/<key> page sets; the shot stays on /voice, which needs no key.
+		await context.addInitScript(() => {
+			Object.assign(window, { __VOICEOS_PHONE__: true });
+		});
+	}
 
 	if (shot.listenMode) {
 		await context.addInitScript((mode) => {
@@ -1814,7 +1888,7 @@ const shoot = async (browser: Browser, gateway: Gateway, shot: Shot): Promise<vo
 		page.on('pageerror', (error) => errors.push(error.message));
 		await page.goto(`http://localhost:${gateway.port}/login?token=${TOKEN}`);
 		await page.goto(`http://localhost:${gateway.port}${shot.path ?? '/voice'}`);
-		await page.waitForSelector('.vo-top, .top, .launcher, .first-run');
+		await page.waitForSelector('.vo-top, .mtop, .inst, .top, .launcher, .first-run');
 		await shot.prepare?.(page);
 		// The stream scrolls to its end, crew's reads land and the mic settles.
 		await page.waitForTimeout(1200);

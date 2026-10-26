@@ -24,6 +24,10 @@ export interface Paths {
 	modesFile: string;
 	voiceOffFile: string;
 	onboardedFile: string;
+	// crew writes phones.json and tailscale.json; Voice OS writes phones-seen.json.
+	phonesFile: string;
+	phonesSeenFile: string;
+	tailscaleFile: string;
 	keysDir: string;
 }
 
@@ -57,6 +61,9 @@ export const resolvePaths = (env: Record<string, string | undefined> = process.e
 		modesFile: join(voiceDir, 'modes.json'),
 		voiceOffFile: join(voiceDir, 'voice-off.json'),
 		onboardedFile: join(voiceDir, 'onboarded.json'),
+		phonesFile: join(voiceDir, 'phones.json'),
+		phonesSeenFile: join(voiceDir, 'phones-seen.json'),
+		tailscaleFile: join(voiceDir, 'tailscale.json'),
 		keysDir: env.VOICEOS_KEYS_DIR || join(home, '.config', 'crew-voiceos'),
 	};
 };
