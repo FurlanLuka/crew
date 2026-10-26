@@ -347,5 +347,5 @@ sideways.
 To reach it from a phone, set the proxy domain in Settings and trust crew's certificate on the
 phone ([Other devices](../concepts.md#other-devices) has the details).
 
-More: [Getting set up](getting-set-up.md) (the same steps as commands) · [Voice OS](voice-os.md) ·
+More: [Tutorial 1](../tutorials/1-install-and-first-worktree.md) (the same steps, on the page and as commands) · [Voice OS](voice-os.md) ·
 [every command](../commands.md)

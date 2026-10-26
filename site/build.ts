@@ -16,46 +16,67 @@ const DIST_DIR = join(SITE_DIR, 'dist');
 
 const GUIDES: Guide[] = [
   {
+    slug: 'first-worktree',
+    file: 'docs/tutorials/1-install-and-first-worktree.md',
+    kicker: 'Tutorial 1',
+    blurb:
+      'From installing crew to the same store running twice, side by side, each copy on its own branches and ports. On the page and as commands.',
+    featured: true,
+  },
+  {
+    slug: 'working-with-voice-os',
+    file: 'docs/tutorials/2-voice-os.md',
+    kicker: 'Tutorial 2',
+    blurb: 'Activating sessions, talking to them, answering their questions, and fixing a real bug by voice.',
+    featured: true,
+  },
+  {
+    slug: 'remote-machine',
+    file: 'docs/tutorials/3-remote-machine.md',
+    kicker: 'Tutorial 3',
+    blurb: 'A VM over SSH, set up from your Mac, its Claude Code sessions next to yours on the same page.',
+    featured: true,
+  },
+  {
+    slug: 'from-anywhere',
+    file: 'docs/tutorials/4-from-anywhere.md',
+    kicker: 'Tutorial 4',
+    blurb: "crew's page on another computer or your phone, and Voice OS in a Discord voice channel.",
+    featured: true,
+  },
+  {
+    slug: 'everyday',
+    file: 'docs/tutorials/5-everyday-and-maintenance.md',
+    kicker: 'Tutorial 5',
+    blurb: 'Duplicating, renaming and removing worktrees, overrides, checks, export and import, cleaning up.',
+    featured: true,
+  },
+  {
     slug: 'voice-os',
     file: 'docs/guides/voice-os.md',
-    kicker: 'Start here',
+    kicker: 'Reference',
     blurb:
-      "The half of crew's page that runs one Claude Code session per worktree and lets you drive all of them by talking, typing or clicking. From first run to other machines.",
-    featured: true,
+      "Everything Voice OS does: one Claude Code session per worktree, driven by talking, typing or clicking, on every machine.",
   },
   {
     slug: 'setup',
     file: 'docs/guides/setup.md',
-    kicker: 'The page',
+    kicker: 'Reference',
     blurb:
       'Where projects, workspaces, worktrees and machines are configured. Every form runs a crew command and shows it to you before you press anything.',
-    featured: true,
   },
   {
     slug: 'voice-os-commands',
     file: 'docs/guides/voice-os-commands.md',
-    kicker: 'What you can say',
+    kicker: 'Reference',
     blurb: 'Everything the router can do, one tool at a time, with things to say for each, taken from real use.',
-    featured: true,
   },
   {
     slug: 'concepts',
     file: 'docs/concepts.md',
-    kicker: 'Underneath',
+    kicker: 'Reference',
     blurb:
       'What a project, a workspace and a worktree are, how services find each other, and how crew proves a copy works.',
-  },
-  {
-    slug: 'getting-set-up',
-    file: 'docs/guides/getting-set-up.md',
-    kicker: 'As commands',
-    blurb: 'From an empty crew to two copies of your stack side by side, typed out as commands.',
-  },
-  {
-    slug: 'remote-vm',
-    file: 'docs/guides/remote-vm.md',
-    kicker: 'Other machines',
-    blurb: 'Worktrees, dev servers and Claude Code on a Linux VM, and the Voice OS on your Mac driving it.',
   },
   {
     slug: 'commands',
@@ -224,15 +245,15 @@ function guidesIndex(): string {
   const body = `<header class="wrap page-head" style="padding-bottom: 40px">
 <span class="kicker">Guides</span>
 <h1>Everything, written down.</h1>
-<p>Start with Voice OS if you want to talk to your sessions, or Set up if you want to know what crew is doing underneath. Every guide works on its own.</p>
+<p>The tutorials go in order, from installing crew to sessions on another machine, all with the same two repos: a React store front and a Python API. The references below them cover each part in full.</p>
 </header>
-<section class="wrap" aria-label="Main guides">
+<section class="wrap" aria-label="Tutorials">
 <div class="grid">
 ${GUIDES.filter((guide) => guide.featured).map(card).join('\n')}
 </div>
 </section>
-<section class="wrap" aria-label="More" style="padding-top: 56px">
-<span class="kicker">More</span>
+<section class="wrap" aria-label="Reference" style="padding-top: 56px">
+<span class="kicker">Reference</span>
 <div style="margin-top: 12px">
 ${GUIDES.filter((guide) => !guide.featured).map(row).join('\n')}
 </div>
@@ -240,7 +261,7 @@ ${GUIDES.filter((guide) => !guide.featured).map(row).join('\n')}
 
   return page({
     title: 'Guides · Crew',
-    description: "crew's guides: Voice OS, Set up, what you can say, and every command.",
+    description: "crew's tutorials and guides: install, Voice OS, remote machines, what you can say, and every command.",
     path: '/guides/',
     section: 'guides',
     body,

@@ -1,4 +1,4 @@
-# 2. Working with Voice OS
+# Working with Voice OS
 
 In [the first tutorial](1-install-and-first-worktree.md) you made the `store` workspace with
 store-front and store-api, checked out `store/main` and then

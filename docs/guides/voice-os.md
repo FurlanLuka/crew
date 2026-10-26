@@ -76,7 +76,7 @@ milliseconds and a fraction of a cent there, and nothing to a plain message to a
 
 - **crew**, installed. Voice OS shows crew's worktrees and adds nothing of its own. With no
   worktree yet, [Set up](#set-up-and-the-setup-session) makes one for you (or type it out with
-  [Getting set up](getting-set-up.md)).
+  [the first tutorial](../tutorials/1-install-and-first-worktree.md)).
 - **tmux**, because Voice OS runs in a tmux session that crew keeps alive.
 - **Claude Code** (`claude` on your PATH), signed in. Every session is Claude Code on your login,
   on whatever plan you already have.
@@ -844,7 +844,7 @@ Notes and debug notes live on the main. On a remote these commands ask the main 
 One Voice OS can drive the sessions on other machines too, such as a VM or a second computer, over
 SSH. You keep talking to the Voice OS on your own machine (the **main**). The other machine (a
 **remote**) runs its sessions and nothing else: no page, no keys, no voice.
-[Running crew on a remote VM](remote-vm.md) sets one up from nothing.
+[The remote machine tutorial](../tutorials/3-remote-machine.md) sets one up from nothing.
 
 1. **On the other machine:** install crew, then run `crew server remote`. It checks tmux and Claude
    Code, installs Voice OS and starts it in the background. Sign in to Claude Code there once.
@@ -1073,4 +1073,4 @@ carries your token.
   talk streams only while you hold the key.
 
 More: [how crew works](../concepts.md) · [every crew command](../commands.md) ·
-[running crew on a remote VM](remote-vm.md) · [how Voice OS is built](../../voiceos/README.md)
+[the remote machine tutorial](../tutorials/3-remote-machine.md) · [how Voice OS is built](../../voiceos/README.md)

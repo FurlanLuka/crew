@@ -3,7 +3,7 @@
 The model behind every command: what a project, a workspace and a worktree are, how services
 find each other, how crew proves a copy works, and what happens when it doesn't. For the
 commands themselves see [commands.md](commands.md); to get going see
-[Getting set up](guides/getting-set-up.md), or [Set up](guides/setup.md) for the same in the browser.
+[the first tutorial](tutorials/1-install-and-first-worktree.md), or [Set up](guides/setup.md) for the same in the browser.
 
 ## Projects, workspaces, worktrees
 

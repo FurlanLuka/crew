@@ -1,4 +1,4 @@
-# 4. From anywhere
+# From anywhere
 
 crew's page lives on the machine that runs crew's server, and out of the box only that machine's
 browser opens it, at a `localhost` link. That's fine at the desk. This tutorial is about the rest:
