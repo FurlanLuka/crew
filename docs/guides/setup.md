@@ -33,7 +33,7 @@ crew
 Bare `crew` starts crew's server if it is not running and opens the page in your browser. With no
 terminal, over SSH or with `--no-open`, it prints the link instead. The page opens on **Home**:
 
-![Home: Voice OS and Set up side by side, each with a line on what is going on there, and "Always open Voice OS" under them](../images/home/crew-home.png)
+![Home: Voice OS (3 active, 1 waiting on you) and Set up (2 projects on This Mac) side by side, and "Always open Voice OS" under them](../images/home/crew-home.png)
 
 Pick **Set up**. Each card says what is waiting there ("2 things need you" is the board's problems
 strip). Enter opens the highlighted one. Ticking **Always open Voice OS** skips Home when you open
@@ -49,7 +49,7 @@ you open the menu) and the breadcrumbs of where you are. **Esc** goes up one bre
 
 The board is the machine's front page: what it has, and what needs you.
 
-![The board on This Mac: the Workspaces tab with its note, Setup with Claude, the problems strip (a failed install in store-front/wrk1, a failed check of store-api), and each workspace with its worktrees as chips](../images/setup/board.png)
+![The board on This Mac on its Projects tab: Setup with Claude, then store-front with web :5173 and store-api with api :8000 and worker, both in store](../images/setup/board.png)
 
 From the top:
 
@@ -67,7 +67,7 @@ ready, red with what failed, "+N" for the rest, and **+ new** to make another. *
 opens the form. With no workspace yet, the tab offers the three ways to start instead: **New
 workspace**, **Import** (from another machine's export) and **Ask Claude**.
 
-![The Projects tab: one line per project with its install, dev servers, workspaces and state](../images/setup/workspaces.png)
+![The Workspaces tab: the store workspace with store-front and store-api, its worktrees main and wrk1 as chips, and + new](../images/setup/workspaces.png)
 
 **Projects** lists every project on the machine, one line each: its install, its dev servers with
 their ports, the workspaces it is in, and its state — **Check** (never checked), check failed, or
@@ -86,7 +86,7 @@ Click a project for its page: what crew recorded, one line per fact — its inst
 command, each dev server, each Environment variable, the workspaces it is in, where its code comes
 from and where it is. A long value ends in "…" with the whole of it on hover.
 
-![store-api's page: a failed check at install with the pnpm error, Fix with Claude, Edit setup and Check again; under it what crew recorded, one line per fact](../images/setup/project.png)
+![store-api's page, not checked yet, with Edit setup, Ask Claude and Check; under it what crew recorded, one line per fact: the env command, the api and worker dev servers, CORS_ORIGIN from store-front's URL, the store workspace, its remote and its path](../images/setup/project.png)
 
 When its last check failed, the page opens on that: the step it stopped at (checkout, install or
 servers), the end of the log, and what it means ("its worktrees keep their code, and the project
@@ -100,7 +100,7 @@ a clone crew made goes to crew's trash, a folder you added is never touched.
 
 **Edit setup** opens the project's form:
 
-![The form for store-front: install command, env command, one dev server "web" on port 3000, and the Environment with two variables](../images/setup/project-form.png)
+![The form for store-front: the install detected from the lockfile, no env command, one dev server web running npm run dev on port 5173, and VITE_API_URL from store-api's URL in its Environment](../images/setup/project-form.png)
 
 - **Install** runs in every new worktree. Empty means crew picks the package manager from the
   lockfile. The **env command** runs after it, for env files that come from a vault
@@ -150,7 +150,7 @@ are not on the base branch and the space on disk — before anything is removed.
 
 A worktree's page is one working copy of the workspace:
 
-![store-front/wrk1: rename and duplicate beside its name, Open in Voice OS; the Dev servers card with checkout-api died, its log open beside the list; its Environment card with a value set for this worktree](../images/setup/worktree.png)
+![store/wrk1: rename and duplicate beside its name, Open in Voice OS; the Dev servers card stopped, with Start and Verify over web, api and worker; the Environment card for values set for this worktree](../images/setup/worktree.png)
 
 - Its name, with **Rename** and **Duplicate** as small icons beside it, and **Open in Voice OS** on
   the right.
@@ -182,7 +182,7 @@ a workspace; removing a workspace's last worktree removes the workspace too.
 
 **+ new** on a workspace, or **New worktree** on its page:
 
-![New worktree in store-front: a name, the branch it makes, and the base branch of each project — store-front is 3 behind main — with "pull first" ticked](../images/setup/new-worktree.png)
+![New worktree in store: a name, the branch it makes, and the base branch of each project (store-front 3 behind main, store-api up to date) with "pull first" ticked](../images/setup/new-worktree.png)
 
 **Start from** shows each project's base branch and how far it is behind origin. **Pull first**
 fast-forwards the bases before branching (it never touches a branch you have checked out). Each
@@ -198,7 +198,7 @@ others keep what they have.
 Each machine has its own Claude for setting up: a Claude Code session in your home folder with the
 crew CLI, always on, one conversation.
 
-![Setup with Claude adding signals: each crew command it ran, with a green "recorded" line under it, and its answer](../images/setup/chat.png)
+![Setup with Claude adding store-front and store-api: each crew command it ran, a green "recorded" line under the ones that recorded something, and its answer that store/main is set up](../images/setup/chat.png)
 
 Ask it anything you would do in the forms, or what you don't know how to do: "add the signals repo
 to crew and give it a worktree", "why does store-api's install fail?", "check this machine". It
@@ -232,9 +232,11 @@ questions are answered the same way.
 
 ## Machines
 
-The machine picker's **Add a machine** sets one up: on that computer or VM, run `crew server
-remote` first; then give its SSH address (what `ssh <host>` logs into with no password) and a
-name. [Running crew on a remote VM](remote-vm.md) has the whole path.
+The machine picker's **Add a machine…** sets one up: install crew on that computer or VM (`crew
+server remote` there checks it is ready); then give its **SSH address** (what `ssh <host>` logs
+into with no password) and a **Name**, and press **Connect without Claude**, or **Connect with
+Claude** to have Setup with Claude do it. [A remote machine](../tutorials/3-remote-machine.md) has
+the whole path.
 
 A machine's page says how it is reached, which crew it runs and what is on it — each project with
 its state and worktree count. **Check with Claude** asks that machine's Claude to look at the
@@ -243,11 +245,11 @@ else in Set up — the board, the forms, Setup with Claude — works on another 
 as on this one: pick it in the picker. A machine that runs an older crew says so in place; crew
 updates it from here.
 
-![This Mac's machine page: crew runs here, Check with Claude, and the projects on it with their worktree counts, store-api's check failed](../images/setup/machines.png)
+![This Mac's machine page: crew 4.1.0 runs here, Check with Claude, and store-front and store-api with 2 worktrees each](../images/setup/machines.png)
 
 ## Settings
 
-![Settings: crew 4.2.0 is out with Update, This machine's addresses and proxy ports, the disk section with Trash and Left behind, and Move to another machine](../images/setup/settings.png)
+![Settings: crew 4.2.0 is out with Update, This machine's addresses and proxy ports with the proxy answering, the disk section with Trash (2.1 GB) and Left behind, and Move to another machine](../images/setup/settings.png)
 
 - **Update** — on This Mac's settings, when a newer crew is out. crew's server keeps running until
   you restart it; other machines are updated from here after. A build from source says so: `crew
@@ -276,7 +278,7 @@ and the other machine points it at a folder. The page says what goes with the fi
 remote, their install and env commands, dev servers, bindings, workspace membership) and what
 stays (worktrees, ports, worktree values, .env files), and **Save crew-export.json** downloads it.
 
-![Export: store-front and admin ticked with their projects under them, signals marked setup only because it has no remote, what goes with the file and what stays, the crew export command, and Save crew-export.json](../images/setup/export.png)
+![Export: the store workspace ticked with store-front and store-api under it, each going by its remote, what goes with the file and what stays on This Mac, and Save crew-export.json](../images/setup/export.png)
 
 **Import…** on the other machine takes the file (drop it, or choose it) and shows crew's plan with
 every choice up front:
@@ -314,7 +316,7 @@ The first run shows once. Whichever way you pick, Home is the launcher from then
 later remove every workspace. A machine that already had worktrees when crew got this never sees
 it.
 
-![The first run's projects step: the git checkouts crew found in the code folders, each ticked, each cloned from its remote](../images/setup/first-run.png)
+![The first run's projects step: store-front and store-api found as git checkouts on this Mac, both ticked, each cloned from its remote](../images/setup/first-run.png)
 
 1. **Pick your projects.** crew lists the git checkouts in your usual code folders (`~/code`,
    `~/projects`, `~/dev`, `~/src`, `~/Developer`, `~/work`, `~/repos`). Tick the ones you work on:
@@ -327,7 +329,7 @@ it.
    installed, one row per project. It moves on by itself; an install that fails stays on screen
    with its last lines, **Fix with Claude**, **Retry** and **Continue**.
 
-![The first run's last screen: store-front/main is ready, with Open Voice OS and Go to Set up](../images/setup/first-run-ready.png)
+![The first run's last screen: store/main is ready, 2 projects checked out and installed, with Open Voice OS and Go to Set up](../images/tutorials/ready.png)
 
 Then **Open Voice OS** opens that worktree's session, or **Go to Set up** opens the board. A
 project's dev servers, when it has any, go on its **Edit setup** form, or Setup with Claude works
@@ -340,7 +342,7 @@ progress.
 The page works at phone width: the toolbar, the strip and the forms stack, and the tables scroll
 sideways.
 
-![The board on a phone: the problems strip stacked with its buttons under each row](../images/setup/board-phone.png)
+![The board on a phone: Setup with Claude stacked under the tabs and the projects table scrolling sideways](../images/setup/board-phone.png)
 
 To reach it from a phone, set the proxy domain in Settings and trust crew's certificate on the
 phone ([Other devices](../concepts.md#other-devices) has the details).

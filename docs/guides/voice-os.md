@@ -11,9 +11,11 @@ You don't have to watch a terminal.
 It runs on your machine, next to crew. The sessions are ordinary Claude Code sessions on your own
 Claude Code login, working in crew's worktrees.
 
-Every command, with things you can say for each: [Voice OS commands](voice-os-commands.md).
+Every command, with things you can say for each: [Voice OS commands](voice-os-commands.md). New to
+it? [Working with Voice OS](../tutorials/2-voice-os.md) walks through it step by step, after
+[the first tutorial](../tutorials/1-install-and-first-worktree.md).
 
-![Voice OS: an active session, store-front/wrk2 on Build box, with its work stream, dev servers and spoken summary, and the other active sessions as tabs](../images/voice-os/hero.png)
+![Voice OS on store/main on Build box: its stream serving product images from the CDN, its web, api and worker dev servers, the spoken summary, store/wrk1 waiting elsewhere, and the active sessions as tabs](../images/voice-os/hero.png)
 
 ## Contents
 
@@ -126,7 +128,7 @@ setting a cookie. If you lose the cookie, or want to sign in from another browse
 On a phone the page fits the width: the top bar keeps the tabs (they scroll sideways), and the
 session's stream takes the screen, with the spoken line and the input under it.
 
-![Voice OS on a phone: store-front/main's stream with a diff, its spoken line and the input](../images/voice-os/phone.png)
+![Voice OS on a phone: store/main's stream adding a search box to the catalog, with a diff, its spoken line and the input](../images/voice-os/phone.png)
 
 **Keys.** The first time you open Voice OS without them, the page asks for the Anthropic and
 Soniox keys (and the microphone). Each key is checked with its service before it is saved; a
@@ -163,14 +165,14 @@ It runs in auto mode like every session, and it asks before anything destructive
 removed checkout to its trash and empties it in the background, and deletes the worktree's `crew/…`
 branches, so treat a removal as final.
 
-A new worktree shows up in Voice OS's **Activate** list by itself within a few seconds, because
+A new worktree shows up under **Activate a worktree** (its machine's page) by itself within a few seconds, because
 Voice OS rereads crew's worktrees every 10 seconds. It starts inactive: activate it to talk to it.
 
 ## From two repos to a working feature
 
 This is the whole loop by voice, on two small repos: `store-api` serves products and `store-app`
 lists them from `API_URL`. Each dev command must listen on the port crew hands it in `$PORT`
-([Getting set up](getting-set-up.md#2-add-your-projects) says how).
+([Tutorial 1](../tutorials/1-install-and-first-worktree.md#dev-servers) says how).
 
 1. **Set it up.** In Set up, tick both checkouts and make a `store-front` workspace with them, then
    ask Setup with Claude: "Work out the dev servers for store api and store app, and wire the store
@@ -178,7 +180,7 @@ lists them from `API_URL`. Each dev command must listen on the port crew hands i
    `crew dev add` and the binding with `crew add binding`, and runs `crew check project` until each
    passes.
 2. **It reports back** in the chat, with a line for each crew command it recorded.
-3. **The worktree appears.** `store-front/main` shows up on Voice OS's Activate list.
+3. **The worktree appears.** `store-front/main` shows up under Activate a worktree.
 4. **Activate it and start its servers.** "Activate store front main." "Activated
    store-front/main. Switch there?" "Yes." "Start the dev servers." Both come up on this
    worktree's own ports.
@@ -198,7 +200,7 @@ ways to start something: **New session** and **Activate a worktree**. On the rig
 each machine with what it holds (worktrees, how many are active, plain sessions), and under them a
 few things you can simply say instead.
 
-![Home: signals/wrk1 asks a question, so it sits first and tinted with Answer ringed; under it the other sessions with what they're doing, and on the right a card for This Mac, Build box and Lab box](../images/voice-os/answer.png)
+![Home: store/wrk1 asks where the worker should pick up the order emails, so it sits first and tinted with Answer ringed; under it store/main on This Mac and on Build box, and on the right a card for This Mac and Build box](../images/voice-os/answer.png)
 
 The bar along the top has the crew mark (back to crew's Home), **Home** with its count, a tab for
 each active session with its state dot (and its machine when it is not This Mac), and **New**. New
@@ -206,12 +208,12 @@ opens a menu: New session, Activate a worktree, and each machine, which opens th
 Your Claude usage (weekly and 5-hour), **voice** and the settings gear are on the right; the gear
 becomes a **Settings** tab while Settings is open.
 
-![The New menu open under the top bar: New session, Activate a worktree, then This Mac, Build box and Lab box with what each holds](../images/voice-os/new-menu.png)
+![The New menu open under the top bar: New session, Activate a worktree, then This Mac and Build box with what each holds](../images/voice-os/new-menu.png)
 
 Drag a session's tab to put it somewhere else, or focus it and press **Alt+←** / **Alt+→**. A white
 line shows where it will land. Home's list follows the same order, and it is kept across restarts.
 
-![store-front/wrk2's tab being dragged in the top bar, dimmed, with a white line between store-front/main and checkout where it will land](../images/voice-os/tab-drag.png)
+![Build box's store/main tab being dragged in the top bar, dimmed, with a white line between Home and This Mac's store/main where it will land](../images/voice-os/tab-drag.png)
 
 **Groups** keep a long bar short. Drop a tab on the middle of another tab (an outline shows it, where
 the edge shows a line) and name the group; it gets its own colour, which you can change. Drop a tab
@@ -233,9 +235,9 @@ out of reach has its rows dimmed and says why. **Activate** on a row starts that
 it gets a tab and a row on Home, and the page stays where it is. Worktrees are made in Set up, not
 here.
 
-![Build box's page: the machine switcher, Build box connected at dev@store-vm, Open in Set up, and New session on Build box ringed, then its plain sessions and store-front/wrk2](../images/voice-os/machine.png)
+![Build box's page: the machine switcher, Build box connected at dev@store-vm, Open in Set up, and New session on Build box ringed, then its plain sessions and store/main, active](../images/voice-os/machine.png)
 
-![All machines: This Mac's plain sessions and worktrees grouped by workspace, Activate on admin/main, Open on the active ones](../images/voice-os/activate.png)
+![All machines: This Mac and Build box, each with its plain sessions and its store worktrees, every one active with Open](../images/voice-os/activate.png)
 
 **Plain sessions.** Not everything is a worktree. **New session** (on Home, in the New menu, or on a
 machine's page) opens a dialog: pick the machine, a folder there (your recent ones are a click
@@ -245,7 +247,7 @@ servers, and it is active at once. Talk to it by its name like any session; **Re
 or "remove research", stops it and drops it from the list, leaving the folder alone. crew keeps
 them per machine (`crew chat add`, `crew ls chats`, `crew chat rm`).
 
-![The New session dialog over Home: This Mac picked, ~/notes as the folder, research as the name, and Start session ringed](../images/voice-os/new-session.png)
+![The New session dialog over Home: This Mac picked over Build box, ~/notes as the folder, research as the name, and Start session ringed](../images/voice-os/new-session.png)
 
 **Settings** is one page with a menu down the side: how you listen (four modes, each explained),
 voice off, the two keys (checked before saving), Discord, session names, your machines, and whether
@@ -258,7 +260,7 @@ own chat, or to a text channel you pick under **Settings → Discord → Message
 discord setup --text-channel=<name>`). Sessions are told about it only when Discord is set up, and
 they post only when you ask.
 
-![Settings: a side menu, the four listening modes as cards, voice on with Mute voice, the Soniox and Anthropic keys with Replace, and Discord not set up](../images/voice-os/settings.png)
+![Settings: a side menu, the four listening modes as cards with Push to talk picked, voice on with Mute voice, the Soniox and Anthropic keys with Replace, and Discord not set up](../images/voice-os/settings.png)
 
 Click a row or a tab to open that session. Opening a session only shows it. An inactive session's
 page shows its history and an **Activate** button, with no input box (see
@@ -273,7 +275,7 @@ header (a blocked call, a remote that dropped, a crash with Restart), and side p
 and cost, sub-agents, dev servers, what you said here, notes, docs, and **elsewhere** (sessions on
 other screens that need you). Only the stream scrolls.
 
-![A session page: store-front/main's stream with a diff, its last spoken line, its dev servers, and the sessions elsewhere that need you](../images/voice-os/session.png)
+![A session page: store/main on This Mac with its stream and a diff, its spoken line, its web, api and worker dev servers, and store/wrk1 and Build box's store/main elsewhere](../images/voice-os/session.png)
 
 By voice:
 
@@ -287,7 +289,7 @@ By voice:
 The round button next to the mic opens the menu that chooses how the tab listens. Each tab remembers its own mode, so a
 second tab never starts listening on its own.
 
-![The listening-mode menu in the bottom bar: Push to talk, On demand, Hands-free, Dictation](../images/voice-os/listening-modes.png)
+![The listening-mode menu in the bottom bar: Push to talk, On demand (ticked), Hands-free, Dictation](../images/voice-os/listening-modes.png)
 
 | Mode | How it works |
 | --- | --- |
@@ -462,11 +464,11 @@ else stays quiet until you activate it.
 **Home** shows the active sessions from every machine. An active session's tab is in the top bar,
 and Esc goes back to Home.
 
-![Home: sessions from This Mac and Build box, the one asking first with Answer, one whose machine is out of reach, and a card for each machine](../images/voice-os/active.png)
+![Home: store/wrk1 asking first with Answer, store/main on This Mac and on Build box, store/wrk2 dimmed because Lab box is out of reach, and a card for each machine](../images/voice-os/active.png)
 
 - **Activate** starts the session and resumes its conversation. By voice ("Activate the scheduler
   on Build box.") you hear "Activated scheduler. Switch there?"; from the **Activate** button on a
-  row on Activate or on an inactive session's page, nothing is said. If two sessions match,
+  row of a machine's page or on an inactive session's page, nothing is said. If two sessions match,
   Voice OS asks which ("Build box has scheduler work one and work two. Which?").
 - **Deactivate** stops the session and drops everything Voice OS still held for it (queued words,
   questions, updates). Its conversation is kept for the next time. A session that is working asks
@@ -520,12 +522,12 @@ docks it above the text box as a raised card: a title that asks, what you are ju
 the plan, the options), and the answers on the right, the main one last. One dim line under it says
 what to say to answer it by voice. Answer it the way you would answer a person, or click.
 
-![A question from a session, with its options in the dock](../images/voice-os/question.png)
+![store/wrk1's question docked above the text box: where the worker should pick up the order emails, with A Redis queue, A jobs table in Postgres, Send them inline for now and Something else…](../images/voice-os/question.png)
 
 A permission says what it wants to do ("Run this command?"), why when the session said, and the
 command itself, with each program it runs picked out.
 
-![store-front/main asking to run the database migrations: pnpm db:migrate, with Deny and say why…, Deny and Allow, docked above the spoken line and the text box](../images/voice-os/permission.png)
+![store/main asking to run uv run alembic upgrade head, with Deny and say why…, Deny and Allow, docked above the spoken line and the text box](../images/voice-os/permission.png)
 
 - "Yes." · "Go ahead." · "Always." ("Always" is offered when Claude Code suggests a rule. Voice
   OS hands that suggestion back to Claude Code unchanged, so the rule is kept wherever the
@@ -573,7 +575,7 @@ its stream shows the change ("Mode: Plan").
 - **Ask**: every permission comes to you as a card, the way Claude Code asks in a terminal.
 - **Skip**: Claude Code's skip-permissions mode. Everything runs, nothing is checked. Said aloud,
   Voice OS asks first ("Skip permissions for checkout?"), and a session in Skip shows **skip** on its
-  tab and in Active. Claude Code refuses Skip when it runs as root, so on such a machine the session
+  tab and on Home. Claude Code refuses Skip when it runs as root, so on such a machine the session
   stays in the mode it had, with a line saying why.
 
 Questions and plans always come to you, in every mode. Set up's chat stays in Auto.
@@ -589,10 +591,10 @@ asks for it but does not check what Claude Code did with the request; any permis
 Claude Code raises comes to you like the others.
 
 When auto mode blocks something, the session page docks a card with a red dot above the text box that
-says what the session was trying to do ("Auto mode blocked this · store-front/main tried to run git
-push"), and Voice OS tells you.
+says what the session was trying to do ("Auto mode blocked this · store/wrk1 tried to run make
+deploy-staging"), and Voice OS tells you.
 
-![The blocked prompt docked above the text box, and an "Allowed once" line in the stream](../images/voice-os/approval.png)
+![store/wrk1 with "Auto mode blocked this" for make deploy-staging docked above the text box, and an "Allowed once" line for its git push in the stream](../images/voice-os/approval.png)
 
 - **Allow once** (or say "allow it" / "let it") lets that one call through. The session retries it,
   and the stream shows **✓ Allowed once: …**. Only that call is allowed: auto mode is back for the
@@ -665,7 +667,7 @@ the name and size for anything else, and every tab you have open shows the same 
 chip takes it off. With no session on screen there is nothing to attach to, so Voice OS says "Open
 a session to attach files." and keeps nothing.
 
-![Two files waiting above the box, checkout-error.log and search-spec.pdf with their sizes, and the paperclip ringed](../images/voice-os/attachments.png)
+![Two files waiting above the box, cors-error.log and search-spec.pdf with their sizes, and the paperclip ringed](../images/voice-os/attachments.png)
 
 The files go with the next words that reach that session, whether you type them in its box, say
 them on its screen, or say them to it by name from somewhere else ("Sent to checkout with 2 files.").
@@ -745,7 +747,7 @@ While a turn runs, the session shows it is at work for the whole of it, so it ne
 tool call still running has three soft dots and its clock on its own line; while it thinks, a
 "Thinking" line with the time sits at the bottom of the stream; a reply arriving has its caret. When
 it needs you, the bottom line says so in red, like its tab. When the turn ends it all goes away. The
-session's dot on its tab, in the header and on Active turns while it works.
+session's dot on its tab, in the header and on Home turns while it works.
 
 ## Context meter
 
@@ -785,14 +787,14 @@ icons at the row's end: its log, and the open icon (its URL is the icon's toolti
 projects have no dev servers has no panel: a project without servers (a library, infra) is a whole
 project.
 
-![The dev servers panel: web and api running, each with a logs icon and an open icon, web's logs icon ringed, then Restart and Stop](../images/voice-os/dev-servers.png)
+![The dev servers panel: web and api with a logs icon and an open icon, worker with a logs icon only, web's logs icon ringed, then Restart and Stop](../images/voice-os/dev-servers.png)
 
 The logs icon opens that server's log in a window with a tab for each server. It follows new lines
 every two seconds, marks error lines in red, and stays where you are when you scroll up. **Pause**
 stops following, **Copy** takes the lines, and **Restart dev servers** restarts the worktree's
 servers. Esc closes it.
 
-![web's log in its window over the session page: running on localhost:4100, tabs for web and api, the Vite output with a 502 proxy error in red, and Pause, Copy, Restart dev servers and Close](../images/voice-os/dev-logs.png)
+![web's log in its window over store/main's page: running on localhost:54010, tabs for web, api and worker, Vite's output with its hmr updates, and Pause, Copy, Restart dev servers and Close](../images/voice-os/dev-logs.png)
 
 - "Start the dev servers." · "Restart them." · "Stop the servers."
 - "What's wrong with the dev servers here?" Answered from what crew sees: which one died, and which
@@ -853,8 +855,8 @@ SSH. You keep talking to the Voice OS on your own machine (the **main**). The ot
 3. **On your machine:** `crew server machines add store-vm --name="Build box"`, or add it in Set up
    (or Voice OS's Settings).
 
-Activate then lists the machine's worktrees under its name, with what runs there and what waits on
-you; its active sessions get tabs like this Mac's. Say its name to see its worktrees on Activate.
+The machine's page (New → its name) then lists its worktrees, with what runs there and what waits
+on you; its active sessions get tabs and rows on Home like this Mac's. Say its name to open its page.
 
 - "Show me Build box." · "Switch to the personal server." · "Go to this Mac."
 - "Rename store-vm to Build box." You can also rename it in Settings, or run
@@ -868,7 +870,7 @@ you; its active sessions get tabs like this Mac's. Say its name to see its workt
 - Alerts from every machine play with the machine's name in front ("Build box, store front main
   needs you"), and switching to a machine tells you what is waiting there.
 
-When the link drops, the sessions there keep working. Activate shows the machine as **out of
+When the link drops, the sessions there keep working. Its page shows the machine as **out of
 reach** and why, and a session page on it says it is reconnecting. What you say to it waits and is sent when it is back, and you hear one line about
 what happened meanwhile ("Build box is back: store front main finished").
 
@@ -911,7 +913,7 @@ to the release.
 | `crew server remote [status\|stop]` | Makes this machine a remote, or reports or stops it. |
 
 Add `--no-open` to `start` or `restart` to skip opening the browser. `--json` gives
-machine-readable output. [Every crew command](../commands.md#crew-voice) has the details.
+machine-readable output. [Every crew command](../commands.md#crew-server) has the details.
 
 **A restart keeps your place.** Voice OS remembers the screen you were on and returns to it. For
 another machine's session, it waits up to a minute for that machine to reconnect. Open pages
@@ -942,7 +944,7 @@ downgraded; Settings tells you to update this machine instead.
 | `~/.crew/voiceos/token` | The sign-in token (0600). Deleting it and restarting signs every browser out. |
 | `~/.crew/voiceos/state.json` | The port and pid crew tracks, and each machine's last status. |
 | `~/.crew/voiceos/sessions.json` | Which Claude Code conversation each session resumes. There is no time limit: a session keeps its conversation until you clear it or Claude Code no longer has it. |
-| `~/.crew/voiceos/view.json` | The screen you were on, restored after a restart (one saved by an earlier release opens as Active, or Activate for a machine's grid). |
+| `~/.crew/voiceos/view.json` | The screen you were on, restored after a restart (one saved by an earlier release opens as Home, or the machine's page for a machine's grid). |
 | `~/.crew/voiceos/voice-off.json` | Whether voice is off (the top bar's **voice**). |
 | `~/.crew/voiceos/active.json`, `names.json`, `modes.json`, `groups.json` | Your active sessions, session names, each session's permission mode and the top bar's groups (with the one open). An older `pinned.json` is read once, when `active.json` does not exist yet. |
 | `~/.crew/voiceos/journal/` | One file per session of what was asked and done in each turn, used for "what did checkout do yesterday". |

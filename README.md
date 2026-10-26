@@ -30,7 +30,7 @@ step by step: it finds the git repos you already have, you tick the ones you wor
 into a workspace, and it makes the first working copy of all of them while you watch.
 Then you open Voice OS, give it two API keys, hold **Space** and talk.
 
-![The first run: crew lists the git checkouts it found in your code folders, each ticked, each cloned from its remote](docs/images/setup/first-run.png)
+![The first run's projects step: store-front and store-api found as git checkouts on this Mac, both ticked, each cloned from its git@github.com remote, and Add 2 projects](docs/images/setup/first-run.png)
 
 ## Every machine, one voice
 
@@ -45,10 +45,10 @@ is sent when the link is back, and you hear what finished meanwhile. Update the 
 its remotes along, logs from every machine come back in one query, and any machine can post to your
 Discord.
 
-![Home: four sessions on two machines, the one asking a question first with Answer, and a card for each machine](docs/images/voice-os/active.png)
+![Home: store/wrk1 asking about the order emails first with Answer, store/main running on This Mac and on Build box, store/wrk2 waiting while Lab box is out of reach, and a card for each machine](docs/images/voice-os/active.png)
 
 [Other machines](docs/guides/voice-os.md#other-machines) has the details, and
-[Running crew on a remote VM](docs/guides/remote-vm.md) sets one up from nothing. When you want to
+[the remote machine tutorial](docs/tutorials/3-remote-machine.md) sets one up from nothing. When you want to
 move your whole setup somewhere new, **Export** saves it to a file and **Import** on the other
 machine walks you through bringing it in.
 
@@ -151,13 +151,21 @@ voice.
 
 ## Learn more
 
+The tutorials go in order, all with the same two repos, a React store front and a Python API:
+
+1. [Install and your first worktree](docs/tutorials/1-install-and-first-worktree.md): from nothing to the store running twice, side by side
+2. [Working with Voice OS](docs/tutorials/2-voice-os.md): talking to your sessions, answering them, fixing a bug by voice
+3. [A remote machine](docs/tutorials/3-remote-machine.md): a VM over SSH, its sessions next to yours
+4. [From anywhere](docs/tutorials/4-from-anywhere.md): another computer, your phone, Discord
+5. [Everyday commands and keeping things tidy](docs/tutorials/5-everyday-and-maintenance.md)
+
+And the references:
+
 - [Set up](docs/guides/setup.md): the page for projects, workspaces, worktrees and machines
-- [Voice OS](docs/guides/voice-os.md): from two repos to a working feature, and what you can say
+- [Voice OS](docs/guides/voice-os.md): everything Voice OS does, in detail
 - [Voice OS commands](docs/guides/voice-os-commands.md): everything the router knows, with things to say
-- [Getting set up](docs/guides/getting-set-up.md): the same setup as commands
 - [How crew works](docs/concepts.md): projects, bindings, checks, failures, other devices, moving machines
 - [Commands](docs/commands.md): every command and its output
-- [Running crew on a remote VM](docs/guides/remote-vm.md)
 - [Voice OS internals](voiceos/README.md): the router, keys, development
 - [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Code of conduct](CODE_OF_CONDUCT.md)
 

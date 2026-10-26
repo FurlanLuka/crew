@@ -134,6 +134,8 @@ const MessagesChannel = () => {
 	return (
 		<>
 			<div className="box-row">
+				{/* The row grid's dot column: no state here, so the words line up under the one above. */}
+				<span aria-hidden="true" />
 				<span className="sub">
 					<b>Messages</b>
 					<span className="m">
