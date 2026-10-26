@@ -1,4 +1,4 @@
-# 3. A remote machine
+# A remote machine
 
 So far everything ran on one computer. This tutorial adds a second one, a Linux VM I call the
 Build box, reached as `dev@store-vm`. Once it's added, the crew on my laptop (the **main**) drives

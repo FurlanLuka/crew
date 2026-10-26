@@ -10,6 +10,10 @@
 	@images path /images/*
 	header @images Cache-Control "public, max-age=86400"
 
+	# Old guides that became tutorials.
+	redir /guides/getting-set-up/ /guides/first-worktree/ permanent
+	redir /guides/remote-vm/ /guides/remote-machine/ permanent
+
 	file_server
 	handle_errors {
 		rewrite * /404.html
