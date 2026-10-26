@@ -157,7 +157,7 @@ The tutorials go in order, all with the same two repos, a React store front and 
 2. [Working with Voice OS](docs/tutorials/2-voice-os.md): talking to your sessions, answering them, fixing a bug by voice
 3. [A remote machine](docs/tutorials/3-remote-machine.md): a VM over SSH, its sessions next to yours
 4. [From anywhere](docs/tutorials/4-from-anywhere.md): another computer, your phone, Discord
-5. [Everyday commands and keeping things tidy](docs/tutorials/5-everyday-and-maintenance.md)
+5. [Everyday work and keeping things tidy](docs/tutorials/5-everyday-and-maintenance.md)
 
 And the references:
 

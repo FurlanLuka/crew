@@ -27,16 +27,8 @@ each key with its service before saving it, and a rejected one stays in red with
 **Start Voice OS** when they're in, or **Not now** if you only want to type for a while: text and
 clicks work without them.
 
-If you'd rather do it from a terminal, pipe each key in:
-
-```bash
-pbpaste | crew server keys set anthropic
-pbpaste | crew server keys set soniox
-crew server keys
-```
-
-The last one shows which keys are set and where (`~/.config/crew-voiceos/`, readable by you
-only), never their values. A key saved while the server runs is used from your next words on, no
+The keys are kept in `~/.config/crew-voiceos/`, readable by you only, and Settings shows which are
+set without ever showing them. A key saved while the server runs is used from your next words on, no
 restart. Don't export `ANTHROPIC_API_KEY` in your shell instead: it would also move your own
 Claude Code onto per-token billing.
 
@@ -110,19 +102,12 @@ Open `store/main`, hold Space, and say:
 > Find out why searching for mug shows nothing.
 
 The words go to `store/main` exactly as you said them. The session knows it is in a crew worktree,
-so it reads the API's log through crew rather than guessing:
-
-```bash
-crew dev logs store/main api --lines=50
-```
-
-and finds the line `search q='mug' -> 0 products` next to `q='Mug' -> 2 products`. From there it
+so it reads the API's log through crew rather than guessing, and finds the line `search q='mug' -> 0 products` next to `q='Mug' -> 2 products`. From there it
 opens `app/catalog.py` in store-api, where `search` compares `query in product.name`, which is case
 sensitive, and proposes to compare both sides lowercased. It speaks a short line when it has
 something to say, and the stream shows the diff.
 
-Sessions start in **Auto** mode, so reading files and running the tests through
-`crew run store/main store-api -- uv run pytest -q` go ahead on their own. When it wants something
+Sessions start in **Auto** mode, so reading files and running the tests go ahead on their own. When it wants something
 Claude Code judges risky, or when you've put it in Ask mode, it asks.
 
 ### Questions and approvals
@@ -195,24 +180,19 @@ Up to 20 MB each, ten at a time; a session on another machine gets its own copy.
 ## Notes and debug notes
 
 Say "note: search should ignore accents too" and Voice OS replies "Noted.", saving it to the
-workspace on screen, `store` here. "What are my notes?" reads them back, and from a terminal:
-
-```bash
-crew server notes store
-```
+workspace on screen, `store` here. "What are my notes?" reads them back.
 
 A **debug note** is for when Voice OS itself gets something wrong: it misheard, sent words to the
 wrong session, talked at a bad moment. Say "debug note: it sent that to wrk1 when I was on main"
-right away. It saves a snapshot of the moment, and `crew server debug-notes` lists them
-(`crew server debug-notes show 3` prints one with the log around it). Include them if you report a
-bug.
+right away. It saves a snapshot of the moment with the log around it, so the
+problem can be traced later. Include them if you report a bug.
 
 ## Plain sessions
 
 Not everything is a worktree. **New → New session** opens a dialog: the machine, a folder (home when
 you name none) and a name. It starts a plain Claude conversation there, no crew instructions and no
 dev servers, active at once. Saying "start a new session called research in my notes folder" does
-the same, and so does `crew chat add --dir=~/notes --name=research`. **Remove** on its page, or
+the same. **Remove** on its page, or
 "remove research", drops it and leaves the folder alone.
 
 ![The New session dialog over Home: This Mac picked over Build box, ~/notes as the folder, research as the name, and Start session](../images/voice-os/new-session.png)
@@ -234,8 +214,8 @@ for a call or a quiet office. It shows struck through; click it again to come ba
 the whole time, and nothing from the quiet time is read out later.
 
 On a phone the page fits the width, with the tabs scrolling sideways. Browsers give the microphone
-only to `localhost` or HTTPS, so on a phone open the proxy link `crew` prints, after
-`crew dev proxy trust` has shown you how to trust crew's certificate on that phone. Until then the
+only to `localhost` or HTTPS, so on a phone open the proxy link, after trusting crew's
+certificate on that phone ([tutorial 4](4-from-anywhere.md) walks through both). Until then the
 link works for text and clicks.
 
 ![Voice OS on a phone: store/main's stream adding a search box to the catalog, with a diff, its spoken line and the input](../images/voice-os/phone.png)

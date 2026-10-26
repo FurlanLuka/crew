@@ -7,7 +7,8 @@
 // (crew's own JSON shapes, from voiceos/testdata/, with the store seeded over them), and Chromium is Playwright's. Nothing reads or
 // writes ~/.crew, no session, key or API is involved, and nothing leaves the machine: the page uses
 // the system font.
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium, type Browser, type Page } from 'playwright';
 import type { RunSetupCommand } from '../src/crew/api.js';
@@ -267,18 +268,34 @@ const demoCrew = (crew: FakeCrew): void => {
 	});
 	crew.setAnswer('env', (command: { ref: string; project: string }) => {
 		const binding = BINDING_OF[command.project];
+		const overrides =
+			crew.machines[LOCAL_MACHINE]?.worktrees.find((row) => row.ref === command.ref)?.overrides ??
+			{};
 
-		return binding
-			? [
-					{
+		if (!binding) {
+			return [];
+		}
+
+		// A value set for this worktree wins over the project's binding, as crew resolves it.
+		const pinned = overrides[`${command.project}.${binding.var}`] ?? overrides[binding.var];
+
+		return [
+			pinned === undefined
+				? {
 						var: binding.var,
 						server: '',
 						value: expand(binding.value, command.ref) ?? '',
 						source: 'binding',
 						detail: binding.value,
+					}
+				: {
+						var: binding.var,
+						server: '',
+						value: pinned,
+						source: 'override',
+						detail: 'worktree override',
 					},
-				]
-			: [];
+		];
 	});
 	crew.setAnswer('ls_bindings', (command: { project: string }) => {
 		const binding = BINDING_OF[command.project];
@@ -355,6 +372,22 @@ const demoCrew = (crew: FakeCrew): void => {
 			size_bytes: 209_715_200,
 		})),
 		last: false,
+	});
+	// Every machine runs the current crew: the main keeps its remotes on its own release.
+	crew.setAnswer('update_check', {
+		current: '6.10.0',
+		latest: '6.10.0',
+		available: false,
+		dev: false,
+		line: 'crew v6.10.0 — up to date',
+	});
+	// This Mac's own addresses: no proxy domain set, so the proxy follows its IP (nip.io).
+	crew.setAnswer('config_show', {
+		server_ip: '192.168.1.20',
+		ssh_host: 'dev-mac',
+		proxy_port: 80,
+		proxy_https_port: 0,
+		domain: '',
 	});
 	crew.setAnswer('discord_status', {
 		set_up: true,
@@ -1539,6 +1572,165 @@ const SHOTS: Shot[] = [
 		dir: 'tutorials',
 		view: MAIN_VIEW,
 		stage: (world) => askWrk1(world),
+	},
+	{
+		name: 'server-died',
+		dir: 'tutorials',
+		path: '/setup/worktree/store/wrk1',
+		// wrk1 started in a shell without node on its PATH: web died at once, api and the worker run.
+		crewSetup: (crew) => {
+			const wrk1 = crew.machines[LOCAL_MACHINE]?.worktrees.find((row) => row.ref === WRK1);
+
+			if (wrk1) {
+				wrk1.devRunning = true;
+			}
+
+			crew.setAnswer('dev_status', () => [
+				{
+					worktree: WRK1,
+					project: 'store-front',
+					server_name: 'web',
+					external_port: 5173,
+					url: 'http://localhost:54030',
+				},
+				{
+					worktree: WRK1,
+					project: 'store-api',
+					server_name: 'api',
+					external_port: 8000,
+					url: 'http://localhost:54032',
+				},
+				{ worktree: WRK1, project: 'store-api', server_name: 'worker', external_port: 0, url: '' },
+			]);
+			crew.setAnswer('dev_check', () => [
+				{
+					project: 'store-front',
+					server: 'web',
+					port: 54030,
+					alive: false,
+					listening: false,
+					referenced: true,
+					tail: 'zsh: command not found: npm',
+					took_ms: 4000,
+				},
+				{
+					project: 'store-api',
+					server: 'api',
+					port: 54032,
+					alive: true,
+					listening: true,
+					referenced: true,
+					took_ms: 2400,
+				},
+				{
+					project: 'store-api',
+					server: 'worker',
+					port: 0,
+					alive: true,
+					listening: false,
+					referenced: false,
+					took_ms: 4000,
+				},
+			]);
+			crew.setDevLogs('web', ['$ npm run dev', 'zsh: command not found: npm']);
+		},
+		prepare: async (page) => {
+			await page
+				.getByRole('region', { name: 'web log' })
+				.getByText('zsh: command not found: npm')
+				.waitFor({ timeout: 5000 });
+		},
+		height: 640,
+	},
+	{
+		name: 'remove-worktree',
+		dir: 'tutorials',
+		path: '/setup/worktree/store/wrk1',
+		prepare: async (page) => {
+			await page.getByRole('button', { name: 'Remove worktree' }).click();
+			await page.locator('.confirm .cost').waitFor({ timeout: 5000 });
+			await page.locator('.confirm').scrollIntoViewIfNeeded();
+		},
+		around: ['.confirm'],
+	},
+	{
+		name: 'worktree-value',
+		dir: 'tutorials',
+		path: '/setup/worktree/store/wrk1',
+		crewSetup: (crew) => {
+			const wrk1 = crew.machines[LOCAL_MACHINE]?.worktrees.find((row) => row.ref === WRK1);
+
+			if (wrk1) {
+				wrk1.overrides = { 'store-front.VITE_API_URL': 'http://localhost:9999' };
+			}
+		},
+		prepare: async (page) => {
+			await page.locator('[data-override="store-front.VITE_API_URL"]').waitFor({ timeout: 5000 });
+			await page.locator('details.env-all summary').click();
+		},
+		around: ['.label:has(.label-note)', '.env-card'],
+	},
+	{
+		name: 'import-plan',
+		dir: 'tutorials',
+		path: '/setup/import',
+		crew: 'empty',
+		// A new Mac that already has store-front: the export brings store-api and the workspace.
+		crewSetup: (crew) => {
+			demoFirstRun(crew);
+			const machine = crew.machines[LOCAL_MACHINE];
+			const [storeFront] = demoProjects(LOCAL_HOME);
+
+			if (machine && storeFront) {
+				machine.projects = [storeFront];
+			}
+		},
+		prepare: async (page) => {
+			const file = join(mkdtempSync(join(tmpdir(), 'crew-docs-import-')), 'crew-export.json');
+			const bundle = {
+				version: 2,
+				projects: demoProjects(LOCAL_HOME).map(({ path: _path, ...project }) => project),
+				workspaces: [
+					{
+						name: 'store',
+						projects: [
+							{ name: 'store-front', mode: 'worktree' },
+							{ name: 'store-api', mode: 'worktree' },
+						],
+					},
+				],
+			};
+
+			writeFileSync(file, JSON.stringify(bundle));
+			await page.getByLabel('Export file').setInputFiles(file);
+			await page.locator('[data-project="store-api"]').waitFor({ timeout: 5000 });
+		},
+	},
+	{
+		name: 'machine-picker',
+		dir: 'tutorials',
+		path: '/setup',
+		prepare: async (page) => {
+			await page.locator('.machine-btn').click();
+			await page.locator('.machine-menu').waitFor();
+		},
+		around: ['.machine-pick', '.machine-menu'],
+		tight: true,
+	},
+	{
+		name: 'machine-connection',
+		dir: 'tutorials',
+		path: `/setup/machine?on=${REMOTE}`,
+	},
+	{
+		name: 'trust-devices',
+		dir: 'tutorials',
+		path: '/setup/settings',
+		prepare: async (page) => {
+			await page.getByRole('button', { name: 'Trust on other devices' }).click();
+			await page.locator('form.cfg-sec .result-line').waitFor({ timeout: 5000 });
+		},
+		around: ['form.cfg-sec'],
 	},
 ];
 

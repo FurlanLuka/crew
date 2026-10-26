@@ -1,245 +1,147 @@
-# Everyday commands and keeping things tidy
+# Everyday work and keeping things tidy
 
 By now you have a workspace, a couple of worktrees and probably Voice OS. This is the rest of what
-I use day to day, one short section each, with the output crew really prints. It's the `store`
-workspace from [tutorial 1](1-install-and-first-worktree.md) again, with `store/main` and
-`store/wrk1`. Everything here is also on crew's page ([Set up](../guides/setup.md)), and
-[the command reference](../commands.md) has every flag.
+I do day to day in Set up, one short section each. It's the `store` workspace from
+[tutorial 1](1-install-and-first-worktree.md) again, with `store/main` and `store/wrk1`.
+[Set up](../guides/setup.md) describes every page in full.
 
 ## Worktrees
 
-A new worktree is a fresh copy of every project in the workspace, on its own branches and ports:
+A new worktree is a fresh copy of every project in the workspace, on its own branches and ports.
+**+ new** on the workspace's row on the board, or **New worktree** on the workspace's page, opens
+the form:
 
-```bash
-crew add worktree store/wrk2 --pull --wait
-```
+![New worktree in store: a name field with "branch crew/store/<name>/*" under it, Start from listing store-front main 3 behind and store-api main up to date, pull first ticked, Create worktree and Cancel](../images/setup/new-worktree.png)
 
-`--pull` fast-forwards each project's local base branch from origin first. It never touches a
-branch you have checked out.
+**Start from** shows each project's base branch and how far it is behind origin. **pull first**
+fast-forwards those bases before branching, and it never touches a branch you have checked out.
+**Create worktree** takes me to the new worktree's page, where the Dev servers card follows each
+project through checkout, install and its servers coming up.
 
-`crew duplicate` makes a new worktree from an existing one. The checkouts are fresh, but the
-overrides of the source come along (more on those [below](#overrides)):
+The worktree's page has two small icons beside its name, **Rename** and **Duplicate**:
 
-```
-$ crew duplicate store/wrk1 wrk2 --wait
-Duplicating store/wrk1 → store/wrk2
-  ✓ store-front  checkout 0s · mise install 0s · npm ci 1s · smoke web 1s
-  ✓ store-api    checkout 0s · mise install 0s · uv sync 0s · env: scripts/get-env.sh 0s · smoke api 2s · smoke worker 2s
+![store/wrk1's page: the rename and duplicate icons beside its name, Open in Voice OS, the Dev servers card Stopped with Start and Verify over web, api and worker, the Environment card, On disk 912 MB, and Remove worktree at the bottom](../images/setup/worktree.png)
 
-Duplicated store/wrk1 → store/wrk2
-```
+**Duplicate** asks for a name and makes fresh checkouts of the same projects on new ports, with
+the values set for this worktree copied across (more on those [below](#a-value-for-one-worktree)).
 
-Once I know what a worktree is for, I give it a name that says so:
+Once I know what a worktree is for, I give it a name that says so. **Rename** moves its checkouts
+and renames crew's branches, so `crew/store/wrk2/store-api` becomes
+`crew/store/search-fix/store-api`. Its ports, its values and any recorded failure go with it. It's
+refused while the worktree's servers run or setup is busy with it, so press **Stop** first. A
+branch you already pushed keeps its old name on the remote, and an editor or shell you had open on
+the old folder still points there.
 
-```
-$ crew rename worktree store/wrk2 search-fix
-Renamed store/wrk2 → store/search-fix
-shells, editors and agents opened on the old paths still hold them — crew claude store/search-fix / crew edit store/search-fix reopen on the new ones
-crew verify store/search-fix re-checks it if anything baked the old path
-```
+**Remove worktree** at the bottom of the page doesn't remove anything straight away. It first shows
+what each checkout would lose: uncommitted files, commits that aren't on the base branch, and its
+size on disk. Confirming stops its servers, moves the checkouts to crew's trash (deleted in the
+background, see [Settings](#settings)) and deletes crew's branches. Commits that weren't on the base
+stay in git's reflog if you need them back. Removing a workspace's last worktree removes the
+workspace too, and the confirm says so.
 
-It moves the directory and renames crew's branches (`crew/store/wrk2/store-api` becomes
-`crew/store/search-fix/store-api`). The ports, overrides and any recorded failure go with it. It
-refuses while the worktree's servers or a setup runner are alive, so stop them first. A branch you
-already pushed keeps its old name on the remote.
+![Remove store/wrk1?: store-front with 3 uncommitted files, 2 commits not on the base and 524 MB, store-api with 1 commit not on the base and 210 MB](../images/tutorials/remove-worktree.png)
 
-Before removing a worktree, `--dry-run` says what you'd lose:
+## A value for one worktree
 
-```
-$ crew rm worktree store/search-fix --dry-run
-store/search-fix	store-front	~/.crew/workspaces/store/search-fix/store-front	0 uncommitted	0 commits not on the base	79 MB
-store/search-fix	store-api	~/.crew/workspaces/store/search-fix/store-api	0 uncommitted	0 commits not on the base	28 MB
+The Environment on a project's form computes a value for every worktree. Sometimes one worktree
+needs something else: a copy that should talk to a shared staging API, or a test key only one copy
+needs. That's the **Environment** card on the worktree's page. I type `VITE_API_URL=https://staging.example.com`,
+pick **store-front** instead of **every project** in the menu beside it, and press **Set value**.
 
-$ crew rm worktree store/search-fix
-Removed worktree store/search-fix
-```
+The line then says **set for this worktree** and what it replaces, like "instead of store-front's
+value: store-api api's URL". A value set here wins over the project's own Environment, including
+lines for one server. **What each server gets** shows the final set, and **×** on the line takes it
+away. Servers read the new value on their next start, so press **Restart** after.
 
-Removal returns at once. The checkouts go to crew's trash and are deleted in the background, and
-the `crew/store/search-fix/*` branches are deleted. Commits that weren't on the base stay in the
-repo's reflog if you need them back. crew won't remove a workspace's last worktree this way.
+![store/wrk1's Environment card: VITE_API_URL set for this worktree, store-front only, above What each server gets](../images/tutorials/worktree-value.png)
 
-## Overrides
+## A binding for one server
 
-A binding computes a value for every worktree. An override pins one variable in one worktree,
-and wins over any binding:
+A line in a project's Environment reaches every server of that project. **For** picks one server
+instead, which is how a monorepo's web app and its worker get different values. On store-api's
+**Edit setup** I add `STORE_URL` from **store-front's URL** with **For** set to **worker only**.
+The preview under it shows what the worker would get in each worktree, marked "worker only":
 
-```
-$ crew add override store/wrk1 VITE_API_URL=http://localhost:9999
-Override VITE_API_URL in store/wrk1
+![store-api's Edit setup form: env command scripts/get-env.sh, dev servers api and worker, the Environment with CORS_ORIGIN from store-front's URL, and the Variable, Value comes from and For controls under it, For on every server](../images/tutorials/project-form.png)
 
-$ crew ls overrides store/wrk1
-VITE_API_URL	http://localhost:9999
-
-$ crew rm override store/wrk1 VITE_API_URL
-Removed override VITE_API_URL from store/wrk1
-```
-
-I use them for a worktree that should talk to a shared staging API, or for a test key one copy
-needs. When two projects in the workspace read the same variable, `store-front.VITE_API_URL=…`
-pins it for one of them. Servers read the new value on their next start.
-
-## Scoped bindings
-
-A binding on the bare project reaches every one of its servers. Name a server and it reaches only
-that one, and wins there over a project-wide binding of the same variable. That's how a monorepo's
-web app and its worker get different siblings. With `--dry-run`, crew shows what the worker would
-get in each worktree and saves nothing:
-
-```
-$ crew add binding store-api/worker --var=STORE_URL --url=store-front --dry-run
-store/main	http://localhost:56353	running
-store/wrk1	http://localhost:56463	running
-```
-
-Drop `--dry-run` to save it. `crew env store/main store-api/worker` is then what that server gets,
-and `crew run store/main store-api/worker -- <cmd>` runs a command with exactly that env.
-[How crew works](../concepts.md#bindings) has the precedence spelled out.
+On the worker, that line wins over a project-wide line of the same variable. Saved, it shows as
+"worker only" in the list, and **What each server gets** on a worktree page shows it under the
+worker. [How crew works](../concepts.md#bindings) has the precedence spelled out.
 
 ## Checking a project from nothing
 
 When I change a project's install, env command or servers, I want to know that a clean checkout
-still comes up, without touching any worktree I work in. `crew check project` does exactly that, on
-a scratch checkout of its own:
+still comes up, without touching any worktree I work in. **Check** on the project's page (or on
+its row in the board's **Projects** tab) does exactly that: a scratch checkout of its own, the
+install, the env command, and every dev server has to answer. **Save and check** on the form runs
+the same check after saving.
 
-```
-$ crew check project store-api --wait
-Branching from
+![store-api's page, not checked yet: Edit setup, Ask Claude and Check at the top right, and what crew recorded about it underneath](../images/setup/project.png)
 
-  store-api  main        up to date
-
-  ✓ store-api  checkout 0s · mise install 0s · uv sync 0s · env: scripts/get-env.sh 0s · smoke api 2s · smoke worker 2s
-
-check store-api passed — target removed
-```
-
-A pass cleans up after itself. A failure stays as `check/store-api` with its evidence, so
-`crew fix check/store-api` opens Claude on it and `crew verify check/store-api` re-runs it in
-place. `--status` says where it stands without starting one:
-
-```
-$ crew check project store-api --status
-store-api	passed	1 minute ago
-```
+The check page follows it step by step. A pass is a green line on the project and the scratch
+checkout is cleared away. A failure stays on the project's page with the step it stopped at and
+the end of its log, with **Fix with Claude**, **Edit setup**, **Check again** and **Full log** under
+it, and shows up in the board's problems strip until it passes.
 
 ## Moving to another machine
 
-`crew export` writes the projects (by git remote, with their servers, bindings, install and env
-commands) and which projects each workspace has. Worktrees, ports, overrides and `.env` files stay
-behind.
+Settings has **Export…** and **Import…**. Export is its own page: I tick workspaces and their
+projects come along, and the page says what goes with the file (projects by git remote, their
+install and env commands, dev servers and bindings, and which workspaces they're in) and what stays
+(worktrees, ports, worktree values and `.env` files). **Save crew-export.json** downloads it.
 
-```
-$ crew export
-Wrote crew-export.json — 2 projects, 1 workspace
-```
+![Export to another machine: the store workspace ticked with store-front and store-api under it by remote, Goes with it and Stays on This Mac side by side, and Save crew-export.json](../images/setup/export.png)
 
-On the other machine, `crew import` with only the file shows the plan and changes nothing:
+On the other machine, **Import…** (or **Import** on the very first run) takes the file. Drop it
+or **Choose a file**:
 
-```
-$ crew import crew-export.json --plan
-project	store-front	exists	~/.crew/projects/store-front
-project	store-api	exists	~/.crew/projects/store-api
-workspace	store	exists	
-```
+![Import from another machine: the File, Choose and Getting it ready steps, and a box saying Drop crew-export.json here with Choose a file](../images/setup/import.png)
 
-That's what the plan looks like on a machine that already has everything. On a new one the rows
-say `clone` and where to. Then `crew import crew-export.json --all --pull` clones every project
-and makes each workspace with its `main` worktree, or `project <name>` and `workspace <name>` do
-one at a time. If you already have one of the repos checked out, the plan says `found` with its
-path, and `project <name> --path=<it>` uses that instead of a second clone. The page walks the
-same plan ([Moving to another machine](../guides/setup.md#moving-to-another-machine)).
+Then it shows the plan with every choice up front, before it does anything. **Will be done** is the
+clones. **Needs a choice** is anything crew can't decide alone, like a project with no remote
+(**Point at a folder** or **Skip**) or a name already taken by a different repo here
+(**Import as store-api-2**, **Replace mine** or **Skip**). **Already here** is folded away. Each
+workspace is made with its `main` worktree. **Import** stays off until every choice is made, then
+runs it all and ends on **Open Voice OS** or **Go to the board**.
 
-`crew export -` and `crew import -` use stdout and stdin, handy over SSH.
+![The import plan: store-api to clone, store-front already here, the store workspace to make, and Import 2 items](../images/tutorials/import-plan.png)
 
-## Trash and clean
+## Settings
 
-Removed checkouts go to `~/.crew/trash` and are deleted in the background, because a checkout with
-a full build in it can be huge. `crew trash` shows what's still clearing:
+Settings is in the machine picker's menu at the top left.
 
-```
-$ crew trash
-~/.crew/trash	102 MB	2 entries	clearing in background — crew trash empty deletes now
-```
+![Settings on This Mac: crew v6.10.0 up to date; This machine with Server IP 192.168.1.20, SSH host dev-mac, an empty Proxy domain, HTTP port 80 and HTTPS 443, proxy answering, Save and Trust on other devices; Disk with Trash (3 removed checkouts, 2.1 GB) and Empty now, Left behind and Clean up; Move to another machine with Export… and Import…; crew's log](../images/setup/settings.png)
 
-Every crew command also sweeps up leftovers at most once an hour: failed checks older than a week,
-logs and runner files of worktrees that are gone, stale locks, the trash. `crew clean` runs that
-now and adds a `git worktree prune` on every project. Look first:
+When a newer crew is out, the top row says so with **Update**. crew's server keeps running the old
+version until you restart it. Machines you've added are updated from the main after: when a remote
+runs an older crew than the main, the main updates it, once per version, and never downgrades one.
 
-```
-$ crew clean --dry-run
-prune	~/.crew/projects/store-api	would prune
-prune	~/.crew/projects/store-front	would prune
-trash	~/.crew/trash	would remove
-```
+**This machine** holds its addresses and crew's proxy. By default everything is on
+`localhost`. With a **Server IP** and a **Proxy domain** set, other devices on your network reach
+crew's page through the proxy by name, a phone included, and the line under the fields says whether
+the proxy answers. **Trust on other devices** shows how to trust crew's certificate on a Mac, iPhone or
+Android, once per device, which the phone needs for the microphone in Voice OS.
+[Other devices](../concepts.md#other-devices) explains why.
 
-## What's running, and stopping all of it
+**Disk** is where removed things go. **Trash** is removed checkouts waiting to be deleted, because a
+checkout with a full build in it can be huge; crew empties it in the background and **Empty now**
+does it now. **Left behind** is what crew can clear on its own: old failed checks, logs of removed
+worktrees, stale locks. crew sweeps those at most hourly, and **Clean up** runs it now. Both say what
+they'll remove before they do.
 
-`crew ps` lists crew's tmux sessions and their processes, one row each, and ends with a count:
+## When you don't know where to click
 
-```
-$ crew ps
-session	15631	crew-dev-store--main	npm run dev
-session	15646	crew-dev-store--main	uv run uvicorn app.main:app --reload --port 56354
-session	15653	crew-dev-store--main	uv run python -m app.worker
-…
-crew: 13 processes · user total 617/2666
-```
+Setup with Claude is the box at the top of the board, and **Open** shows the whole conversation.
+It's a Claude Code session in your home folder that drives crew for you, so I ask it anything I'd
+otherwise hunt for in the forms: "add the signals repo to crew and give it a worktree", "why does
+store-api's install fail?", "check this machine".
 
-`crew kill` stops every crew session at once and reclaims processes that leaked out of them, and
-prints how to bring back what it stopped. A process whose parent is still alive (your editor's
-terminal, a Claude session) is left alone, and so is crew's server. `--dry-run` shows the list:
+![Setup with Claude adding store-front and store-api: each crew command it ran, a green "recorded" line under the ones that recorded something, and its answer that store/main is set up](../images/setup/chat.png)
 
-```
-$ crew kill --dry-run
-session  crew-dev-store--main (13 processes)
-session  crew-dev-store--wrk1 (13 processes)
+Each step it takes shows up as it goes, and every change it actually recorded gets a green
+**✓ recorded** line, taken from what crew did and not from what Claude says about it. Type **@** in
+the box to name one of this machine's worktrees or projects. **Fix with Claude** and **Ask Claude**
+anywhere in Set up start here, with the failure or the form already said.
 
-24 process(es) in the workspace tree still have a live parent and are left alone.
-
---dry-run: nothing was killed.
-```
-
-For one worktree, `crew dev stop store/wrk1` is enough. Bare `crew dev stop` stops every dev
-server.
-
-## Launching
-
-- `crew launch` with no ref is a picker over every worktree. Enter opens its worktree page.
-- `crew launch store/wrk1`, or the shortcut `crew store/wrk1`, opens the worktree page directly:
-  **Editor + Claude**, **Claude in terminal**, the remote editor and **Shell here**.
-- `crew claude store/wrk1` is **Claude in terminal** as a command: Claude Code in the worktree,
-  every project added, the orientation prompt that tells it where it is and how to drive the
-  servers.
-- `crew edit store/wrk1` opens Cursor (else VS Code) on the worktree with Claude wired up.
-  `--editor=code` picks one.
-
-These need a terminal. Without one, crew says what to run instead, and `crew start store/wrk1`
-prints the orientation prompt for any other agent.
-
-## Updating crew
-
-```
-$ crew update --check
-crew v6.10.0 — up to date (latest v6.10.0)
-```
-
-`crew update` installs the latest release, and Voice OS with it. It never restarts a running
-server, so the new Voice OS starts on your next `crew server restart`. Machines you've added to
-Voice OS don't need their own update: when a remote runs an older crew than the main, the main
-updates it over SSH, once per version, and never downgrades one.
-
-## The proxy
-
-By default every server is `http://localhost:<port>`. `crew dev start store/wrk1 --proxy` also
-serves each one by name, `http://<server>--<workspace>--<worktree>.<domain>`, through one shared
-reverse proxy, so a phone on the same network can open them. `crew dev proxy` is that proxy:
-
-```
-$ crew dev proxy status
-down	192.168.1.144.nip.io	80	http://192.168.1.144/	https not listening	443
-```
-
-`crew dev proxy trust` prints crew's certificate and how to trust it on a Mac, iPhone or Android
-(needed once per device, for the microphone in Voice OS on a phone), `trust --install` trusts it on
-this Mac, and `crew dev proxy stop` stops the proxy alone while the servers keep running on their
-ports. When a proxied URL opens here but not on the phone, `crew help dev start` has the
-two-minute diagnosis, and [Other devices](../concepts.md#other-devices) explains why.
+Everything in this tutorial is also a crew command, for scripts and agents:
+[the command reference](../commands.md) has them all.

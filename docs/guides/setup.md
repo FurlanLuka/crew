@@ -245,11 +245,11 @@ else in Set up — the board, the forms, Setup with Claude — works on another 
 as on this one: pick it in the picker. A machine that runs an older crew says so in place; crew
 updates it from here.
 
-![This Mac's machine page: crew 4.1.0 runs here, Check with Claude, and store-front and store-api with 2 worktrees each](../images/setup/machines.png)
+![This Mac's machine page: crew 6.10.0 runs here, Check with Claude, and store-front and store-api with 2 worktrees each](../images/setup/machines.png)
 
 ## Settings
 
-![Settings: crew 4.2.0 is out with Update, This machine's addresses and proxy ports with the proxy answering, the disk section with Trash (2.1 GB) and Left behind, and Move to another machine](../images/setup/settings.png)
+![Settings on This Mac: crew v6.10.0 up to date; This machine with Server IP 192.168.1.20, SSH host dev-mac, an empty Proxy domain, HTTP port 80 and HTTPS 443, proxy answering, Save and Trust on other devices; Disk with Trash (3 removed checkouts, 2.1 GB) and Empty now, Left behind and Clean up; Move to another machine with Export… and Import…; crew's log](../images/setup/settings.png)
 
 - **Update** — on This Mac's settings, when a newer crew is out. crew's server keeps running until
   you restart it; other machines are updated from here after. A build from source says so: `crew
