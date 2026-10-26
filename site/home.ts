@@ -210,7 +210,7 @@ export function startPage(): string {
 </section>
 
 <section class="wrap next" aria-label="Next">
-<a class="tile" href="/guides/first-worktree/"><span class="kicker">Next</span><b>The tutorials</b><span>Install to a second machine, step by step, on the page and as commands.</span></a>
+<a class="tile" href="/guides/first-worktree/"><span class="kicker">Next</span><b>The tutorials</b><span>From installing crew to a second machine, step by step on the page.</span></a>
 <a class="tile" href="/guides/voice-os/"><span class="kicker">Or</span><b>The Voice OS guide</b><span>Everything Voice OS does, in full.</span></a>
 </section>`;
 

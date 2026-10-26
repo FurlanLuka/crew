@@ -20,7 +20,7 @@ const GUIDES: Guide[] = [
     file: 'docs/tutorials/1-install-and-first-worktree.md',
     kicker: 'Tutorial 1',
     blurb:
-      'From installing crew to the same store running twice, side by side, each copy on its own branches and ports. On the page and as commands.',
+      'From installing crew to the same store running twice, side by side, each copy on its own branches and ports.',
     featured: true,
   },
   {
@@ -48,7 +48,7 @@ const GUIDES: Guide[] = [
     slug: 'everyday',
     file: 'docs/tutorials/5-everyday-and-maintenance.md',
     kicker: 'Tutorial 5',
-    blurb: 'Duplicating, renaming and removing worktrees, overrides, checks, export and import, cleaning up.',
+    blurb: 'Duplicating, renaming and removing worktrees, a value for one worktree, checks, moving machines, cleaning up.',
     featured: true,
   },
   {
