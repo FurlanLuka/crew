@@ -941,6 +941,11 @@ export class VoiceOut {
 		const synthesize = this.options.synthesize;
 
 		if (!synthesize || !tab || isVoiceOff) {
+			// No main screen to speak in: the line is shown, not heard.
+			if (synthesize && !tab && !isVoiceOff) {
+				log.info('line unheard: no speaking tab', { id: item.id });
+			}
+
 			this.finish(item.id, { isUnplayed: true });
 
 			return;
@@ -957,6 +962,8 @@ export class VoiceOut {
 			}
 
 			if (!this.options.play(tab, message)) {
+				// The speaking tab's connection is gone: a phone locked, a tab closed mid-clip.
+				log.info('clip not delivered', { id: item.id, client: tab });
 				this.finish(item.id, { isCut: true });
 			}
 		};

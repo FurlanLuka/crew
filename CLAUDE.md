@@ -324,7 +324,12 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   it. `listAllowedOrigins` is re-evaluated per check and adds `https://<host>` from it.
   **Phone layout** (`web/phone.ts`, `components/phone/*`): `isPhone` = a `/phone/` path, the server's
   mark, or a viewport ≤ 600 px at load, decided once. `PhoneVoiceOS` swaps only the tree inside
-  `VoiceOS` (voice input, notices and dialogs stay): `PhoneTopBar`, Home = `ActiveView`,
+  `VoiceOS` (voice input, notices and dialogs stay): `PhoneTopBar`, Home = `PhoneHome` (a grouped
+  list, `describePhoneCard`), each screen a `.ph-screen` that slides by depth (`phone-nav.ts`: one back
+  rule, `parentView`), swiped back from the left edge in the installed iPhone app (`use-swipe-back.ts`) and
+  popped by the browser's back through one history entry (`use-phone-history.ts`), sized to the
+  visual viewport (`use-phone-viewport.ts`); a phone's audio session is `play-and-record`
+  (`audio-session.ts`) and the speech player wakes or remakes its context, logging under `speech`,
   `PhoneSession` (`AskDock`/`DenialSheet` as the stream's last children), `PhoneMore` (⋯, built on
   `SessionPanels`, shared with `Cockpit`), `PhoneBar` (mode sheet left; words or a box in the
   middle; hold mic for push, send for dictation and text, nothing for the always-listening modes),

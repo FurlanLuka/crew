@@ -1,18 +1,19 @@
-/* The phone's Home (PhoneHome): one card per session. Under .vo.phone like the rest of phone.css. */
+/* The phone's Home (PhoneHome): a grouped list, one row per session. Under .vo.phone like the rest
+   of phone.css. */
 
-/* Home: one card per session, waiting first in each section; a group's colour on its cards' edge. */
+/* Home: a large title, then each section's rows, waiting first. */
 .vo.phone .ph-home {
 	display: block;
-	padding: 18px 16px 24px;
+	padding: 8px 16px 24px;
 }
 .vo.phone .ph-top {
 	display: grid;
 	gap: 4px;
-	padding: 0 2px 18px;
+	padding: 0 4px 20px;
 }
 .vo.phone .ph-top h1 {
 	margin: 0;
-	font: 650 30px / 1.1 var(--sys);
+	font: 700 32px / 1.1 var(--sys);
 	letter-spacing: -0.02em;
 	color: #fff;
 }
@@ -21,83 +22,112 @@
 	font-size: 14.5px;
 }
 .vo.phone .ph-section + .ph-section {
-	margin-top: 22px;
+	margin-top: 26px;
 }
 .vo.phone .ph-head {
 	display: flex;
 	align-items: center;
 	gap: 8px;
 	min-width: 0;
-	padding: 0 2px 10px;
+	padding: 0 14px 8px;
 }
 .vo.phone .ph-head b {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-	font: 650 15px var(--sys);
-	color: var(--label-2);
+	font: 600 12px var(--mono);
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--label-3);
 }
 .vo.phone .ph-section[data-color] .ph-head b {
 	color: color-mix(in srgb, var(--g) 75%, #fff);
 }
 .vo.phone .ph-head span:last-child {
 	flex: none;
+	margin-left: auto;
 	color: var(--label-3);
-	font-size: 13px;
+	font-size: 12.5px;
 }
 .vo.phone .ph-head span.alarm {
 	color: var(--crit-text);
 }
 .vo.phone .ph-swatch {
 	flex: none;
-	width: 10px;
-	height: 10px;
-	border-radius: 3px;
+	width: 8px;
+	height: 8px;
+	border-radius: 2px;
 	background: var(--g);
 }
-.vo.phone .ph-cards {
-	display: grid;
-	gap: 10px;
-}
-.vo.phone .ph-card {
-	display: grid;
-	grid-template-columns: 10px minmax(0, 1fr) auto;
-	align-items: center;
-	gap: 12px;
-	width: 100%;
-	min-height: 56px;
-	padding: 11px 14px 11px 16px;
-	border: 0;
+/* One grouped block per section, as iOS lists are: rows divided by hairlines that start at the
+   text, the group's colour on the tiles. */
+.vo.phone .ph-list {
+	overflow: hidden;
 	border-radius: 14px;
 	background: var(--elev-1);
 	box-shadow: inset 0 0 0 1px var(--hair);
+}
+.vo.phone .ph-row {
+	position: relative;
+	display: grid;
+	grid-template-columns: 38px minmax(0, 1fr) auto;
+	align-items: center;
+	gap: 12px;
+	width: 100%;
+	min-height: 64px;
+	padding: 10px 14px 10px 12px;
+	border: 0;
+	background: none;
 	color: inherit;
 	text-align: left;
 	font: inherit;
+	transition: background 120ms;
 }
-.vo.phone .ph-section[data-color] .ph-card {
-	box-shadow:
-		inset 3px 0 0 var(--g),
-		inset 0 0 0 1px var(--hair);
+.vo.phone .ph-row + .ph-row::before {
+	content: "";
+	position: absolute;
+	top: 0;
+	right: 0;
+	left: 62px;
+	height: 1px;
+	background: var(--hair);
 }
-.vo.phone .ph-card:active {
+.vo.phone .ph-row:active {
 	background: var(--elev-2);
+	transition: none;
 }
-.vo.phone .ph-card.waiting {
-	background: color-mix(in srgb, var(--crit) 9%, var(--elev-1));
-	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--crit) 26%, transparent);
+.vo.phone .ph-row.missing {
+	opacity: 0.5;
 }
-.vo.phone .ph-section[data-color] .ph-card.waiting {
-	box-shadow:
-		inset 3px 0 0 var(--g),
-		inset 0 0 0 1px color-mix(in srgb, var(--crit) 26%, transparent);
+.vo.phone .ph-tile {
+	position: relative;
+	display: grid;
+	place-items: center;
+	width: 38px;
+	height: 38px;
+	border-radius: 11px;
+	background: var(--fill);
+	color: var(--label-2);
+	font: 600 13px var(--mono);
+	letter-spacing: 0.02em;
 }
-.vo.phone .ph-card.missing {
-	opacity: 0.55;
+.vo.phone .ph-section[data-color] .ph-tile {
+	background: color-mix(in srgb, var(--g) 22%, var(--elev-1));
+	color: color-mix(in srgb, var(--g) 70%, #fff);
+}
+/* The state dot sits on the tile's corner, cut out of it like a status badge. */
+.vo.phone .ph-tile .dot {
+	position: absolute;
+	right: -3px;
+	bottom: -3px;
+	box-shadow: 0 0 0 3px var(--elev-1);
+}
+.vo.phone .ph-row:active .ph-tile .dot {
+	box-shadow: 0 0 0 3px var(--elev-2);
 }
 .vo.phone .ph-text {
 	display: grid;
-	gap: 3px;
+	gap: 2px;
 	min-width: 0;
 }
 .vo.phone .ph-title {
@@ -115,7 +145,13 @@
 }
 .vo.phone .ph-machine {
 	flex: none;
-	font: 11.5px var(--mono);
+	font: 11px var(--mono);
+	color: var(--label-3);
+}
+.vo.phone .ph-age {
+	flex: none;
+	margin-left: auto;
+	font: 12px var(--mono);
 	color: var(--label-3);
 }
 .vo.phone .ph-line {
@@ -126,15 +162,18 @@
 	line-height: 1.3;
 	color: var(--label-2);
 }
-.vo.phone .ph-card.waiting .ph-line {
+.vo.phone .ph-row.waiting .ph-line {
 	color: var(--crit-text);
 }
-.vo.phone .ph-answer {
-	padding: 7px 13px;
-	border-radius: 999px;
-	background: var(--fill);
-	color: #fff;
-	font: 600 13px var(--sys);
+.vo.phone .ph-row.waiting .ph-age {
+	color: var(--crit-text);
+}
+.vo.phone .ph-badge {
+	width: 10px;
+	height: 10px;
+	margin: 0 5px;
+	border-radius: 50%;
+	background: var(--crit);
 }
 .vo.phone .ph-go {
 	display: grid;

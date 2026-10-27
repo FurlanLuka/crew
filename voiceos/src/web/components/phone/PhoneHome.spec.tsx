@@ -39,17 +39,17 @@ const stateOf = (patch: Partial<State> = {}): State => {
 const render = (state: State) =>
 	renderToStaticMarkup(<PhoneHome state={state} dispatch={() => undefined} />);
 
-const cardOrder = (html: string) =>
-	[...html.matchAll(/class="ph-card[^"]*" data-ref="([^"]+)"/g)].map((match) => match[1]);
+const rowOrder = (html: string) =>
+	[...html.matchAll(/class="ph-row[^"]*" data-ref="([^"]+)"/g)].map((match) => match[1]);
 
 describe('PhoneHome', () => {
-	it('one card per session, the waiting one first with Answer, the rest with a chevron', () => {
+	it('one row per session, the waiting one first with a badge, the rest with a chevron', () => {
 		const html = render(stateOf());
 
-		expect(cardOrder(html)).toEqual(['checkout-api/main', 'store-front/main', 'admin/main']);
-		expect(html).toContain('class="ph-card waiting" data-ref="checkout-api/main"');
+		expect(rowOrder(html)).toEqual(['checkout-api/main', 'store-front/main', 'admin/main']);
+		expect(html).toContain('class="ph-row waiting" data-ref="checkout-api/main"');
 		expect(html).toContain('Asks: Merge it now?');
-		expect(html.match(/ph-answer/g)).toHaveLength(1);
+		expect(html.match(/ph-badge/g)).toHaveLength(1);
 		expect(html.match(/ph-go/g)).toHaveLength(2);
 		expect(html).toContain('3 sessions on 1 machine · 1 needs you');
 	});
@@ -85,13 +85,13 @@ describe('PhoneHome', () => {
 		expect(html).toContain('data-color="blue" aria-label="Store"');
 		expect(html).toContain('<b>Store</b><span class="">2 sessions</span>');
 		expect(html).toContain('<b>Not in a group</b>');
-		expect(cardOrder(html)).toEqual(['admin/main', 'store-front/main', 'checkout-api/main']);
+		expect(rowOrder(html)).toEqual(['admin/main', 'store-front/main', 'checkout-api/main']);
 	});
 
-	it('a session out of reach: a dimmed card that says so', () => {
+	it('a session out of reach: a dimmed row that says so', () => {
 		const html = render(stateOf({ active: ['store-front/main', 'vm1:gone/main'] }));
 
-		expect(html).toContain('class="ph-card missing" data-ref="vm1:gone/main"');
+		expect(html).toContain('class="ph-row missing" data-ref="vm1:gone/main"');
 		expect(html).toContain('Out of reach · starts when it&#x27;s back');
 	});
 

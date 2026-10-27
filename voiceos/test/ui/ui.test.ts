@@ -4595,18 +4595,182 @@ describe('phone', () => {
 		await context.close();
 	}, 20_000);
 
-	it('Home is one card per session, never the desktop rows; a tap opens the session', async () => {
+	it('Home is one list row per session, never the desktop rows; a tap opens the session, back returns', async () => {
 		await ensureIdle(REF);
 		const { context, page } = await openPhone();
-		const card = page.locator(`.ph-card[data-ref="${REF}"]`);
+		const row = page.locator(`.ph-row[data-ref="${REF}"]`);
 
-		await card.waitFor({ timeout: 5000 });
+		await row.waitFor({ timeout: 5000 });
 		expect(await page.locator('.vo-row').count()).toBe(0);
-		expect(await card.locator('.ph-line').innerText()).toBe('Ready');
+		expect(await row.locator('.ph-line').innerText()).toBe('Ready');
 		expect(await isNotWider(page)).toBe(true);
-		await card.click();
+		await row.click();
 		await waitUntil(() => store.state.view.kind === 'session' && store.state.view.ref === REF);
 		await page.getByRole('button', { name: 'More' }).waitFor({ timeout: 5000 });
+
+		// The top bar's back goes up a level and gives the history entry back, so the phone's own back
+		// from Home leaves the app.
+		await page.getByRole('button', { name: 'Back', exact: true }).click();
+		await waitUntil(() => store.state.view.kind === 'active');
+		await page.waitForFunction(
+			() => !(history.state as { voiceosPhone?: boolean } | null)?.voiceosPhone,
+		);
+
+		// Opened again, the browser's back still returns Home.
+		await row.click();
+		// The page, not only the server, is on the session: its entry is held once it shows it.
+		await page.getByRole('button', { name: 'More' }).waitFor({ timeout: 5000 });
+		await page.goBack();
+		await waitUntil(() => store.state.view.kind === 'active');
+		expect(new URL(page.url()).pathname).toBe(`/phone/${PHONE_KEY}`);
+		await context.close();
+	}, 20_000);
+
+	it("Back, then a session opened at once: the browser's back still returns Home, never leaves the app", async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openPhone();
+		const row = page.locator(`.ph-row[data-ref="${REF}"]`);
+
+		await row.click();
+		await page.getByRole('button', { name: 'More' }).waitFor({ timeout: 5000 });
+		await page.getByRole('button', { name: 'Back', exact: true }).click();
+		await row.click();
+		await page.getByRole('button', { name: 'More' }).waitFor({ timeout: 5000 });
+		await Bun.sleep(200);
+
+		await page.goBack();
+		await waitUntil(() => store.state.view.kind === 'active');
+		expect(new URL(page.url()).pathname).toBe(`/phone/${PHONE_KEY}`);
+		await context.close();
+	}, 20_000);
+
+	it("the phone's back gesture (the browser's back) closes ⋯ first, then leaves the session", async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openPhone();
+
+		await page.locator(`.ph-row[data-ref="${REF}"]`).click();
+		await waitUntil(() => store.state.view.kind === 'session');
+		await page.getByRole('button', { name: 'More' }).click();
+		await page.locator('.mpanel').waitFor({ timeout: 5000 });
+
+		await page.goBack();
+		await page.locator('.mpanel').waitFor({ state: 'detached', timeout: 5000 });
+		expect(store.state.view.kind).toBe('session');
+		expect(new URL(page.url()).pathname).toBe(`/phone/${PHONE_KEY}`);
+
+		await page.goBack();
+		await waitUntil(() => store.state.view.kind === 'active');
+		expect(new URL(page.url()).pathname).toBe(`/phone/${PHONE_KEY}`);
+		await context.close();
+	}, 20_000);
+
+	// A finger dragged across the screen, from fromX to toX, as touch events on the page; it ends with
+	// touchend, or touchcancel when the system takes the gesture. 20 px each stepMs: 30 ms is a flick.
+	const drag = (page: Page, fromX: number, toX: number, end = 'touchend', stepMs = 30) =>
+		page.evaluate(
+			async ({ startX, endX, endType, step }) => {
+				const root = document.querySelector('.vo.phone') as HTMLElement;
+				const touchAt = (x: number) =>
+					new Touch({ identifier: 1, target: root, clientX: x, clientY: 400 });
+				const fire = (type: string, x: number) =>
+					root.dispatchEvent(
+						new TouchEvent(type, {
+							bubbles: true,
+							cancelable: true,
+							touches: type === endType ? [] : [touchAt(x)],
+							changedTouches: [touchAt(x)],
+						}),
+					);
+				fire('touchstart', startX);
+
+				for (let x = startX + 10; x <= endX; x += 20) {
+					fire('touchmove', x);
+					await new Promise((resolve) => setTimeout(resolve, step));
+				}
+
+				fire(endType, endX);
+			},
+			{ startX: fromX, endX: toX, endType: end, step: stepMs },
+		);
+
+	// The installed app: the swipe is only ours there. Read as the swipe is armed, so the screen is
+	// rendered again after the flag is set.
+	const markInstalled = async (page: Page, view: View) => {
+		await page.evaluate(() =>
+			Object.defineProperty(navigator, 'standalone', { value: true, configurable: true }),
+		);
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
+		store.dispatch({ type: 'switch_view', view });
+		await page.getByRole('button', { name: 'More' }).waitFor({ timeout: 5000 });
+		await Bun.sleep(200);
+	};
+
+	const readScreenShift = (page: Page) =>
+		page.locator('.ph-screen').evaluate((node) => (node as HTMLElement).style.transform);
+
+	const fromHome: View = { kind: 'session', ref: REF, from: 'active' };
+
+	it('installed: a drag from the left edge goes back; a short one springs the screen home', async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openPhone(fromHome);
+		await markInstalled(page, fromHome);
+
+		// Short and slow: not past a third, not a flick.
+		await drag(page, 6, 76, 'touchend', 120);
+		await Bun.sleep(400);
+		expect(store.state.view.kind).toBe('session');
+		expect(await readScreenShift(page)).toBe('');
+
+		await drag(page, 6, 236);
+		await waitUntil(() => store.state.view.kind === 'active');
+		await context.close();
+	}, 20_000);
+
+	it('installed: a swipe the system cancels springs home and never goes back', async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openPhone(fromHome);
+		await markInstalled(page, fromHome);
+
+		await drag(page, 6, 236, 'touchcancel');
+		await Bun.sleep(500);
+		expect(store.state.view.kind).toBe('session');
+		expect(await readScreenShift(page)).toBe('');
+		await context.close();
+	}, 20_000);
+
+	it('installed: a drag that starts inside the screen is not a back swipe', async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openPhone(fromHome);
+		await markInstalled(page, fromHome);
+
+		await drag(page, 100, 336);
+		await Bun.sleep(400);
+		expect(store.state.view.kind).toBe('session');
+		await context.close();
+	}, 20_000);
+
+	it("in a browser tab the edge drag is the browser's, not ours", async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openPhone(fromHome);
+		await page.getByRole('button', { name: 'More' }).waitFor({ timeout: 5000 });
+
+		await drag(page, 6, 236);
+		await Bun.sleep(500);
+		expect(store.state.view.kind).toBe('session');
+		await context.close();
+	}, 20_000);
+
+	it('installed, ⋯ open: an edge drag closes ⋯ and leaves the screen in place', async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openPhone(fromHome);
+		await markInstalled(page, fromHome);
+		await page.getByRole('button', { name: 'More' }).click();
+		await page.locator('.mpanel').waitFor({ timeout: 5000 });
+
+		await drag(page, 6, 236);
+		await page.locator('.mpanel').waitFor({ state: 'detached', timeout: 5000 });
+		expect(store.state.view.kind).toBe('session');
+		expect(await readScreenShift(page)).toBe('');
 		await context.close();
 	}, 20_000);
 

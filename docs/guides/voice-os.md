@@ -884,13 +884,15 @@ From then on, open it from the home screen.
 
 ### The phone layout
 
-**Home** lists your active sessions, the one waiting on you first with **Answer**, and **New** and
-the gear at the top. Tap a session to open it.
+**Home** lists your active sessions, one row each, grouped like your groups on the desktop. The one
+waiting on you comes first, its line in red with what it asks. Each row says how long the session
+has been working or waiting. **+** and the gear are at the top. Tap a session to open it.
 
-![Voice OS Home on a phone: 3 sessions on 2 machines, one needs you; store/wrk1 asks where the worker should pick up the order emails, with Answer; store/main on This Mac and store/main on Build box running; the bar at the bottom says Hold the mic to talk](../images/voice-os/phone-home.png)
+![Voice OS Home on a phone: 3 sessions on 2 machines, one needs you; store/wrk1 asks where the worker should pick up the order emails, waiting 15 minutes; store/main on This Mac working for 7 minutes and store/main on Build box for 10; the bar at the bottom says Hold the mic to talk](../images/voice-os/phone-home.png)
 
 A session is its stream, with back on the left, the name with its state in the middle and **⋯** on
-the right.
+the right. To go back, swipe from the left edge of the screen as in any app, or use the phone's own
+back gesture.
 
 ![store/main on a phone: the request to add a search box to the catalog, the reads and edits, a diff of CatalogPage.tsx, 14 tests passing and the answer still streaming, with Hold the mic to talk at the bottom](../images/voice-os/phone-session.png)
 
@@ -917,7 +919,9 @@ The bar at the bottom changes with the listening mode, which the round button on
 - **Text only**: a text box with a send button, no microphone, and Voice OS stays quiet on this
   phone. Typing on the phone happens here.
 
-A phone stops the microphone when the app goes to the background or the screen locks. Push to talk
+Voice OS speaks even with the phone on silent, as a call would. A phone stops the microphone and
+the speech when the app goes to the background or the screen locks; what was said meanwhile stays in
+the stream. Push to talk
 is the most reliable mode on a phone, and [Discord](../tutorials/4-from-anywhere.md#voice-os-in-discord)
 keeps going with the screen off.
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import type { PendingAsk, Session, State } from '../shared/protocol.js';
 import { createInitialState, createSession } from '../state/reducer.js';
-import { describePhoneCard } from './phone-home.js';
+import { describePhoneCard, readInitials } from './phone-home.js';
 
 const NOW = 1_000_000;
 const STORE = 'store-front/main';
@@ -59,6 +59,7 @@ describe('describePhoneCard', () => {
 		expect(card).toEqual({
 			dot: 'blocked',
 			title: STORE,
+			initials: 'SM',
 			line: 'Asks: A Redis queue or a jobs table?',
 			isWaiting: true,
 		});
@@ -89,7 +90,7 @@ describe('describePhoneCard', () => {
 		expect(card?.isWaiting).toBe(true);
 	});
 
-	it('working: for how long', () => {
+	it('working: for how long, as the age beside the name', () => {
 		const card = describePhoneCard(
 			stateWith([
 				session(STORE, {
@@ -101,8 +102,29 @@ describe('describePhoneCard', () => {
 			NOW,
 		);
 
-		expect(card).toMatchObject({ dot: 'running', line: 'Working · 2m', isWaiting: false });
+		expect(card).toMatchObject({ dot: 'running', line: 'Working', age: '2m', isWaiting: false });
 	});
+
+	it('waiting: the age is how long it has waited, not how long it worked', () => {
+		const card = describePhoneCard(
+			stateWith([
+				session(STORE, {
+					status: 'blocked',
+					requests: [{ text: 'add the search box', at: NOW - 600_000 }],
+					needsUser: { text: 'Which queue?', at: NOW - 120_000 },
+				}),
+			]),
+			STORE,
+			NOW,
+		);
+
+		expect(card).toMatchObject({ isWaiting: true, age: '2m' });
+	});
+
+	it('idle: no age', () =>
+		expect(
+			describePhoneCard(stateWith([session(STORE, { status: 'idle' })]), STORE, NOW)?.age,
+		).toBeUndefined());
 
 	it('starting reads Starting, not Working', () =>
 		expect(
@@ -163,4 +185,18 @@ describe('describePhoneCard', () => {
 
 	it('a session not listed has no card', () =>
 		expect(describePhoneCard(stateWith([]), STORE, NOW)).toBeNull());
+});
+
+describe('readInitials', () => {
+	it('a worktree: its project and worktree, so two of one project differ', () => {
+		expect(readInitials('store-front/main')).toBe('SM');
+		expect(readInitials('checkout-api/wrk1')).toBe('CW');
+	});
+
+	it('any other name: its first two words', () => expect(readInitials('Build box')).toBe('BB'));
+
+	it('one word gives one letter, nothing gives a dot', () => {
+		expect(readInitials('notes')).toBe('N');
+		expect(readInitials('///')).toBe('·');
+	});
 });

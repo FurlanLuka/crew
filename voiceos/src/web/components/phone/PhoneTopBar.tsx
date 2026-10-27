@@ -1,4 +1,4 @@
-// The phone's top bar. Home: crew's mark, New and the gear. A session: back, its name with its state
+// The phone's top bar. Home: New and the gear, over Home's large title. A session: back, its name with its state
 // dot and where it runs, and ⋯ for everything the desktop keeps beside the stream. Any other screen
 // (Settings, a machine's page): back and its title.
 import { readMachineTitle, readSessionLabel } from '../../../shared/machines.js';
@@ -13,15 +13,13 @@ import { BackIcon, DotsIcon } from './phone-icons.js';
 interface PhoneTopBarProps {
 	state: State;
 	dispatch: Dispatch;
+	onBack: () => void;
 	onNewSession: () => void;
 	onMore: () => void;
 }
 
-const goHome = (dispatch: Dispatch) => () =>
-	dispatch({ type: 'switch_view', view: { kind: 'active' } });
-
-const BackButton = ({ dispatch }: { dispatch: Dispatch }) => (
-	<button type="button" className="ic" aria-label="Back to Home" onClick={goHome(dispatch)}>
+const BackButton = ({ onBack }: { onBack: () => void }) => (
+	<button type="button" className="ic" aria-label="Back" onClick={onBack}>
 		<BackIcon />
 	</button>
 );
@@ -58,14 +56,20 @@ const readScreenTitle = (state: State): string => {
 		: 'Sessions';
 };
 
-export const PhoneTopBar = ({ state, dispatch, onNewSession, onMore }: PhoneTopBarProps) => {
+export const PhoneTopBar = ({
+	state,
+	dispatch,
+	onBack,
+	onNewSession,
+	onMore,
+}: PhoneTopBarProps) => {
 	const { view } = state;
 	const session = view.kind === 'session' ? state.sessions[view.ref] : undefined;
 
 	if (session) {
 		return (
 			<header className="mtop">
-				<BackButton dispatch={dispatch} />
+				<BackButton onBack={onBack} />
 				<SessionTitle state={state} session={session} />
 				<button type="button" className="ic fill" aria-label="More" onClick={onMore}>
 					<DotsIcon />
@@ -77,9 +81,7 @@ export const PhoneTopBar = ({ state, dispatch, onNewSession, onMore }: PhoneTopB
 	if (view.kind === 'active') {
 		return (
 			<header className="mtop home">
-				<span className="mbrand">
-					crew<span>Voice OS</span>
-				</span>
+				<span />
 				<span className="acts">
 					<NewMenu state={state} dispatch={dispatch} onNewSession={onNewSession} />
 					<button
@@ -97,7 +99,7 @@ export const PhoneTopBar = ({ state, dispatch, onNewSession, onMore }: PhoneTopB
 
 	return (
 		<header className="mtop">
-			<BackButton dispatch={dispatch} />
+			<BackButton onBack={onBack} />
 			<div className="ttl">
 				<b>
 					<span>{readScreenTitle(state)}</span>

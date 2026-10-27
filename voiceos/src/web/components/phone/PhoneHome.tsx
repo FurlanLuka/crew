@@ -1,12 +1,13 @@
-// Home on a phone: each active session as one card — its dot, its name, the machine when it isn't
-// this one, and one line of where it stands. The order is desktop Home's (listHomeSections): groups
-// in the bar's order, then the rest, waiting first inside each. A tap opens the session.
+// Home on a phone: each active session as one row of a grouped list, as iOS lists go — its initials
+// and dot, its name, the machine when it isn't this one, its age, and one line of where it stands.
+// The order is desktop Home's (listHomeSections): groups in the bar's order, then the rest, waiting
+// first inside each. A tap opens the session.
 import { listActiveRefs } from '../../../shared/active.js';
 import { readSessionLabel } from '../../../shared/machines.js';
 import type { SessionGroup, State } from '../../../shared/protocol.js';
 import { countOf } from '../../count.js';
 import { isWaiting } from '../../derive.js';
-import { describePhoneCard } from '../../phone-home.js';
+import { describePhoneCard, readInitials } from '../../phone-home.js';
 import type { Dispatch } from '../../types.js';
 import { useNow } from '../../use-now.js';
 import { countMachines, describeSectionCount, listHomeSections } from '../ActiveView.js';
@@ -29,14 +30,14 @@ const Chevron = () => (
 	</svg>
 );
 
-interface CardProps {
+interface RowProps {
 	state: State;
 	dispatch: Dispatch;
 	sessionRef: string;
 	now: number;
 }
 
-const SessionCard = ({ state, dispatch, sessionRef: ref, now }: CardProps) => {
+const SessionRow = ({ state, dispatch, sessionRef: ref, now }: RowProps) => {
 	const card = describePhoneCard(state, ref, now);
 
 	if (!card) {
@@ -46,22 +47,26 @@ const SessionCard = ({ state, dispatch, sessionRef: ref, now }: CardProps) => {
 	return (
 		<button
 			type="button"
-			className={`ph-card ${card.isWaiting ? 'waiting' : ''}`}
+			className={`ph-row ${card.isWaiting ? 'waiting' : ''}`}
 			data-ref={ref}
 			onClick={() => dispatch({ type: 'switch_view', view: { kind: 'session', ref } })}
 		>
-			<span className={`dot ${card.dot}`} aria-hidden="true" />
+			<span className="ph-tile" aria-hidden="true">
+				{card.initials}
+				<i className={`dot ${card.dot}`} />
+			</span>
 			<span className="ph-text">
 				<span className="ph-title">
 					<b>{card.title}</b>
 					{card.machine && <span className="ph-machine">{card.machine}</span>}
+					{card.age && <span className="ph-age">{card.age}</span>}
 				</span>
 				<span className="ph-line">{card.line}</span>
 			</span>
 			{card.isWaiting ? (
-				<span className="ph-answer">Answer</span>
+				<span className="ph-badge" aria-hidden="true" />
 			) : (
-				<span className="ph-go">
+				<span className="ph-go" aria-hidden="true">
 					<Chevron />
 				</span>
 			)}
@@ -69,17 +74,24 @@ const SessionCard = ({ state, dispatch, sessionRef: ref, now }: CardProps) => {
 	);
 };
 
-const MissingCard = ({ state, sessionRef: ref }: { state: State; sessionRef: string }) => (
-	<div className="ph-card missing" data-ref={ref}>
-		<span className="dot ring" aria-hidden="true" />
-		<span className="ph-text">
-			<span className="ph-title">
-				<b>{readSessionLabel(state, ref)}</b>
+const MissingRow = ({ state, sessionRef: ref }: { state: State; sessionRef: string }) => {
+	const title = readSessionLabel(state, ref);
+
+	return (
+		<div className="ph-row missing" data-ref={ref}>
+			<span className="ph-tile" aria-hidden="true">
+				{readInitials(title)}
+				<i className="dot ring" />
 			</span>
-			<span className="ph-line">Out of reach · starts when it's back</span>
-		</span>
-	</div>
-);
+			<span className="ph-text">
+				<span className="ph-title">
+					<b>{title}</b>
+				</span>
+				<span className="ph-line">Out of reach · starts when it's back</span>
+			</span>
+		</div>
+	);
+};
 
 interface SectionHeadProps {
 	state: State;
@@ -138,9 +150,9 @@ export const PhoneHome = ({ state, dispatch }: PhoneHomeProps) => {
 						aria-label={group?.name ?? (hasGroups ? 'Not in a group' : 'Sessions')}
 					>
 						{(group || hasGroups) && <SectionHead state={state} group={group} refs={members} />}
-						<div className="ph-cards">
+						<div className="ph-list">
 							{members.map((ref) => (
-								<SessionCard
+								<SessionRow
 									key={ref}
 									state={state}
 									dispatch={dispatch}
@@ -149,7 +161,7 @@ export const PhoneHome = ({ state, dispatch }: PhoneHomeProps) => {
 								/>
 							))}
 							{missing.map((ref) => (
-								<MissingCard key={ref} state={state} sessionRef={ref} />
+								<MissingRow key={ref} state={state} sessionRef={ref} />
 							))}
 						</div>
 					</section>

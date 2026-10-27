@@ -61,3 +61,9 @@ export const describeMicHelp = (platform: PhonePlatform, isStandalone: boolean):
 		? 'Microphone blocked. Turn it on in Settings → Voice OS → Microphone, then hold the mic again.'
 		: 'Microphone blocked. Turn it on in Settings → Safari → Microphone, then hold the mic again.';
 };
+
+// The app saved to an iPhone's home screen, where no browser gesture goes back: navigator.standalone
+// is Safari's alone, so an installed Android app, which has the system back, is never this.
+export const isIosApp = (): boolean =>
+	typeof navigator !== 'undefined' &&
+	(navigator as Navigator & { standalone?: boolean }).standalone === true;

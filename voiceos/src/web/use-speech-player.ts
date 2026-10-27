@@ -1,6 +1,9 @@
 import { useEffect, useMemo } from 'react';
 import { SPEECH_SAMPLE_RATE, type SpeechMessage } from '../shared/protocol.js';
+import { applyAudioSession } from './audio-session.js';
+import { clientLog, describeError } from './client-log.js';
 import { base64ToBytes, createChimeSamples, type ChimeKind, pcmToFloat } from './pcm.js';
+import { IS_PHONE } from './phone.js';
 
 interface Clip {
 	id: string;
@@ -10,6 +13,18 @@ interface Clip {
 }
 
 type ClipDoneListener = (id: string) => void;
+
+type CreateContext = () => AudioContext;
+
+const createSpeechContext: CreateContext = () =>
+	new AudioContext({ sampleRate: SPEECH_SAMPLE_RATE });
+
+// After a lock or a call iOS leaves the context "interrupted" (not in the DOM's types), else
+// "suspended"; either way nothing scheduled on it is heard.
+const isRunning = (context: AudioContext): boolean => context.state === 'running';
+
+const isPageHidden = (): boolean =>
+	typeof document !== 'undefined' && document.visibilityState === 'hidden';
 
 export class PcmPlayer {
 	private context: AudioContext | null = null;
@@ -21,6 +36,12 @@ export class PcmPlayer {
 	};
 	private chimes = new Map<ChimeKind, Float32Array>();
 	private isMuted = false;
+	private cutIds = new Set<string>();
+
+	constructor(
+		private createContext: CreateContext = createSpeechContext,
+		private isPhone = IS_PHONE,
+	) {}
 
 	setNotify(listener: ClipDoneListener): void {
 		this.notify = listener;
@@ -34,18 +55,58 @@ export class PcmPlayer {
 		}
 	}
 
+	// A gesture: browsers start audio only from one. A context a gesture cannot start is stuck (iOS,
+	// after some interruptions) and is made again; the next clip plays on the new one.
 	resume(): void {
-		// Browsers keep audio suspended until the page gets a gesture.
-		void this.getAudioContext()
+		applyAudioSession(this.isPhone);
+		const context = this.getAudioContext();
+
+		if (isRunning(context)) {
+			return;
+		}
+
+		void context
 			.resume()
-			.catch(() => {
-				// Still suspended: the next gesture tries again.
+			.catch((error: unknown) => {
+				clientLog('warn', 'speech', 'resume failed', {
+					state: context.state,
+					...describeError(error),
+				});
+			})
+			.then(() => {
+				if (this.context === context && !isRunning(context) && !isPageHidden()) {
+					this.recreate(context);
+				}
 			});
+	}
+
+	// Back on screen, or a clip came while the context wasn't running: try without a gesture, which
+	// iOS allows for a context it interrupted itself.
+	wake(): void {
+		const context = this.context;
+
+		if (!context || isRunning(context)) {
+			return;
+		}
+
+		void context.resume().catch(() => {
+			// Not without a gesture: the next tap tries again.
+		});
 	}
 
 	receive(message: SpeechMessage): void {
 		if (message.type === 'audio_cancel') {
+			this.cutIds.delete(message.id);
 			this.cancel(message.id);
+
+			return;
+		}
+
+		// The rest of a clip cut when its context was remade: the server still sends it, nobody hears it.
+		if (this.cutIds.has(message.id)) {
+			if (message.isLast) {
+				this.cutIds.delete(message.id);
+			}
 
 			return;
 		}
@@ -105,15 +166,74 @@ export class PcmPlayer {
 	}
 
 	private getAudioContext(): AudioContext {
-		this.context ??= new AudioContext({ sampleRate: SPEECH_SAMPLE_RATE });
+		if (!this.context) {
+			const context = this.createContext();
+
+			context.onstatechange = () => {
+				clientLog('info', 'speech', 'context state', {
+					state: context.state,
+					hidden: isPageHidden(),
+				});
+			};
+
+			this.context = context;
+		}
 
 		return this.context;
 	}
 
+	// Once per clip: a clip that cannot be heard says so in the log, and nudges the context awake.
+	private checkRunning(id: string): void {
+		const context = this.getAudioContext();
+
+		// A desktop plays in a hidden tab; a phone's page is suspended there.
+		if (isRunning(context) && (!this.isPhone || !isPageHidden())) {
+			return;
+		}
+
+		clientLog('warn', 'speech', 'clip while silent', {
+			id,
+			state: context.state,
+			hidden: isPageHidden(),
+		});
+		this.wake();
+	}
+
+	private recreate(old: AudioContext): void {
+		clientLog('warn', 'speech', 'context recreated', { state: old.state });
+
+		// Its clips were never heard: cut, so none reports done for audio nobody played, and their
+		// remaining chunks are dropped as they come.
+		for (const clip of this.clips.values()) {
+			if (!clip.hasEnded) {
+				this.cutIds.add(clip.id);
+			}
+		}
+
+		this.stop();
+		this.context = null;
+		this.nextStart = 0;
+		old.onstatechange = null;
+		void old.close().catch(() => {
+			// Already closed.
+		});
+		this.getAudioContext()
+			.resume()
+			.catch(() => {
+				// The next gesture tries again.
+			});
+	}
+
 	private open(id: string): Clip {
-		const clip: Clip = { id, sources: new Set(), carry: null, hasEnded: false };
+		const clip: Clip = {
+			id,
+			sources: new Set(),
+			carry: null,
+			hasEnded: false,
+		};
 		this.clips.set(id, clip);
 		console.debug('[speech] clip start', id);
+		this.checkRunning(id);
 
 		return clip;
 	}
@@ -188,12 +308,23 @@ export const useSpeechPlayer = (): PcmPlayer => {
 
 	useEffect(() => {
 		const resumePlayer = () => player.resume();
+
+		const wakePlayer = () => {
+			if (document.visibilityState === 'visible') {
+				player.wake();
+			}
+		};
+
 		window.addEventListener('pointerdown', resumePlayer);
 		window.addEventListener('keydown', resumePlayer);
+		document.addEventListener('visibilitychange', wakePlayer);
+		window.addEventListener('pageshow', wakePlayer);
 
 		return () => {
 			window.removeEventListener('pointerdown', resumePlayer);
 			window.removeEventListener('keydown', resumePlayer);
+			document.removeEventListener('visibilitychange', wakePlayer);
+			window.removeEventListener('pageshow', wakePlayer);
 		};
 	}, [player]);
 
