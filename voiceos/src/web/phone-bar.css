@@ -147,3 +147,10 @@
 .vo.phone .msheet .mode-desc {
 	font-size: 13.5px;
 }
+/* What to do about a refused microphone, above the bar it stops. */
+.vo.phone .phone-note.mic-help {
+	margin: 0 4px 8px;
+	color: var(--label-2);
+	font-size: 13px;
+	line-height: 1.4;
+}

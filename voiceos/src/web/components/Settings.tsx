@@ -6,6 +6,7 @@ import { LOCAL_MACHINE } from '../../shared/machine-ref.js';
 import type { MachineStatus, State } from '../../shared/protocol.js';
 import { readAlwaysVoice, writeAlwaysVoice } from '../home/prefs.js';
 import { INPUT_MODES, type InputMode } from '../listen-mode.js';
+import { IS_PHONE_LINK } from '../phone.js';
 import { isOk, readCrewLine, runCrew, useCrew } from '../setup/api.js';
 import type { Dispatch } from '../types.js';
 import { isKeyMissing, type KeyName } from './BeforeYouTalk.js';
@@ -380,7 +381,7 @@ export const Settings = ({
 				))}
 			</nav>
 			<div className="vs-set">
-				<YourPhone />
+				<YourPhone isPhoneLink={IS_PHONE_LINK} />
 				<div className="vs-sec" id="vs-listening">
 					<h2>Listening</h2>
 					<p className="vs-lead">

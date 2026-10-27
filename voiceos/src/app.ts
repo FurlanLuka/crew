@@ -195,7 +195,7 @@ const services = holdKeyedServices<KeyedServices<Kernel>>({
 
 reportMissing(services.current.keys);
 
-// Audio plays in the tab the developer used last, or in the voice channel; the others show the line.
+// Audio plays in the main screen's tab, or in the voice channel; the others show the line.
 const seat = new SpeakerSeat();
 // Assigned once the gateway starts below; speech reaches the tabs through it.
 let gateway: ReturnType<typeof startGateway> | null = null;
@@ -470,8 +470,6 @@ gateway = startGateway({
 			tailscaleHost: readTailscaleHost(),
 		}),
 	onMessage: (message, client) => {
-		seat.pageUsed(client);
-
 		switch (message.type) {
 			case 'action':
 				// Several pages can be open; the view is shared, so a switch names the page that made it.
@@ -561,9 +559,7 @@ gateway = startGateway({
 		}
 	},
 	onAudio: (chunk, client) => voiceIn.pushAudio(client, chunk),
-	onConnect: (client) => {
-		seat.pageOpened(client);
-
+	onConnect: () => {
 		if (!shouldAnnounceRestart({ bootAt, now: Date.now(), isSaid: isRestartSaid, hadSavedView })) {
 			return;
 		}
@@ -571,6 +567,8 @@ gateway = startGateway({
 		isRestartSaid = true;
 		voiceOut.say({ text: 'Voice OS restarted.', priority: 'high', source: 'kernel' });
 	},
+	// The main screen is the speaker seat: one record, so the muted pages never hold the audio.
+	onMainConnection: (client) => seat.claim(client),
 	onDisconnect: (client) => {
 		voiceIn.disconnect(client);
 		seat.pageClosed(client);

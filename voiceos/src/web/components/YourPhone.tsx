@@ -167,7 +167,8 @@ export const TailscaleCard = ({ status, isBusy, onServe, onStop }: TailscaleCard
 interface PhonesListProps {
 	phones: PhoneRow[];
 	now: number;
-	onRevoke: (id: string) => void;
+	// Absent on a phone: revoking is the Mac's, and the server refuses it from a phone's key.
+	onRevoke?: (id: string) => void;
 }
 
 export const PhonesList = ({ phones, now, onRevoke }: PhonesListProps) =>
@@ -180,17 +181,35 @@ export const PhonesList = ({ phones, now, onRevoke }: PhonesListProps) =>
 						<b>{readPhoneName(phone)}</b>
 						<span className="m">{describePhone(phone, now)}</span>
 					</span>
-					<button type="button" className="btn sm danger" onClick={() => onRevoke(phone.id)}>
-						Revoke
-					</button>
+					{onRevoke && (
+						<button type="button" className="btn sm danger" onClick={() => onRevoke(phone.id)}>
+							Revoke
+						</button>
+					)}
 				</div>
 			))}
 		</div>
 	);
 
-export const YourPhone = () => {
+// On a phone itself: which phones have a key, and where they are managed. Codes, Tailscale and
+// Revoke are the Mac's: the server refuses them from a phone's key.
+export const PhoneOnlyNote = ({ phones, now }: { phones: PhoneRow[]; now: number }) => (
+	<div className="vs-sec vs-phone" id="vs-phone">
+		<h2>Your phone</h2>
+		<p className="vs-lead">
+			This phone is signed in with its own key. New codes, Tailscale and revoking a phone are in
+			Voice OS Settings on the Mac.
+		</p>
+		<PhonesList phones={phones} now={now} />
+	</div>
+);
+
+export const YourPhone = ({ isPhoneLink = false }: { isPhoneLink?: boolean }) => {
 	const phones = useCrew<PhoneRow[]>(LOCAL_MACHINE, { type: 'phones_ls' });
-	const tailscale = useCrew<TailscaleStatus>(LOCAL_MACHINE, { type: 'tailscale_status' });
+	const tailscale = useCrew<TailscaleStatus>(
+		LOCAL_MACHINE,
+		isPhoneLink ? null : { type: 'tailscale_status' },
+	);
 	const [code, setCode] = useState<PhoneCode | null>(null);
 	const [line, setLine] = useState<string | null>(null);
 	const [trustLine, setTrustLine] = useState<string | null>(null);
@@ -241,6 +260,10 @@ export const YourPhone = () => {
 		await run({ type: isOn ? 'tailscale_serve' : 'tailscale_off' }, 'Tailscale did not change.');
 		tailscale.refresh();
 	};
+
+	if (isPhoneLink) {
+		return <PhoneOnlyNote phones={phones.data ?? []} now={now} />;
+	}
 
 	return (
 		<div className="vs-sec vs-phone" id="vs-phone">

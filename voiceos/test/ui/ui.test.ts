@@ -58,6 +58,8 @@ let browser: Browser;
 let gateway: Gateway;
 let store: Store;
 const received: ReceivedMessage[] = [];
+// Which client claimed the main screen, in order: the gateway takes claim_main itself.
+const claims: string[] = [];
 const audioChunks: number[] = [];
 const effects: string[] = [];
 
@@ -111,6 +113,7 @@ const startServer = (port = 0): Gateway => {
 	return startGateway({
 		runCrew: crew.runCrew,
 		findPhone: phones.findPhone,
+		onMainConnection: (client) => claims.push(client),
 		recordPhoneSeen: phones.recordSeen,
 		attachFile: attachFileTo({
 			readState: () => store.state,
@@ -149,6 +152,15 @@ const watchErrors = (page: Page): void => {
 	page.on('pageerror', (error) =>
 		pageErrors.push(`${error.message}\n${(error.stack ?? '').slice(0, 900)}`),
 	);
+};
+
+// A tab opened after this one took the main screen: this one is used here again, so it listens,
+// speaks and takes clicks.
+const takeMainScreen = async (page: Page): Promise<void> => {
+	const button = page.getByRole('button', { name: 'Use here' });
+
+	await button.click({ timeout: 5000 });
+	await button.waitFor({ state: 'detached', timeout: 5000 });
 };
 
 const chooseMode = async (page: Page, name: string): Promise<void> => {
@@ -286,14 +298,15 @@ describe('voice os ui', () => {
 		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		const firstTab = await signIn();
 		const secondTab = await signIn();
-		await firstTab.page.locator('.vo-row[data-ref="store-front/main"]').click();
+		// The tab opened last is the main screen; the first follows its view under its overlay.
+		await secondTab.page.locator('.vo-row[data-ref="store-front/main"]').click();
 
-		await secondTab.page
+		await firstTab.page
 			.locator('.vo-tab[aria-current="true"]', { hasText: 'store-front/main' })
 			.waitFor({ timeout: 5000 });
 		// Active, so it opens inside Active.
 		expect(store.state.view).toEqual({ kind: 'session', ref: 'store-front/main', from: 'active' });
-		await secondTab.page.waitForURL('**/voice/session/store-front/main');
+		await firstTab.page.waitForURL('**/voice/session/store-front/main');
 		await firstTab.context.close();
 		await secondTab.context.close();
 	}, 20_000);
@@ -524,6 +537,7 @@ describe('voice os ui', () => {
 		const first = await signIn();
 		const second = await signIn();
 		const { page } = first;
+		await takeMainScreen(page);
 
 		try {
 			await page.locator('.vo-tab[data-ref="store-front/main"]').click({ button: 'right' });
@@ -567,6 +581,7 @@ describe('voice os ui', () => {
 
 			await page.locator('.vo-gchip').click();
 			await second.page.locator('.vo-gbox').waitFor({ timeout: 5000 });
+			await takeMainScreen(second.page);
 			await second.page.getByRole('button', { name: 'Close all three' }).last().click();
 			await page.locator('.vo-gchip').waitFor({ timeout: 5000 });
 		} finally {
@@ -901,6 +916,7 @@ describe('voice os ui', () => {
 	it('voice off from the top bar → listening stops, "Voice" struck in the moment, no press, typing still sends; back on → listening again, the moment whole', async () => {
 		const { context, page, client } = await openMicTab();
 		const other = await signIn();
+		await takeMainScreen(page);
 		await chooseMode(page, 'Hands-free');
 		await waitUntil(() => listFromClient(client, 'listen_start').length === 1);
 
@@ -918,6 +934,9 @@ describe('voice os ui', () => {
 			await other.page.locator('.vo-top').getByRole('button', { name: 'Turn voice on' }).count(),
 		).toBe(1);
 		await other.context.close();
+		// The reloaded tab took the main screen and keeps it once closed (a tab, not a connection): this
+		// one is used here again.
+		await takeMainScreen(page);
 		await page.locator('.vo-bar').getByRole('button', { name: 'Turn voice on' }).waitFor();
 		expect(await page.getByRole('button', { name: 'Listening mode' }).count()).toBe(0);
 
@@ -3936,6 +3955,7 @@ describe('attaching files', () => {
 	it('a pasted image → a thumbnail chip on every tab; ✕ takes it off', async () => {
 		const { context, page } = await openSession();
 		const other = await signIn();
+		await takeMainScreen(page);
 
 		await handOver(page, 'paste', [{ name: 'image.png', type: 'image/png', base64: PNG_BASE64 }]);
 		await page.locator('.att-chip.thumb img').waitFor({ timeout: 5000 });
@@ -4449,6 +4469,7 @@ describe('phone', () => {
 			const probe = window as unknown as { __gum: number };
 			const getUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
 			probe.__gum = 0;
+
 			navigator.mediaDevices.getUserMedia = (constraints) => {
 				probe.__gum++;
 
@@ -4654,6 +4675,203 @@ describe('phone', () => {
 		store.dispatch({ type: 'ask_closed', askId: 'ui-phone-question' });
 		await context.close();
 	}, 20_000);
+
+	it('one main screen: the page opened last takes it, the other steps aside; Use here moves it back', async () => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
+		const first = await signIn();
+		const overlayOf = (page: Page) =>
+			page.getByRole('dialog', { name: 'Voice OS is open elsewhere' });
+
+		await Bun.sleep(300);
+		expect(await overlayOf(first.page).count()).toBe(0);
+
+		const second = await signIn();
+		await overlayOf(first.page).waitFor({ timeout: 5000 });
+		expect(await overlayOf(first.page).innerText()).toContain('Voice OS is open on');
+		expect(await overlayOf(second.page).count()).toBe(0);
+
+		// Aside, the first neither talks nor listens: Space opens nothing.
+		const starts = received.filter((entry) => entry.message.type === 'ptt_start').length;
+		await first.page.keyboard.down('Space');
+		await Bun.sleep(300);
+		await first.page.keyboard.up('Space');
+		await Bun.sleep(200);
+		expect(received.filter((entry) => entry.message.type === 'ptt_start')).toHaveLength(starts);
+
+		await first.page.getByRole('button', { name: 'Use here' }).click();
+		await overlayOf(first.page).waitFor({ state: 'detached', timeout: 5000 });
+		await overlayOf(second.page).waitFor({ timeout: 5000 });
+
+		// The main screen is a tab, not a connection: closing it leaves the other aside until Use here.
+		await first.context.close();
+		await Bun.sleep(300);
+		expect(await overlayOf(second.page).count()).toBe(1);
+		await second.context.close();
+	}, 30_000);
+
+	it('the phone opened last is the main screen: its mic works; the Mac tab behind it steps aside', async () => {
+		await ensureIdle(REF);
+		const mac = await signIn();
+		const { context, page, client } = await openPhone(onSession);
+
+		await mac.page
+			.getByRole('dialog', { name: 'Voice OS is open elsewhere' })
+			.waitFor({ timeout: 5000 });
+		const mic = page.getByRole('button', { name: 'Hold to talk' });
+		await mic.waitFor({ timeout: 5000 });
+		const box = await mic.boundingBox();
+		await page.mouse.move((box?.x ?? 0) + 18, (box?.y ?? 0) + 18);
+		await page.mouse.down();
+		await waitUntil(() => fromClient(client, 'ptt_start').length === 1);
+		await page.mouse.up();
+		await waitUntil(() => fromClient(client, 'ptt_stop').length === 1);
+		await context.close();
+		await mac.context.close();
+	}, 30_000);
+
+	const overlayOn = (page: Page) =>
+		page.getByRole('dialog', { name: 'Voice OS is open elsewhere' });
+
+	// The page's client id: whatever its next message comes from (Esc sends one).
+	const readClientId = async (page: Page): Promise<string> => {
+		const before = received.length;
+		await page.keyboard.press('Escape');
+		await waitUntil(() => received.length > before);
+
+		return received.at(-1)?.client ?? '';
+	};
+
+	it('a server restart: only the tab that was main claims it back; the other stays aside, no claim on its reconnect', async () => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
+		const aside = await signIn();
+		const main = await signIn();
+		await overlayOn(aside.page).waitFor({ timeout: 5000 });
+
+		const port = gateway.port;
+		gateway.stop();
+		gateway = startServer(port);
+
+		// Both tabs come back (a restarted server reloads them). The former main takes it again; the
+		// other never claims, so it is aside again, and the main one has no overlay.
+		await main.page.locator('.vo-top').waitFor({ timeout: 15_000 });
+		await Bun.sleep(1500);
+		await overlayOn(aside.page).waitFor({ timeout: 10_000 });
+		expect(await overlayOn(main.page).count()).toBe(0);
+		// Counted, not inferred from the overlays: the aside tab's new connection never claimed.
+		const asideId = await readClientId(aside.page);
+		expect(claims.filter((client) => client === asideId)).toEqual([]);
+		expect(await main.page.getByText('Voice is on no screen right now.').count()).toBe(0);
+		await aside.context.close();
+		await main.context.close();
+	}, 40_000);
+
+	it('a duplicated tab (its sessionStorage copied) is told tab_taken, takes its own id and stays aside', async () => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
+		const original = await signIn();
+		const readTabId = (page: Page) => page.evaluate(() => sessionStorage.getItem('voiceos-tab-id'));
+		const copiedId = await readTabId(original.page);
+		expect(copiedId).toBeTruthy();
+
+		// "Duplicate tab": the copy loads with the original's sessionStorage. Copied once, so the
+		// id the page makes for itself is what its later loads read.
+		const context = await browser.newContext({ permissions: ['microphone'] });
+		const page = await context.newPage();
+		watchErrors(page);
+		await page.goto(`http://localhost:${gateway.port}/login?token=${TOKEN}`);
+		await context.addInitScript((id: string) => {
+			if (!sessionStorage.getItem('ui-duplicated')) {
+				sessionStorage.setItem('ui-duplicated', '1');
+				sessionStorage.setItem('voiceos-tab-id', id);
+				sessionStorage.setItem('voiceos-was-main', '1');
+			}
+		}, copiedId ?? '');
+		await page.goto(`http://localhost:${gateway.port}/voice`);
+		await page.waitForSelector('.vo-top');
+
+		await page.waitForFunction((id) => sessionStorage.getItem('voiceos-tab-id') !== id, copiedId, {
+			timeout: 5000,
+		});
+		await overlayOn(page).waitFor({ timeout: 5000 });
+		expect(await overlayOn(original.page).count()).toBe(0);
+		expect(await page.evaluate(() => sessionStorage.getItem('voiceos-was-main'))).toBeNull();
+
+		// Its new id was said again: Use here works from it, and the original steps aside.
+		await takeMainScreen(page);
+		await overlayOn(original.page).waitFor({ timeout: 5000 });
+		await original.context.close();
+		await context.close();
+	}, 30_000);
+
+	it('a tab aside plays nothing and reports no audio_done; the main one does', async () => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
+		const aside = await signIn();
+		const asideId = await readClientId(aside.page);
+		const main = await signIn();
+		const mainId = await readClientId(main.page);
+		await overlayOn(aside.page).waitFor({ timeout: 5000 });
+
+		// 0.2 s of silence at the speech rate.
+		const pcm = Buffer.alloc(9600).toString('base64');
+		gateway.broadcast({ type: 'audio', id: 'ui-aside-clip', base64: pcm, isLast: false });
+		gateway.broadcast({ type: 'audio', id: 'ui-aside-clip', base64: '', isLast: true });
+		const doneFrom = (client: string) =>
+			received.filter(
+				(entry) =>
+					entry.client === client &&
+					entry.message.type === 'audio_done' &&
+					entry.message.id === 'ui-aside-clip',
+			);
+		await waitUntil(() => doneFrom(mainId).length === 1, 5000);
+		await Bun.sleep(300);
+		expect(doneFrom(asideId)).toHaveLength(0);
+		await aside.context.close();
+		await main.context.close();
+	}, 30_000);
+
+	it('the hold mic asks for the microphone inside the press itself, before anything waits (iOS)', async () => {
+		await ensureIdle(REF);
+		// No microphone permission granted ahead: nothing opens the mic at load, the press is first.
+		const context = await browser.newContext({
+			viewport: { width: 390, height: 844 },
+			hasTouch: true,
+		});
+		await context.addInitScript(() => {
+			const probe = window as unknown as { __inPress: boolean; __gumInPress: boolean[] };
+			probe.__inPress = false;
+			probe.__gumInPress = [];
+			// Capture on window runs first; the bubbling one on window runs after React's own handler
+			// (on the root), so between the two is the press's own turn.
+			window.addEventListener('pointerdown', () => (probe.__inPress = true), { capture: true });
+			window.addEventListener('pointerdown', () => (probe.__inPress = false));
+			const getUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+
+			navigator.mediaDevices.getUserMedia = (constraints) => {
+				probe.__gumInPress.push(probe.__inPress);
+
+				return getUserMedia(constraints);
+			};
+		});
+		const page = await context.newPage();
+		watchErrors(page);
+		await page.goto(`http://localhost:${gateway.port}/phone/${PHONE_KEY}`);
+		await page.getByRole('button', { name: 'Use it in the browser instead' }).click();
+		await page.waitForSelector('.vo.phone .mtop');
+		store.dispatch({ type: 'switch_view', view: onSession });
+		const mic = page.getByRole('button', { name: 'Hold to talk' });
+		await mic.waitFor({ timeout: 5000 });
+		const box = await mic.boundingBox();
+
+		await page.mouse.move((box?.x ?? 0) + 18, (box?.y ?? 0) + 18);
+		await page.mouse.down();
+		await page.waitForFunction(
+			() => (window as unknown as { __gumInPress: boolean[] }).__gumInPress.length > 0,
+		);
+		await page.mouse.up();
+		expect(
+			await page.evaluate(() => (window as unknown as { __gumInPress: boolean[] }).__gumInPress),
+		).toEqual([true]);
+		await context.close();
+	}, 30_000);
 
 	it('Settings → Your phone: New code shows the QR and where the phone reaches this Mac', async () => {
 		const { context, page } = await signIn();

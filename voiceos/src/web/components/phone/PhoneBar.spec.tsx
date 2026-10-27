@@ -119,6 +119,14 @@ describe('PhoneBar', () => {
 		expect(html).not.toContain('vo-spoken');
 	});
 
+	it('a refused mic: what to do, above the bar', () => {
+		const html = render(voiceIn('push', { micStatus: 'denied' }));
+
+		expect(html).toContain('class="phone-note mic-help" role="alert"');
+		expect(html).toContain('then hold the mic again');
+		expect(render(voiceIn('text', { micStatus: 'denied' }))).not.toContain('mic-help');
+	});
+
 	it('an inactive session on screen: only the way to activate it', () => {
 		const html = render(voiceIn('push'), { ...onSession(), active: [] });
 
@@ -141,7 +149,7 @@ describe('describePhoneHint', () => {
 	});
 
 	it('a blocked mic says so, except in text only', () => {
-		expect(hint('push', { micStatus: 'denied' })).toContain('blocked');
+		expect(hint('push', { micStatus: 'denied' })).toBe('Microphone blocked');
 		expect(hint('text', { micStatus: 'denied' })).toBe('Type a message');
 	});
 });

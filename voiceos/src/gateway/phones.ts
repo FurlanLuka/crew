@@ -141,6 +141,39 @@ export const deviceFromUserAgent = (userAgent: string | null | undefined): Phone
 	return 'Phone';
 };
 
+const BROWSERS: Array<[RegExp, string]> = [
+	[/Edg\//, 'Edge'],
+	[/Firefox\/|FxiOS/, 'Firefox'],
+	[/Chrome\/|CriOS/, 'Chrome'],
+	[/Safari\//, 'Safari'],
+];
+
+const SYSTEMS: Array<[RegExp, string]> = [
+	[/Macintosh|Mac OS X/, 'Mac'],
+	[/Windows/, 'Windows'],
+	[/CrOS/, 'ChromeOS'],
+	[/Linux/, 'Linux'],
+];
+
+// What the "open on <device>" overlay names: the phone kind, or system and browser on a computer.
+export const describeDevice = (userAgent: string | null | undefined): string => {
+	const phone = deviceFromUserAgent(userAgent);
+
+	if (phone !== 'Phone') {
+		return phone;
+	}
+
+	const agent = userAgent ?? '';
+	const system = SYSTEMS.find(([pattern]) => pattern.test(agent))?.[1];
+	const browser = BROWSERS.find(([pattern]) => pattern.test(agent))?.[1];
+
+	if (system && browser) {
+		return `${system} · ${browser}`;
+	}
+
+	return system ?? browser ?? 'Browser';
+};
+
 export const shouldRecordSeen = (lastMs: number | undefined, nowMs: number): boolean =>
 	lastMs === undefined || nowMs - lastMs >= SEEN_THROTTLE_MS;
 

@@ -84,6 +84,9 @@ const App = () => {
 		ignoredAt,
 		openRequest,
 		keptDictation,
+		mainState,
+		mainDevice,
+		claimMain,
 	} = useConnection((message) => player.receive(message));
 	// The "Voice OS" wordmark moment: "Voice" struck through while voice is off.
 	const [moment, setMoment] = useState<{ isStruck: boolean } | null>(null);
@@ -302,6 +305,9 @@ const App = () => {
 							keptDictation={keptDictation}
 							blockedOpen={blockedOpen}
 							player={player}
+							mainState={mainState}
+							mainDevice={mainDevice}
+							onClaimMain={claimMain}
 							onHome={goHome}
 							onSetUp={openSetup}
 						/>

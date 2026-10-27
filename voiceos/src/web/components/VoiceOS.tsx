@@ -8,6 +8,7 @@ import { parentView } from '../../shared/machines.js';
 import type { ClientMessage, State } from '../../shared/protocol.js';
 import { isInDialog } from '../in-dialog.js';
 import type { Dispatch, ListenCommand, MicStatus } from '../types.js';
+import { type MainState, wasReloadedByPage, wasTabRenewed } from '../main-screen.js';
 import type { ConnectionStatus, KeptDictation, OpenRequest } from '../use-connection.js';
 import type { PcmPlayer } from '../use-speech-player.js';
 import { IS_PHONE, IS_PHONE_LINK, shouldShowInstall } from '../phone.js';
@@ -18,6 +19,7 @@ import { BeforeYouTalk, listMissingKeys } from './BeforeYouTalk.js';
 import { BottomBar } from './BottomBar.js';
 import { ConnectionBanner } from './ConnectionBanner.js';
 import { Cockpit } from './Cockpit.js';
+import { MainElsewhere } from './MainElsewhere.js';
 import { NewSessionDialog } from './NewSessionDialog.js';
 import { isStandalone, readInstallDismissed } from './phone/InstallGuide.js';
 import { PhoneVoiceOS } from './phone/PhoneVoiceOS.js';
@@ -25,6 +27,10 @@ import { Settings } from './Settings.js';
 import { TopBar } from './TopBar.js';
 
 const IGNORED_DOT_MS = 900;
+
+// Once per page load: Voice OS opened here takes the main screen. A reconnect (a tab waking up), the
+// reload a restarted server causes, and a page that only shows Home or Set up never do.
+let hasClaimedMain = typeof window !== 'undefined' && wasReloadedByPage();
 
 // How long a New session line stays in the notices.
 const NEW_SESSION_LINE_MS = 5000;
@@ -41,6 +47,10 @@ interface VoiceOSProps {
 	keptDictation: KeptDictation | null;
 	blockedOpen: OpenRequest | null;
 	player: PcmPlayer;
+	// Whether this page listens and speaks: only the main screen does.
+	mainState: MainState;
+	mainDevice: string;
+	onClaimMain: () => void;
 	onHome: () => void;
 	onSetUp: (machine: string) => void;
 }
@@ -77,6 +87,9 @@ export const VoiceOS = ({
 	keptDictation,
 	blockedOpen,
 	player,
+	mainState,
+	mainDevice,
+	onClaimMain,
 	onHome,
 	onSetUp,
 }: VoiceOSProps) => {
@@ -122,7 +135,19 @@ export const VoiceOS = ({
 		player,
 		micStatus,
 		onMicStatusChange: setMicStatus,
+		isMain: mainState === 'here',
 	});
+
+	useEffect(() => {
+		if (isConnected && !hasClaimedMain) {
+			hasClaimedMain = true;
+
+			// A duplicated tab told tab_taken before this ran: the original keeps the main screen.
+			if (!wasTabRenewed()) {
+				onClaimMain();
+			}
+		}
+	}, [isConnected, onClaimMain]);
 
 	// Speech without "Voice OS" was heard and left alone: a brief dot, so the mic is seen to work.
 	useEffect(() => {
@@ -194,12 +219,21 @@ export const VoiceOS = ({
 					— the browser held back opening it for you.
 				</div>
 			)}
+			{mainState === 'none' && (
+				<div className="vo-notice" role="status">
+					Voice is on no screen right now.{' '}
+					<button type="button" className="linkish" onClick={onClaimMain}>
+						Use it here
+					</button>
+				</div>
+			)}
 			{newSessionLine && (
 				<div className="vo-notice" role="status">
 					{newSessionLine}
 				</div>
 			)}
-			{micStatus === 'denied' && (
+			{/* A phone says it on its bar, with where this phone keeps the switch. */}
+			{micStatus === 'denied' && !IS_PHONE && (
 				<div className="vo-notice">
 					Microphone blocked. Allow it in the browser's site settings, or type below.
 				</div>
@@ -218,6 +252,7 @@ export const VoiceOS = ({
 
 	const dialogs = (
 		<>
+			{mainState === 'elsewhere' && <MainElsewhere device={mainDevice} onUseHere={onClaimMain} />}
 			{newSessionOn !== null && (
 				<NewSessionDialog
 					state={state}

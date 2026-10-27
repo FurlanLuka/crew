@@ -3381,3 +3381,53 @@ button.line.opens:hover .opens-hint {
 		justify-self: start;
 	}
 }
+
+/* Another screen is the main one: this one steps aside, over everything, until "Use here". */
+.vo-elsewhere {
+	position: fixed;
+	inset: 0;
+	z-index: 90;
+	display: grid;
+	place-items: center;
+	padding: 24px 16px;
+	background:
+		radial-gradient(600px 400px at 20% -10%, rgba(255, 255, 255, 0.06), transparent 60%),
+		rgba(11, 13, 16, 0.97);
+	-webkit-backdrop-filter: blur(18px);
+	backdrop-filter: blur(18px);
+}
+.vo-elsewhere-card {
+	display: grid;
+	gap: 18px;
+	justify-items: start;
+	width: min(440px, 100%);
+}
+.vo-elsewhere-card .wm {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	font: 700 20px var(--sys);
+	color: #fff;
+}
+.vo-elsewhere-card .wm span {
+	font: 10.5px var(--mono);
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: var(--label-3);
+}
+.vo-elsewhere-card h1 {
+	margin: 0;
+	font: 650 28px / 1.15 var(--sys);
+	letter-spacing: -0.02em;
+	color: #fff;
+}
+.vo-elsewhere-card p {
+	margin: 0;
+	color: var(--label-2);
+	font-size: 15px;
+	line-height: 1.45;
+}
+.vo-elsewhere-card .btn {
+	min-height: 48px;
+	padding: 0 28px;
+}

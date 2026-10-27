@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ClientMessage, State } from '../shared/protocol.js';
 import { Mic, isMicAllowed } from './audio.js';
+import { clientLog } from './client-log.js';
 import { isInDialog } from './in-dialog.js';
 import { type InputMode, isListeningMode } from './listen-mode.js';
 import { PRE_ROLL_MS } from './ptt.js';
@@ -22,7 +23,48 @@ interface UseVoiceInputParams {
 	player: PcmPlayer;
 	micStatus: MicStatus;
 	onMicStatusChange: (micStatus: MicStatus) => void;
+	// Another screen is the main one: this one neither listens nor speaks until it is used here.
+	isMain: boolean;
 }
+
+interface TalkGate {
+	isPressed: boolean;
+	isMain: boolean;
+	isVoiceOff: boolean;
+	isOnDiscord: boolean;
+	mode: InputMode;
+}
+
+// Why a press does nothing here, or null when it opens the mic: each reason goes to the log.
+export const readTalkRefusal = ({
+	isPressed,
+	isMain,
+	isVoiceOff,
+	isOnDiscord,
+	mode,
+}: TalkGate): string | null => {
+	if (isPressed) {
+		return 'already pressed';
+	}
+
+	if (!isMain) {
+		return 'another screen is the main one';
+	}
+
+	if (isVoiceOff) {
+		return 'voice is off';
+	}
+
+	if (isOnDiscord) {
+		return 'Discord has the mic';
+	}
+
+	if (mode === 'text') {
+		return 'text only';
+	}
+
+	return isListeningMode(mode) ? 'a listening mode streams already' : null;
+};
 
 const isTypingInField = (event: KeyboardEvent) =>
 	event.target instanceof HTMLInputElement ||
@@ -43,6 +85,7 @@ export const useVoiceInput = ({
 	player,
 	micStatus,
 	onMicStatusChange,
+	isMain,
 }: UseVoiceInputParams) => {
 	const micRef = useRef<Mic | null>(null);
 	// Set synchronously on key down/up: a release while the mic is still opening must not be lost.
@@ -52,9 +95,14 @@ export const useVoiceInput = ({
 	const isDictating = dictationStartedAt !== null;
 	const isOnDiscordRef = useRef(false);
 	isOnDiscordRef.current = Boolean(state.discord?.isOwnerIn);
-	const isVoiceOff = state.voiceOff;
+	// Voice off, or another screen holding the main role: nothing listens or plays here.
+	const isVoiceOff = state.voiceOff || !isMain;
 	const isVoiceOffRef = useRef(isVoiceOff);
 	isVoiceOffRef.current = isVoiceOff;
+	const isMainRef = useRef(isMain);
+	isMainRef.current = isMain;
+	const isVoiceOffStateRef = useRef(state.voiceOff);
+	isVoiceOffStateRef.current = state.voiceOff;
 
 	useEffect(() => {
 		player.setNotify((id) => send({ type: 'audio_done', id }));
@@ -88,7 +136,7 @@ export const useVoiceInput = ({
 	});
 
 	// Text only stays quiet in this tab: speech is acknowledged unplayed, so the server never waits on it.
-	useEffect(() => player.setMuted(listenMode === 'text'), [player, listenMode]);
+	useEffect(() => player.setMuted(listenMode === 'text' || !isMain), [player, listenMode, isMain]);
 
 	// Voice off: what plays stops and the device is let go, so the browser's recording light goes out.
 	useEffect(() => {
@@ -125,33 +173,44 @@ export const useVoiceInput = ({
 
 	const handleTalkStart = useCallback(
 		async ({ isDictation = false }: { isDictation?: boolean } = {}) => {
-			// The mic already streams in the listening modes, or Discord has it; text has none.
-			if (
-				isPressedRef.current ||
-				isListeningMode(listenModeRef.current) ||
-				listenModeRef.current === 'text' ||
-				isOnDiscordRef.current ||
-				isVoiceOffRef.current
-			) {
+			const refusal = readTalkRefusal({
+				isPressed: isPressedRef.current,
+				isMain: isMainRef.current,
+				isVoiceOff: isVoiceOffStateRef.current,
+				isOnDiscord: isOnDiscordRef.current,
+				mode: listenModeRef.current,
+			});
+
+			if (refusal) {
+				clientLog('info', 'mic', 'press ignored', { reason: refusal });
+
 				return;
 			}
 
 			isPressedRef.current = true;
+			// The mic opens first, in this same turn: iOS asks for it and starts its audio only inside
+			// the gesture, and anything awaited before it would end the gesture.
+			const microphone = getMic();
+			const opening = microphone.ensure();
+			microphone.wake();
 			// Read before stopping: stopping marks the speech as having ended now.
 			const hasRecentSpeech = player.isAudibleWithin(PRE_ROLL_MS);
 			player.stop();
-			const microphone = getMic();
-			const sampleRate = await microphone.ensure().catch(() => null);
+			const sampleRate = await opening.catch(() => null);
 
 			if (sampleRate === null) {
 				isPressedRef.current = false;
+				clientLog('warn', 'mic', 'mic denied');
 				onMicStatusChange('denied');
 
 				return;
 			}
 
-			// Released while the mic was opening: nothing was started, nothing to stop.
+			// Released while the mic was opening (a tap): nothing was started, nothing to stop. The
+			// permission it asked for stays granted.
 			if (!isPressedRef.current) {
+				clientLog('info', 'mic', 'released before the mic opened');
+
 				return;
 			}
 
@@ -182,6 +241,8 @@ export const useVoiceInput = ({
 		isPressedRef.current = false;
 		setDictationStartedAt(null);
 		setIsDiscardArmed(false);
+		// A touch's release is the gesture iOS counts: a device still suspended starts here.
+		micRef.current?.wake();
 		// The tail keeps streaming briefly; the mic sends ptt_stop when it is done.
 		micRef.current?.release();
 	}, []);

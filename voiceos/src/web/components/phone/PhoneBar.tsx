@@ -16,12 +16,14 @@ import { readSessionLabel } from '../../../shared/machines.js';
 import { type ClientMessage, MAX_TEXT_CHARS, type State } from '../../../shared/protocol.js';
 import { readScreenRef } from '../../../state/helpers.js';
 import { INPUT_MODES, type InputMode, isListeningMode } from '../../listen-mode.js';
+import { describeMicHelp, readPlatform } from '../../phone.js';
 import type { MicStatus } from '../../types.js';
 import { useSlashCommands } from '../../use-slash-commands.js';
 import type { KeptDictation } from '../../use-connection.js';
 import type { VoiceInput } from '../../use-voice-input.js';
 import { MODE_COPY } from '../ModeMenu.js';
 import { MomentsRow } from '../MomentsRow.js';
+import { isStandalone } from './InstallGuide.js';
 import { SlashMenu } from '../SlashMenu.js';
 import { ModeSheet } from './ModeSheet.js';
 import { HoldMicIcon, SendIcon } from './phone-icons.js';
@@ -43,7 +45,7 @@ export const describePhoneHint = ({
 	isDictating,
 }: HintParams): string => {
 	if (micStatus === 'denied' && mode !== 'text') {
-		return 'Microphone blocked: allow it in the browser';
+		return 'Microphone blocked';
 	}
 
 	switch (mode) {
@@ -83,9 +85,15 @@ interface HoldMicProps {
 // Held, not clicked: the pointer is captured so a thumb sliding off the button still lets go here.
 const HoldMic = ({ voice, isLive }: HoldMicProps) => {
 	const press = (event: PointerEvent<HTMLButtonElement>) => {
-		event.preventDefault();
-		event.currentTarget.setPointerCapture(event.pointerId);
+		// The mic first, before anything else can throw or wait: iOS asks for it only inside the press.
 		void voice.handleTalkStart();
+		event.preventDefault();
+
+		try {
+			event.currentTarget.setPointerCapture(event.pointerId);
+		} catch {
+			// A touch is captured by its target anyway; some browsers refuse an explicit capture.
+		}
 	};
 
 	return (
@@ -251,6 +259,14 @@ export const PhoneBar = ({ state, voice, isAwake, keptDictation, send }: PhoneBa
 	return (
 		<footer className="vo-bar phone-bar">
 			<MomentsRow state={state} dispatch={(action) => send({ type: 'action', action })} />
+			{micStatus === 'denied' && mode !== 'text' && (
+				<p className="phone-note mic-help" role="alert">
+					{describeMicHelp(
+						readPlatform(navigator.userAgent, navigator.maxTouchPoints),
+						isStandalone(),
+					)}
+				</p>
+			)}
 			<form className={fieldClass} data-mode={mode} onSubmit={submit}>
 				{isTyping && <SlashMenu slash={slash} onPicked={() => fieldRef.current?.focus()} />}
 				<button

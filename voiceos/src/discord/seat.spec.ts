@@ -6,7 +6,7 @@ const seatWith = (page: string | null): SpeakerSeat => {
 	const seat = new SpeakerSeat();
 
 	if (page) {
-		seat.pageOpened(page);
+		seat.claim(page);
 	}
 
 	return seat;
@@ -26,13 +26,15 @@ describe('SpeakerSeat', () => {
 		expect(seat.current).toBe('tab-a');
 	});
 
-	it('a page used while in the channel → the channel keeps the seat', () => {
+	it('a page claims while in the channel → the channel keeps the seat; leaving → the claimant', () => {
 		const seat = seatWith('tab-a');
 
 		seat.discordJoined();
-		seat.pageUsed('tab-b');
+		seat.claim('tab-b');
 
 		expect(seat.current).toBe(DISCORD_CLIENT);
+		seat.discordLeft();
+		expect(seat.current).toBe('tab-b');
 	});
 
 	it('the page from before closed meanwhile → leaving gives no speaker, never a closed tab', () => {
@@ -45,23 +47,25 @@ describe('SpeakerSeat', () => {
 		expect(seat.current).toBeNull();
 	});
 
-	it('no page when joining → no speaker after leaving; the next page used takes it', () => {
+	it('no page when joining → no speaker after leaving; the next claim takes it', () => {
 		const seat = seatWith(null);
 
 		seat.discordJoined();
 		seat.discordLeft();
 		expect(seat.current).toBeNull();
 
-		seat.pageUsed('tab-b');
+		seat.claim('tab-b');
 		expect(seat.current).toBe('tab-b');
 	});
 
-	it('a second page opening → the first keeps the audio', () => {
+	it('a claim moves the seat; the main closing leaves it empty, as main_client null', () => {
 		const seat = seatWith('tab-a');
 
-		seat.pageOpened('tab-b');
+		seat.claim('tab-b');
+		expect(seat.current).toBe('tab-b');
 
-		expect(seat.current).toBe('tab-a');
+		seat.pageClosed('tab-b');
+		expect(seat.current).toBeNull();
 	});
 });
 

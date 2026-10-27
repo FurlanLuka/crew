@@ -247,7 +247,13 @@ describe('gateway', () => {
 		const secondClient = await connectClient(port, { origin: createOrigin(port), cookie });
 
 		store.dispatch({ type: 'rename_session', ref: 'store/main', name: 'checkout retries' });
-		await waitUntil(() => firstClient.messages.length >= 3 && secondClient.messages.length >= 2);
+		// you and main_client also arrive on connect; only the state's messages are counted.
+		const countState = (messages: ServerMessage[]) =>
+			messages.filter((message) => message.type === 'snapshot' || message.type === 'input').length;
+
+		await waitUntil(
+			() => countState(firstClient.messages) >= 3 && countState(secondClient.messages) >= 2,
+		);
 
 		const replay = (messages: ServerMessage[]) =>
 			messages.reduce<State | null>((state, message) => {

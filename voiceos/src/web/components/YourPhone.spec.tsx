@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { PhoneCode, TailscaleStatus } from '../your-phone.js';
-import { Pairing, PhonesList, TailscaleCard } from './YourPhone.js';
+import { Pairing, PhoneOnlyNote, PhonesList, TailscaleCard } from './YourPhone.js';
 
 const noop = () => undefined;
 
@@ -111,5 +111,18 @@ describe('Your phone', () => {
 		expect(html).toContain('<b>iPhone</b>');
 		expect(html).toContain('added Oct 24 · last opened 2 minutes ago');
 		expect(html).toContain('Revoke');
+	});
+
+	it('on a phone itself: the phones, and no New code, Tailscale or Revoke', () => {
+		const html = renderToStaticMarkup(
+			<PhoneOnlyNote
+				phones={[{ id: 'p1', name: 'Phone', device: 'iPhone', created: '2026-10-24T09:00:00Z' }]}
+				now={Date.parse('2026-10-26T09:00:00Z')}
+			/>,
+		);
+
+		expect(html).toContain('<b>iPhone</b>');
+		expect(html).toContain('Settings on the Mac');
+		expect(html).not.toContain('<button');
 	});
 });

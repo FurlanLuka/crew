@@ -50,3 +50,14 @@ export const readPlatform = (userAgent: string, maxTouchPoints = 0): PhonePlatfo
 	/iPhone|iPad|iPod/.test(userAgent) || (/Macintosh/.test(userAgent) && maxTouchPoints > 1)
 		? 'ios'
 		: 'other';
+
+// What to do once the microphone was refused: where this phone keeps that switch.
+export const describeMicHelp = (platform: PhonePlatform, isStandalone: boolean): string => {
+	if (platform !== 'ios') {
+		return "Microphone blocked. Allow it in the browser's site settings, then hold the mic again.";
+	}
+
+	return isStandalone
+		? 'Microphone blocked. Turn it on in Settings → Voice OS → Microphone, then hold the mic again.'
+		: 'Microphone blocked. Turn it on in Settings → Safari → Microphone, then hold the mic again.';
+};

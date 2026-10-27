@@ -50,12 +50,9 @@ export class PcmPlayer {
 			return;
 		}
 
-		// Muted: nothing plays, and the clip is done the moment its last chunk arrives.
+		// Muted: nothing plays and nothing is reported. Another tab may be playing it, and the server
+		// times a clip nobody reports on by its own length.
 		if (this.isMuted) {
-			if (message.isLast) {
-				this.notify(message.id);
-			}
-
 			return;
 		}
 

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'bun:test';
-import { decideIsPhone, isPhonePath, readPlatform, shouldShowInstall } from './phone.js';
+import {
+	decideIsPhone,
+	describeMicHelp,
+	isPhonePath,
+	readPlatform,
+	shouldShowInstall,
+} from './phone.js';
 
 describe('decideIsPhone', () => {
 	it.each([
@@ -42,4 +48,12 @@ describe('readPlatform', () => {
 	])('%s (%d touch points) → %s', (ua, touch, platform) =>
 		expect(readPlatform(ua, touch)).toBe(platform as 'ios' | 'other'),
 	);
+});
+
+describe('describeMicHelp', () => {
+	it('names where this phone keeps the microphone switch', () => {
+		expect(describeMicHelp('ios', false)).toContain('Settings → Safari → Microphone');
+		expect(describeMicHelp('ios', true)).toContain('Settings → Voice OS → Microphone');
+		expect(describeMicHelp('other', false)).toContain("browser's site settings");
+	});
 });

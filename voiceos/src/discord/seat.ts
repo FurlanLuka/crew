@@ -1,4 +1,4 @@
-// Who speaks: the page the developer used last, or the voice channel while they are in it.
+// Who speaks: the page that claimed the main screen, or the voice channel while they are in it.
 import { DISCORD_CLIENT } from './bridge.js';
 
 export class SpeakerSeat {
@@ -14,16 +14,16 @@ export class SpeakerSeat {
 		return this.speaker === DISCORD_CLIENT;
 	}
 
-	// A page sent something: it speaks from now on, unless the voice channel holds the seat.
-	pageUsed(client: string): void {
-		if (!this.isOnDiscord) {
-			this.speaker = client;
-		}
-	}
+	// The page that claimed the main screen speaks: one record for "main" and "speaker". While the
+	// voice channel holds the seat, the claim is where speech returns once the owner leaves it.
+	claim(client: string): void {
+		if (this.isOnDiscord) {
+			this.before = client;
 
-	// A second page opening must not take the audio from the one in use; only an empty seat is taken.
-	pageOpened(client: string): void {
-		this.speaker ??= client;
+			return;
+		}
+
+		this.speaker = client;
 	}
 
 	pageClosed(client: string): void {

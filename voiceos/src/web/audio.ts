@@ -1,3 +1,4 @@
+import { clientLog, describeError } from './client-log.js';
 import { PttBuffer, type PressParams } from './ptt.js';
 
 const WORKLET_SOURCE = `
@@ -52,12 +53,35 @@ export class Mic {
 		}
 
 		this.mode = mode;
-		this.opening ??= this.open(mode).catch((error: unknown) => {
-			this.opening = null;
-			throw error;
-		});
+
+		if (!this.opening) {
+			clientLog('info', 'mic', 'ensure start', { mode });
+			this.opening = this.open(mode).then(
+				(sampleRate) => {
+					clientLog('info', 'mic', 'ensure open', { mode, sampleRate });
+
+					return sampleRate;
+				},
+				(error: unknown) => {
+					clientLog('warn', 'mic', 'ensure failed', { mode, ...describeError(error) });
+					this.opening = null;
+					throw error;
+				},
+			);
+		}
 
 		return this.opening;
+	}
+
+	// iOS starts audio only from a gesture: each press and release nudges a suspended device awake.
+	wake(): void {
+		const context = this.device?.context;
+
+		if (context?.state === 'suspended') {
+			void context.resume().catch(() => {
+				// Still suspended: the next gesture tries again.
+			});
+		}
 	}
 
 	listen(begin: () => void): void {
@@ -112,23 +136,58 @@ export class Mic {
 		this.buffer?.release();
 	}
 
-	private async open(mode: MicMode): Promise<number> {
+	// Not async on purpose: getUserMedia and the AudioContext must start in the caller's own turn,
+	// inside the press, before anything awaits — iOS asks for the mic and starts audio only from a
+	// gesture, and a press that awaited first is no longer one.
+	private open(mode: MicMode): Promise<number> {
 		const generation = this.generation;
 
 		if (!navigator.mediaDevices?.getUserMedia) {
-			throw new Error('microphone needs a secure origin (open the localhost or https link)');
+			return Promise.reject(
+				new Error('microphone needs a secure origin (open the localhost or https link)'),
+			);
 		}
 
 		// Raw like Soniox's own SDK: call processing smears consonants; hands-free needs echo cancelling.
 		const echoCancellation = mode === 'handsFree';
-		const stream = await navigator.mediaDevices.getUserMedia({
+		const streaming = navigator.mediaDevices.getUserMedia({
 			audio: { channelCount: 1, echoCancellation, noiseSuppression: false, autoGainControl: false },
 		});
 		// The device's own rate and ~100 ms frames: browser resampling is where quality went.
 		const context = new AudioContext();
+
+		void context.resume().catch(() => {
+			// Resumed by the next press (wake).
+		});
+
+		return this.connect(streaming, context, generation, mode);
+	}
+
+	private async connect(
+		streaming: Promise<MediaStream>,
+		context: AudioContext,
+		generation: number,
+		mode: MicMode,
+	): Promise<number> {
+		let stream: MediaStream;
+
+		try {
+			stream = await streaming;
+		} catch (error) {
+			void context.close();
+			throw error;
+		}
+
 		const url = URL.createObjectURL(new Blob([WORKLET_SOURCE], { type: 'application/javascript' }));
-		await context.audioWorklet.addModule(url);
-		URL.revokeObjectURL(url);
+
+		try {
+			await context.audioWorklet.addModule(url);
+		} catch (error) {
+			releaseDevice({ stream, context });
+			throw error;
+		} finally {
+			URL.revokeObjectURL(url);
+		}
 
 		if (generation !== this.generation) {
 			releaseDevice({ stream, context });
