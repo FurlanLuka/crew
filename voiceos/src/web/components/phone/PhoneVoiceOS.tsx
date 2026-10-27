@@ -1,5 +1,5 @@
 // Voice OS on a phone: the same state, components and tokens as the desktop, arranged for a narrow
-// touch screen — a top bar with back, the name and ⋯ instead of the tab strip, a session that is only
+// touch screen — Home as one card per session, a top bar with back, the name and ⋯ instead of the tab strip, a session that is only
 // its conversation, and one bar for every listening mode. The view is still the server's, shared with
 // every tab: words said here go to the session on screen. ⋯ is this page's alone.
 import { type ReactNode, useState } from 'react';
@@ -8,10 +8,10 @@ import type { Dispatch } from '../../types.js';
 import type { KeptDictation } from '../../use-connection.js';
 import type { VoiceInput } from '../../use-voice-input.js';
 import { Activate } from '../Activate.js';
-import { ActiveView } from '../ActiveView.js';
 import { Settings } from '../Settings.js';
 import { InstallGuide } from './InstallGuide.js';
 import { PhoneBar } from './PhoneBar.js';
+import { PhoneHome } from './PhoneHome.js';
 import { PhoneSession } from './PhoneSession.js';
 import { PhoneTopBar } from './PhoneTopBar.js';
 
@@ -95,7 +95,7 @@ export const PhoneVoiceOS = ({
 						onSetUpMachine={onSetUp}
 					/>
 				) : (
-					<ActiveView state={state} dispatch={dispatch} onNewSession={() => onNewSession()} />
+					<PhoneHome state={state} dispatch={dispatch} />
 				)}
 			</main>
 			<PhoneBar

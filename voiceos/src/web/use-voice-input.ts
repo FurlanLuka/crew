@@ -5,7 +5,8 @@ import type { ClientMessage, State } from '../shared/protocol.js';
 import { Mic, isMicAllowed } from './audio.js';
 import { clientLog } from './client-log.js';
 import { isInDialog } from './in-dialog.js';
-import { type InputMode, isListeningMode } from './listen-mode.js';
+import { createEchoGatedSend, type InputMode, isListeningMode } from './listen-mode.js';
+import { IS_PHONE } from './phone.js';
 import { PRE_ROLL_MS } from './ptt.js';
 import type { ListenCommand, MicStatus } from './types.js';
 import { useListenMode } from './use-listen-mode.js';
@@ -108,9 +109,17 @@ export const useVoiceInput = ({
 		player.setNotify((id) => send({ type: 'audio_done', id }));
 	}, [player, send]);
 
+	// The mode as the mic's own callback reads it: the hook that owns the mode needs the mic first.
+	const modeForMicRef = useRef<InputMode>('push');
+
 	const getMic = useCallback(() => {
 		micRef.current ??= new Mic({
-			onAudio: sendBinary,
+			onAudio: createEchoGatedSend({
+				isPhone: IS_PHONE,
+				readMode: () => modeForMicRef.current,
+				isAudibleWithin: (ms) => player.isAudibleWithin(ms),
+				send: sendBinary,
+			}),
 			onStop: () => {
 				send({ type: 'ptt_stop' });
 
@@ -121,7 +130,7 @@ export const useVoiceInput = ({
 		});
 
 		return micRef.current;
-	}, [send, sendBinary, onMicStatusChange]);
+	}, [send, sendBinary, player, onMicStatusChange]);
 
 	// Leaving Voice OS lets go of the device: the browser's recording light goes out.
 	useEffect(() => () => micRef.current?.close(), []);
@@ -134,8 +143,9 @@ export const useVoiceInput = ({
 		send,
 		onMicStatusChange,
 	});
+	modeForMicRef.current = listenMode;
 
-	// Text only stays quiet in this tab: speech is acknowledged unplayed, so the server never waits on it.
+	// Text only, or another screen holding the main role: nothing plays here.
 	useEffect(() => player.setMuted(listenMode === 'text' || !isMain), [player, listenMode, isMain]);
 
 	// Voice off: what plays stops and the device is let go, so the browser's recording light goes out.

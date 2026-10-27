@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test';
-import { Mic } from './audio.js';
+import { Mic, readMicConstraints } from './audio.js';
 import { setClientLogSink } from './client-log.js';
 import type { ClientMessage } from '../shared/protocol.js';
 
@@ -90,5 +90,28 @@ describe('Mic.ensure', () => {
 		const mic = new Mic({ onAudio: () => undefined, onStop: () => undefined });
 
 		await expect(mic.ensure()).rejects.toThrow('secure origin');
+	});
+});
+
+describe('readMicConstraints', () => {
+	it('a desktop opens raw, echo cancelling only hands-free', () => {
+		expect(readMicConstraints('raw', false)).toEqual({
+			channelCount: 1,
+			echoCancellation: false,
+			noiseSuppression: false,
+			autoGainControl: false,
+		});
+		expect(readMicConstraints('handsFree', false).echoCancellation).toBe(true);
+	});
+
+	it('a phone cancels echo and noise in every mode, push to talk included', () => {
+		for (const mode of ['raw', 'handsFree'] as const) {
+			expect(readMicConstraints(mode, true)).toEqual({
+				channelCount: 1,
+				echoCancellation: true,
+				noiseSuppression: true,
+				autoGainControl: false,
+			});
+		}
 	});
 });

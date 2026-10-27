@@ -9,7 +9,17 @@
 .vo.phone *::-webkit-scrollbar {
 	display: none;
 }
+/* The installed app runs edge to edge (viewport-fit=cover, a translucent status bar): the page's own
+   colour must reach every edge. A fixed 100vh box, or black html/body showing past it, left a black
+   strip under the bar on an iPhone's home screen. */
+html:has(.vo.phone),
+html:has(.vo.phone) body {
+	height: 100%;
+	background: #0b0d10;
+}
 .vo.phone {
+	inset: 0 0 auto;
+	height: 100dvh;
 	-webkit-tap-highlight-color: transparent;
 }
 
@@ -138,23 +148,6 @@
 .vo.phone .vo-stream > .sheet {
 	margin: 14px 0 0;
 	max-height: none;
-}
-
-/* Home: the list, without the machine cards and the say-it hints. */
-.vo.phone .vo-home .vo-head {
-	padding: 18px 18px 12px;
-}
-.vo.phone .vo-home .vo-head .row-actions,
-.vo.phone .vo-home-side,
-.vo.phone .vo-hgroup-open {
-	display: none;
-}
-.vo.phone .vo-home .vo-head h1 {
-	font-size: 30px;
-}
-.vo.phone .vo-home-body {
-	display: block;
-	padding: 0 14px 24px;
 }
 
 /* ⋯: the side panel, full screen. */

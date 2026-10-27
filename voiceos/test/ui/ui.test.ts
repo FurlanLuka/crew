@@ -61,6 +61,8 @@ const received: ReceivedMessage[] = [];
 // Which client claimed the main screen, in order: the gateway takes claim_main itself.
 const claims: string[] = [];
 const audioChunks: number[] = [];
+// Which client each audio chunk came from, in the same order.
+const audioClients: string[] = [];
 const effects: string[] = [];
 
 const waitUntil = async (check: () => boolean, timeoutMs = 5000): Promise<void> => {
@@ -138,7 +140,10 @@ const startServer = (port = 0): Gateway => {
 				store.dispatch(message.action);
 			}
 		},
-		onAudio: (chunk) => audioChunks.push(chunk.byteLength),
+		onAudio: (chunk, client) => {
+			audioChunks.push(chunk.byteLength);
+			audioClients.push(client);
+		},
 		readHealth: () => ({}),
 		// No hot reload: its socket would push every file another process saves into pages the test already closed.
 		development: false,
@@ -4516,6 +4521,95 @@ describe('phone', () => {
 		await context.close();
 	}, 20_000);
 
+	it('hands-free on a phone: the mic sends nothing while Voice OS speaks, and again once it is quiet', async () => {
+		await ensureIdle(REF);
+		const { context, page, client } = await openPhone(onSession);
+		const chunksFrom = () => audioClients.filter((from) => from === client).length;
+
+		await chooseOnPhone(page, /Hands-free/);
+		await waitUntil(() => fromClient(client, 'listen_start').length === 1);
+		await waitUntil(() => chunksFrom() > 3);
+
+		// 1.5 s of speech at the speech rate (a quiet tone, so it really plays).
+		const samples = new Int16Array(36_000).map((_, index) => Math.round(Math.sin(index / 8) * 800));
+		const base64 = Buffer.from(samples.buffer).toString('base64');
+		gateway.broadcast({ type: 'audio', id: 'ui-echo-clip', base64, isLast: false });
+		gateway.broadcast({ type: 'audio', id: 'ui-echo-clip', base64: '', isLast: true });
+		await Bun.sleep(300);
+		const during = chunksFrom();
+		await Bun.sleep(900);
+		expect(chunksFrom()).toBe(during);
+
+		// Over, and past its echo: the mic sends again.
+		await Bun.sleep(1200);
+		await waitUntil(() => chunksFrom() > during + 2);
+		await chooseOnPhone(page, /Push to talk/);
+		await context.close();
+	}, 30_000);
+
+	it('edge to edge: the page colour reaches the bottom of the screen, under the bar, on html and body too', async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openPhone(onSession);
+		await page.locator('.phone-bar').waitFor({ timeout: 5000 });
+
+		const edges = await page.evaluate(() => {
+			const box = (selector: string) =>
+				(document.querySelector(selector) as HTMLElement).getBoundingClientRect();
+
+			return {
+				height: window.innerHeight,
+				page: Math.round(box('.vo.phone').bottom),
+				bar: Math.round(box('.phone-bar').bottom),
+				html: getComputedStyle(document.documentElement).backgroundColor,
+				body: getComputedStyle(document.body).backgroundColor,
+			};
+		});
+		expect(edges).toEqual({
+			height: 844,
+			page: 844,
+			bar: 844,
+			html: 'rgb(11, 13, 16)',
+			body: 'rgb(11, 13, 16)',
+		});
+		// The last rows of pixels are the page's colour, not black.
+		const shot = await page.screenshot({ clip: { x: 0, y: 840, width: 390, height: 4 } });
+		const { width, height, data } = await page.evaluate(async (base64) => {
+			const image = new Image();
+			image.src = `data:image/png;base64,${base64}`;
+			await image.decode();
+			const canvas = document.createElement('canvas');
+			canvas.width = image.width;
+			canvas.height = image.height;
+			const drawing = canvas.getContext('2d') as CanvasRenderingContext2D;
+			drawing.drawImage(image, 0, 0);
+
+			return {
+				width: image.width,
+				height: image.height,
+				data: [...drawing.getImageData(0, image.height - 1, 1, 1).data],
+			};
+		}, shot.toString('base64'));
+		expect(width).toBeGreaterThan(0);
+		expect(height).toBeGreaterThan(0);
+		expect(data.slice(0, 3)).toEqual([11, 13, 16]);
+		await context.close();
+	}, 20_000);
+
+	it('Home is one card per session, never the desktop rows; a tap opens the session', async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openPhone();
+		const card = page.locator(`.ph-card[data-ref="${REF}"]`);
+
+		await card.waitFor({ timeout: 5000 });
+		expect(await page.locator('.vo-row').count()).toBe(0);
+		expect(await card.locator('.ph-line').innerText()).toBe('Ready');
+		expect(await isNotWider(page)).toBe(true);
+		await card.click();
+		await waitUntil(() => store.state.view.kind === 'session' && store.state.view.ref === REF);
+		await page.getByRole('button', { name: 'More' }).waitFor({ timeout: 5000 });
+		await context.close();
+	}, 20_000);
+
 	it('holding the mic sends ptt_start, letting go ptt_stop; the bar lights up while held', async () => {
 		await ensureIdle(REF);
 		const { context, page, client } = await openPhone(onSession);
@@ -4828,7 +4922,7 @@ describe('phone', () => {
 		await main.context.close();
 	}, 30_000);
 
-	it('the hold mic asks for the microphone inside the press itself, before anything waits (iOS)', async () => {
+	it('the hold mic asks for the microphone inside the press itself, before anything waits (iOS), echo and noise cancelled', async () => {
 		await ensureIdle(REF);
 		// No microphone permission granted ahead: nothing opens the mic at load, the press is first.
 		const context = await browser.newContext({
@@ -4836,9 +4930,14 @@ describe('phone', () => {
 			hasTouch: true,
 		});
 		await context.addInitScript(() => {
-			const probe = window as unknown as { __inPress: boolean; __gumInPress: boolean[] };
+			const probe = window as unknown as {
+				__inPress: boolean;
+				__gumInPress: boolean[];
+				__audio: unknown[];
+			};
 			probe.__inPress = false;
 			probe.__gumInPress = [];
+			probe.__audio = [];
 			// Capture on window runs first; the bubbling one on window runs after React's own handler
 			// (on the root), so between the two is the press's own turn.
 			window.addEventListener('pointerdown', () => (probe.__inPress = true), { capture: true });
@@ -4847,6 +4946,7 @@ describe('phone', () => {
 
 			navigator.mediaDevices.getUserMedia = (constraints) => {
 				probe.__gumInPress.push(probe.__inPress);
+				probe.__audio.push(constraints?.audio);
 
 				return getUserMedia(constraints);
 			};
@@ -4870,6 +4970,12 @@ describe('phone', () => {
 		expect(
 			await page.evaluate(() => (window as unknown as { __gumInPress: boolean[] }).__gumInPress),
 		).toEqual([true]);
+		// A phone's speaker sits next to its mic: cancelling on even in push to talk.
+		expect(
+			await page.evaluate(() => (window as unknown as { __audio: unknown[] }).__audio),
+		).toEqual([
+			{ channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: false },
+		]);
 		await context.close();
 	}, 30_000);
 

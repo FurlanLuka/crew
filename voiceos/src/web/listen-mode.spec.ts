@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 import {
 	applyListenCommand,
+	createEchoGatedSend,
+	isEchoGated,
 	describeListening,
 	isInputMode,
 	listenStartMessage,
@@ -70,4 +72,60 @@ describe('text mode', () => {
 
 	it('the box only takes typing', () =>
 		expect(describeListening({ mode: 'text', isAwake: false })).toBe('Type a message…'));
+});
+
+describe('isEchoGated', () => {
+	it('a phone in an always-listening mode holds its mic while Voice OS speaks', () => {
+		expect(isEchoGated({ isPhone: true, mode: 'hands-free', isSpeaking: true })).toBe(true);
+		expect(isEchoGated({ isPhone: true, mode: 'on-demand', isSpeaking: true })).toBe(true);
+	});
+
+	it('and sends again once it is quiet', () =>
+		expect(isEchoGated({ isPhone: true, mode: 'hands-free', isSpeaking: false })).toBe(false));
+
+	it('push to talk, dictation and text never hold: a press stops the speech', () => {
+		for (const mode of ['push', 'dictation', 'text'] as const) {
+			expect(isEchoGated({ isPhone: true, mode, isSpeaking: true })).toBe(false);
+		}
+	});
+
+	it('a desktop keeps talking over Voice OS to interrupt it', () =>
+		expect(isEchoGated({ isPhone: false, mode: 'hands-free', isSpeaking: true })).toBe(false));
+});
+
+describe('createEchoGatedSend', () => {
+	const chunk = new ArrayBuffer(4);
+
+	it('a phone listening hands-free sends nothing while speech is audible, then sends again', () => {
+		const sent: ArrayBuffer[] = [];
+		let isSpeaking = true;
+		const gated = createEchoGatedSend({
+			isPhone: true,
+			readMode: () => 'hands-free',
+			isAudibleWithin: () => isSpeaking,
+			send: (part) => sent.push(part),
+		});
+
+		gated(chunk);
+		expect(sent).toHaveLength(0);
+		isSpeaking = false;
+		gated(chunk);
+		expect(sent).toHaveLength(1);
+	});
+
+	it('asks for the echo tail, not just what plays', () => {
+		const asked: number[] = [];
+		createEchoGatedSend({
+			isPhone: true,
+			readMode: () => 'on-demand',
+			isAudibleWithin: (ms) => {
+				asked.push(ms);
+
+				return false;
+			},
+			send: () => undefined,
+		})(chunk);
+
+		expect(asked).toEqual([400]);
+	});
 });

@@ -1,4 +1,5 @@
 import { clientLog, describeError } from './client-log.js';
+import { IS_PHONE } from './phone.js';
 import { PttBuffer, type PressParams } from './ptt.js';
 
 const WORKLET_SOURCE = `
@@ -38,6 +39,23 @@ interface Device {
 	context: AudioContext;
 }
 
+export interface MicConstraints {
+	channelCount: 1;
+	echoCancellation: boolean;
+	noiseSuppression: boolean;
+	autoGainControl: false;
+}
+
+// A desktop opens the mic raw like Soniox's own SDK (call processing smears consonants), echo
+// cancelling only hands-free. A phone's speaker sits next to its mic: cancelling and noise
+// suppression on in every mode.
+export const readMicConstraints = (mode: MicMode, isPhone: boolean): MicConstraints => ({
+	channelCount: 1,
+	echoCancellation: isPhone || mode === 'handsFree',
+	noiseSuppression: isPhone,
+	autoGainControl: false,
+});
+
 export class Mic {
 	private buffer: PttBuffer | null = null;
 	private opening: Promise<number> | null = null;
@@ -55,10 +73,11 @@ export class Mic {
 		this.mode = mode;
 
 		if (!this.opening) {
+			const constraints = readMicConstraints(mode, IS_PHONE);
 			clientLog('info', 'mic', 'ensure start', { mode });
-			this.opening = this.open(mode).then(
+			this.opening = this.open(mode, constraints).then(
 				(sampleRate) => {
-					clientLog('info', 'mic', 'ensure open', { mode, sampleRate });
+					clientLog('info', 'mic', 'ensure open', { mode, sampleRate, ...constraints });
 
 					return sampleRate;
 				},
@@ -139,7 +158,7 @@ export class Mic {
 	// Not async on purpose: getUserMedia and the AudioContext must start in the caller's own turn,
 	// inside the press, before anything awaits — iOS asks for the mic and starts audio only from a
 	// gesture, and a press that awaited first is no longer one.
-	private open(mode: MicMode): Promise<number> {
+	private open(mode: MicMode, constraints: MicConstraints): Promise<number> {
 		const generation = this.generation;
 
 		if (!navigator.mediaDevices?.getUserMedia) {
@@ -148,11 +167,7 @@ export class Mic {
 			);
 		}
 
-		// Raw like Soniox's own SDK: call processing smears consonants; hands-free needs echo cancelling.
-		const echoCancellation = mode === 'handsFree';
-		const streaming = navigator.mediaDevices.getUserMedia({
-			audio: { channelCount: 1, echoCancellation, noiseSuppression: false, autoGainControl: false },
-		});
+		const streaming = navigator.mediaDevices.getUserMedia({ audio: constraints });
 		// The device's own rate and ~100 ms frames: browser resampling is where quality went.
 		const context = new AudioContext();
 
