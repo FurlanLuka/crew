@@ -80,6 +80,14 @@ export const MODE_COPY: Record<InputMode, ModeCopy> = {
 	},
 };
 
+// A phone has no Space key, and Text only is about this phone, not a tab: the sheet and Settings on
+// a phone say these instead.
+export const PHONE_DESCRIPTIONS: Partial<Record<InputMode, string>> = {
+	push: 'Hold the mic on the right while you speak; let go to send.',
+	dictation: 'For brain dumps: pauses never end it. Send when you are done.',
+	text: 'No microphone. Type, and Voice OS stays quiet on this phone.',
+};
+
 interface ModeListProps {
 	mode: InputMode;
 	modes: InputMode[];

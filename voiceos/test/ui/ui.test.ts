@@ -4868,6 +4868,28 @@ describe('phone', () => {
 		await context.close();
 	}, 20_000);
 
+	it('Settings on a phone: one scroll of groups, no section menu, nothing sideways; a mode row picks the mode', async () => {
+		const { context, page } = await openPhone({ kind: 'settings' });
+		await page.getByRole('region', { name: 'Voice OS settings' }).waitFor({ timeout: 5000 });
+
+		expect(await page.getByRole('navigation', { name: 'Settings sections' }).isVisible()).toBe(
+			false,
+		);
+		expect(await isNotWider(page)).toBe(true);
+		// A phone has no "voice" in its top bar: the row says what it does instead.
+		const settings = page.getByRole('region', { name: 'Voice OS settings' });
+		expect(await settings.innerText()).toContain('Voice OS listens and speaks.');
+		expect(await settings.innerText()).not.toContain('click “voice”');
+		const dictation = page.locator('.vs-mode', { hasText: 'Dictation' });
+		expect(await dictation.innerText()).toContain('Send when you are done.');
+		await dictation.click();
+		await page
+			.locator('.vs-mode[aria-pressed="true"]', { hasText: 'Dictation' })
+			.waitFor({ timeout: 5000 });
+		await chooseOnPhone(page, /Push to talk/);
+		await context.close();
+	}, 20_000);
+
 	it('holding the mic sends ptt_start, letting go ptt_stop; the bar lights up while held', async () => {
 		await ensureIdle(REF);
 		const { context, page, client } = await openPhone(onSession);
@@ -4988,7 +5010,7 @@ describe('phone', () => {
 		expect(await more.getByRole('button', { name: 'Deactivate' }).isVisible()).toBe(true);
 		expect(await isNotWider(page)).toBe(true);
 		expect(store.state.view).toMatchObject({ kind: 'session', ref: REF });
-		await more.getByRole('button', { name: 'Close' }).click();
+		await more.getByRole('button', { name: 'Done' }).click();
 		await more.waitFor({ state: 'detached', timeout: 5000 });
 		await context.close();
 	}, 20_000);

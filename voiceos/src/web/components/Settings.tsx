@@ -6,11 +6,11 @@ import { LOCAL_MACHINE } from '../../shared/machine-ref.js';
 import type { MachineStatus, State } from '../../shared/protocol.js';
 import { readAlwaysVoice, writeAlwaysVoice } from '../home/prefs.js';
 import { INPUT_MODES, type InputMode } from '../listen-mode.js';
-import { IS_PHONE_LINK } from '../phone.js';
+import { IS_PHONE, IS_PHONE_LINK } from '../phone.js';
 import { isOk, readCrewLine, runCrew, useCrew } from '../setup/api.js';
 import type { Dispatch } from '../types.js';
 import { isKeyMissing, type KeyName } from './BeforeYouTalk.js';
-import { MODE_COPY } from './ModeMenu.js';
+import { MODE_COPY, PHONE_DESCRIPTIONS } from './ModeMenu.js';
 import { RenameSession } from './RenameSession.js';
 import { YourPhone } from './YourPhone.js';
 
@@ -397,7 +397,7 @@ export const Settings = ({
 								onClick={() => onListenMode(mode)}
 							>
 								<b>{MODE_COPY[mode].name}</b>
-								<span>{MODE_COPY[mode].description}</span>
+								<span>{(IS_PHONE && PHONE_DESCRIPTIONS[mode]) || MODE_COPY[mode].description}</span>
 							</button>
 						))}
 					</div>
@@ -413,7 +413,9 @@ export const Settings = ({
 								<span className="m">
 									{state.voiceOff
 										? 'Nothing listens or speaks. Discord’s bot is out of its channel.'
-										: 'Also in the top bar: click “voice”.'}
+										: IS_PHONE
+											? 'Voice OS listens and speaks.'
+											: 'Also in the top bar: click “voice”.'}
 								</span>
 							</span>
 							<button

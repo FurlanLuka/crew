@@ -1283,6 +1283,7 @@ const SHOTS: Shot[] = [
 			await page.getByRole('menu', { name: 'Listening mode' }).waitFor();
 		},
 	},
+	{ name: 'phone-settings', view: { kind: 'settings' }, viewport: PHONE },
 	{ name: 'phone-install-iphone', viewport: PHONE, phoneLink: 'iphone' },
 	{
 		name: 'phone-install-android',

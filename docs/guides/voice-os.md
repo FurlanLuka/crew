@@ -904,9 +904,14 @@ answer it with your thumb.
 **⋯** opens everything the desktop shows beside the stream: the session's status and cost, **Stop
 turn**, the permission mode, model and context chips, the dev servers with their logs, links,
 **Restart** and **Stop**, what you said, notes, the other sessions and where the session works.
-The **×** closes it.
+**Done** at the top right closes it.
 
 ![⋯ for store/main: status running, cost $0.64, Stop turn, Auto, Opus 5.5 1M and 412k of 1M; the web, api and worker dev servers with Restart and Stop; the last thing said; notes; store/wrk1 waiting and Build box's store/main working elsewhere; and where it works](../images/voice-os/phone-more.png)
+
+**Settings** (the gear on Home) is one scroll of groups, like the phone's own settings: the
+listening mode, voice on or off, keys, Discord, names and machines.
+
+![Settings on a phone: Your phone, then Listening with Push to talk ticked, Voice, Keys and the other groups, each a rounded block](../images/voice-os/phone-settings.png)
 
 The bar at the bottom changes with the listening mode, which the round button on its left picks.
 

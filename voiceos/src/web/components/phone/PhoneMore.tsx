@@ -13,7 +13,6 @@ import { ModeChip } from '../ModeChip.js';
 import { ModelChip } from '../ModelChip.js';
 import { RenameSession } from '../RenameSession.js';
 import { type SessionDialogs, SessionPanels } from '../SessionPanels.js';
-import { CloseIcon } from './phone-icons.js';
 import { SessionTitle } from './PhoneTopBar.js';
 
 interface PhoneMoreProps {
@@ -51,11 +50,11 @@ export const PhoneMore = ({ session, state, dispatch, send, dialogs, onClose }: 
 	return (
 		<section className="mpanel" aria-label="Session details" onKeyDown={handleKey}>
 			<header className="mtop">
-				<button type="button" className="ic" aria-label="Close" onClick={onClose}>
-					<CloseIcon />
-				</button>
-				<SessionTitle state={state} session={session} />
 				<span />
+				<SessionTitle state={state} session={session} />
+				<button type="button" className="done" onClick={onClose}>
+					Done
+				</button>
 			</header>
 			<div className="scroll vo-panels side">
 				<SessionPanels
