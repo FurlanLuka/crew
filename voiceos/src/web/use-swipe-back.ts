@@ -18,6 +18,8 @@ interface SwipeBackParams {
 	rootRef: RefObject<HTMLElement | null>;
 	isEnabled: boolean;
 	onBack: () => BackResult;
+	// The screen being uncovered is drawn only while a swipe shows it.
+	onPeek: (isPeeking: boolean) => void;
 }
 
 interface Track {
@@ -37,10 +39,12 @@ const place = (screen: HTMLElement, x: number, isAnimated: boolean) => {
 	screen.style.transform = x === 0 ? '' : `translateX(${x}px)`;
 };
 
-export const useSwipeBack = ({ rootRef, isEnabled, onBack }: SwipeBackParams): void => {
+export const useSwipeBack = ({ rootRef, isEnabled, onBack, onPeek }: SwipeBackParams): void => {
 	// The state changes many times a second; a swipe in progress must outlive those renders.
 	const onBackRef = useRef(onBack);
 	onBackRef.current = onBack;
+	const onPeekRef = useRef(onPeek);
+	onPeekRef.current = onPeek;
 
 	useEffect(() => {
 		const root = rootRef.current;
@@ -102,6 +106,7 @@ export const useSwipeBack = ({ rootRef, isEnabled, onBack }: SwipeBackParams): v
 
 				track.phase = 'track';
 				root.classList.add('swiping');
+				onPeekRef.current(true);
 			}
 
 			// The finger owns the screen now: no scroll underneath, no rubber band.
@@ -128,7 +133,10 @@ export const useSwipeBack = ({ rootRef, isEnabled, onBack }: SwipeBackParams): v
 
 			if (event.type === 'touchcancel' || decideSwipeEnd({ dx, velocity, width }) === 'cancel') {
 				place(screen, 0, true);
-				setTimeout(() => root.classList.remove('swiping'), SETTLE_MS);
+				setTimeout(() => {
+					root.classList.remove('swiping');
+					onPeekRef.current(false);
+				}, SETTLE_MS);
 
 				return;
 			}
@@ -137,6 +145,7 @@ export const useSwipeBack = ({ rootRef, isEnabled, onBack }: SwipeBackParams): v
 			setTimeout(() => {
 				const result = onBackRef.current();
 				root.classList.remove('swiping');
+				onPeekRef.current(false);
 				// A back that keeps this screen (⋯ closing) must not leave it off to the side.
 				setTimeout(
 					() => {
@@ -155,6 +164,12 @@ export const useSwipeBack = ({ rootRef, isEnabled, onBack }: SwipeBackParams): v
 		root.addEventListener('touchcancel', handleEnd);
 
 		return () => {
+			// Torn down mid-swipe (the view changed under the finger): nothing may stay uncovered.
+			if (track?.phase === 'track') {
+				root.classList.remove('swiping');
+				onPeekRef.current(false);
+			}
+
 			root.removeEventListener('touchstart', handleStart);
 			root.removeEventListener('touchmove', handleMove);
 			root.removeEventListener('touchend', handleEnd);

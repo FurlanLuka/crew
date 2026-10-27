@@ -71,8 +71,24 @@ html:has(.vo.phone) body {
 .vo.phone.swiping .ph-screen {
 	box-shadow: -10px 0 30px rgba(0, 0, 0, 0.6);
 }
-.vo.phone.swiping {
-	background: #050607;
+/* What a back swipe uncovers: the screen it returns to, set back a little and dimmed, as iOS does. */
+.vo.phone .ph-under {
+	/* The screen's own grid cell: the bar below stays on top and in place. */
+	grid-row: 1;
+	grid-column: 1;
+	position: absolute;
+	inset: 0;
+	z-index: 0;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	transform: translateX(-24%);
+	filter: brightness(0.6);
+	pointer-events: none;
+}
+.vo.phone .ph-under > .vo-main {
+	flex: 1;
+	min-height: 0;
 }
 .vo.phone .ph-screen.push {
 	animation: ph-push 260ms cubic-bezier(0.2, 0.8, 0.2, 1);

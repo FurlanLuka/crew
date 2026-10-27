@@ -4665,7 +4665,8 @@ describe('phone', () => {
 	}, 20_000);
 
 	// A finger dragged across the screen, from fromX to toX, as touch events on the page; it ends with
-	// touchend, or touchcancel when the system takes the gesture. 20 px each stepMs: 30 ms is a flick.
+	// touchend, touchcancel when the system takes the gesture, or 'none' with the finger still down.
+	// 20 px each stepMs: 30 ms is a flick.
 	const drag = (page: Page, fromX: number, toX: number, end = 'touchend', stepMs = 30) =>
 		page.evaluate(
 			async ({ startX, endX, endType, step }) => {
@@ -4688,10 +4689,22 @@ describe('phone', () => {
 					await new Promise((resolve) => setTimeout(resolve, step));
 				}
 
-				fire(endType, endX);
+				if (endType !== 'none') {
+					fire(endType, endX);
+				}
 			},
 			{ startX: fromX, endX: toX, endType: end, step: stepMs },
 		);
+
+	// Finishes a drag(…, 'none'): the finger leaves the screen where it stopped.
+	const lift = (page: Page, x: number) =>
+		page.evaluate((endX) => {
+			const root = document.querySelector('.vo.phone') as HTMLElement;
+			const touch = new Touch({ identifier: 1, target: root, clientX: endX, clientY: 400 });
+			root.dispatchEvent(
+				new TouchEvent('touchend', { bubbles: true, cancelable: true, changedTouches: [touch] }),
+			);
+		}, x);
 
 	// The installed app: the swipe is only ours there. Read as the swipe is armed, so the screen is
 	// rendered again after the flag is set.
@@ -4719,10 +4732,90 @@ describe('phone', () => {
 		await drag(page, 6, 76, 'touchend', 120);
 		await Bun.sleep(400);
 		expect(store.state.view.kind).toBe('session');
+		await page.locator('.ph-under').waitFor({ state: 'detached', timeout: 2000 });
 		expect(await readScreenShift(page)).toBe('');
 
 		await drag(page, 6, 236);
 		await waitUntil(() => store.state.view.kind === 'active');
+		await context.close();
+	}, 20_000);
+
+	it('installed: mid-swipe, Home shows underneath; once back, nothing is left under the screen', async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openPhone(fromHome);
+		await markInstalled(page, fromHome);
+
+		// Held at 150 px: the finger is still down.
+		await drag(page, 6, 156, 'none', 60);
+		await page.locator(`.ph-under .ph-row[data-ref="${REF}"]`).waitFor({ timeout: 5000 });
+		// The bar stays on top of what is uncovered.
+		const isBarOnTop = await page.evaluate(() => {
+			const bar = (document.querySelector('.phone-bar') as HTMLElement).getBoundingClientRect();
+			const hit = document.elementFromPoint(bar.left + bar.width / 2, bar.top + bar.height / 2);
+
+			return Boolean(hit?.closest('.phone-bar'));
+		});
+		expect(isBarOnTop).toBe(true);
+
+		await lift(page, 156);
+		await waitUntil(() => store.state.view.kind === 'active');
+		await page.locator('.ph-under').waitFor({ state: 'detached', timeout: 5000 });
+		await context.close();
+	}, 20_000);
+
+	it('installed: a swipe back to a machine page draws nothing underneath', async () => {
+		await ensureIdle(REF);
+		// Not active: opened, the session sits under its machine's page, not Home.
+		store.dispatch({ type: 'deactivate', ref: REF });
+		const fromMachine: View = { kind: 'session', ref: REF };
+		const { context, page } = await openPhone(fromMachine);
+
+		try {
+			await markInstalled(page, fromMachine);
+			await drag(page, 6, 156, 'none', 60);
+			await page.locator('.vo.phone.swiping').waitFor({ timeout: 5000 });
+			expect(await page.locator('.ph-under').count()).toBe(0);
+		} finally {
+			store.dispatch({ type: 'activate', ref: REF });
+			await context.close();
+		}
+	}, 20_000);
+
+	it('installed, ⋯ open: a swipe draws nothing underneath, closes ⋯ and the session stays', async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openPhone(fromHome);
+		await markInstalled(page, fromHome);
+		await page.getByRole('button', { name: 'More' }).click();
+		await page.locator('.mpanel').waitFor({ timeout: 5000 });
+
+		await drag(page, 6, 156, 'none', 60);
+		await page.locator('.vo.phone.swiping').waitFor({ timeout: 5000 });
+		expect(await page.locator('.ph-under').count()).toBe(0);
+
+		await lift(page, 156);
+		await page.locator('.mpanel').waitFor({ state: 'detached', timeout: 5000 });
+		expect(store.state.view.kind).toBe('session');
+		await page.waitForFunction(
+			() => (document.querySelector('.ph-screen') as HTMLElement).style.transform === '',
+		);
+		await context.close();
+	}, 20_000);
+
+	it('installed: the view changes under a held swipe; nothing is left underneath when a session opens again', async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openPhone(fromHome);
+		await markInstalled(page, fromHome);
+
+		await drag(page, 6, 156, 'none', 60);
+		await page.locator('.ph-under').waitFor({ timeout: 5000 });
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
+		await page.locator('.ph-list').first().waitFor({ timeout: 5000 });
+		store.dispatch({ type: 'switch_view', view: fromHome });
+		await page.getByRole('button', { name: 'More' }).waitFor({ timeout: 5000 });
+
+		expect(await page.locator('.ph-under').count()).toBe(0);
+		expect(await page.locator('.vo.phone.swiping').count()).toBe(0);
+		expect(await readScreenShift(page)).toBe('');
 		await context.close();
 	}, 20_000);
 
@@ -4734,6 +4827,7 @@ describe('phone', () => {
 		await drag(page, 6, 236, 'touchcancel');
 		await Bun.sleep(500);
 		expect(store.state.view.kind).toBe('session');
+		await page.locator('.ph-under').waitFor({ state: 'detached', timeout: 2000 });
 		expect(await readScreenShift(page)).toBe('');
 		await context.close();
 	}, 20_000);

@@ -84,7 +84,17 @@ export const PhoneVoiceOS = ({
 	usePhoneHistory(level, goBack);
 	// Only the installed iPhone app: Android's system back and a browser's own edge swipe already pop
 	// the history entry, and a second back of ours would skip a level.
-	useSwipeBack({ rootRef, isEnabled: level > 0 && isIosApp(), onBack: goBack });
+	const [isPeeking, setIsPeeking] = useState(false);
+	useSwipeBack({
+		rootRef,
+		isEnabled: level > 0 && isIosApp(),
+		onBack: goBack,
+		onPeek: setIsPeeking,
+	});
+	// Under a swipe back to Home, Home itself, as an app uncovers the screen it returns to. Any other
+	// screen above is uncovered as the page's own colour.
+	const backView = isPeeking && !isMoreOpen ? readBackView(state) : null;
+	const underState = backView?.kind === 'active' ? { ...state, view: backView } : null;
 
 	if (isInstallShown) {
 		return (
@@ -96,6 +106,20 @@ export const PhoneVoiceOS = ({
 
 	return (
 		<div className="vo phone" ref={rootRef}>
+			{underState && (
+				<div className="ph-under" aria-hidden="true" inert>
+					<PhoneTopBar
+						state={underState}
+						dispatch={dispatch}
+						onBack={() => 'here'}
+						onNewSession={() => undefined}
+						onMore={() => undefined}
+					/>
+					<main className="vo-main">
+						<PhoneHome state={underState} dispatch={dispatch} />
+					</main>
+				</div>
+			)}
 			<div key={readViewKey(view)} className={`ph-screen ${transition ?? ''}`}>
 				<PhoneTopBar
 					state={state}
