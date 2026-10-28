@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { join } from 'node:path';
 import type { SubagentItemContent } from '../shared/protocol.js';
 import type { RawMessage } from './events.js';
 import {
@@ -10,6 +11,8 @@ import {
 	runSessionAskFork,
 	SECRET_EXCLUDING_GLOB,
 } from './session-ask-fork.js';
+import { memoryDirFor, withMemoryDir } from './peer-paths.js';
+import { SEARCH_TOOL } from './peer-search.js';
 import type { QueryLaunch } from './worker.js';
 
 const roots = { cwd: '/w/checkout', dirs: [] };
@@ -37,14 +40,39 @@ describe('decideForkTool', () => {
 		expect(decideForkTool('Read', {}, roots).kind).toBe('deny');
 	});
 
-	it('anything that runs or changes, and every MCP tool → denied with how to ask for work', () => {
+	it('anything that runs or changes, and every other MCP tool → denied with how to ask for work', () => {
 		for (const name of ['Bash', 'Edit', 'Write', 'Task', 'WebFetch', 'mcp__voiceos__ask_session']) {
 			expect(decideForkTool(name, {}, roots)).toEqual({
 				kind: 'deny',
 				reason:
-					'Only Read, Grep and Glob run here: use Read for a file, Grep to search, Glob to list. If answering needs more, reply NEEDS_WORK: and what would have to run.',
+					'Only reading runs here: Read for a file, search_files to search or list. If answering needs more, reply NEEDS_WORK: and what would have to run.',
 			});
 		}
+	});
+
+	it("search_files, Voice OS's own search → allowed inside its folders, denied outside or on a secret", () => {
+		expect(decideForkTool(SEARCH_TOOL, { pattern: 'retry' }, roots)).toEqual({ kind: 'allow' });
+		expect(decideForkTool(SEARCH_TOOL, { pattern: 'x', path: '/w/checkout/src' }, roots)).toEqual({
+			kind: 'allow',
+		});
+		expect(decideForkTool(SEARCH_TOOL, { pattern: 'x', path: '/w/store-front' }, roots).kind).toBe(
+			'deny',
+		);
+		expect(
+			decideForkTool(SEARCH_TOOL, { pattern: 'x', path: '/w/checkout/.aws' }, roots).kind,
+		).toBe('deny');
+	});
+
+	it('its own memory folder is readable; the transcripts beside it are not', () => {
+		const withMemory = withMemoryDir(roots);
+		const memory = memoryDirFor('/w/checkout');
+
+		expect(decideForkTool('Read', { file_path: join(memory, 'notes.md') }, withMemory).kind).toBe(
+			'allow',
+		);
+		expect(
+			decideForkTool('Read', { file_path: join(memory, '..', 'abc.jsonl') }, withMemory).kind,
+		).toBe('deny');
 	});
 
 	it('Grep over everything → allowed with secret files left out', () =>
@@ -196,7 +224,7 @@ describe('the prompt', () => {
 		expect(buildSessionAskPrompt('store-front/main', 'Which retry limit?', '/w/checkout')).toBe(
 			[
 				'Another session, store-front/main, asks you this while you work on something else. It is not a new task and not the developer. The question is about your own work and your own files unless it says otherwise.',
-				'Answer from this conversation first. If you need to look something up, use Read, Grep and Glob on your own folders (your worktree is /w/checkout); Bash and every other tool are refused here, and nothing you do here changes your work.',
+				'Answer from this conversation first. If you need to look something up, use Read for a file and search_files to search or list your own folders (your worktree is /w/checkout; your memory folder is readable too); Bash and every other tool are refused here, and nothing you do here changes your work.',
 				'Never repeat a secret value (a key, token or password): name the variable or the file instead.',
 				'Reply with the answer only, written for another Claude: plain and complete, a few sentences or a short list. If answering would need running something (tests, a command, a server, a database), reply NEEDS_WORK: and one line saying exactly what would have to run. To hand over files, end with a line FILES: and then one path per line, inside your folders.',
 				'',
@@ -272,6 +300,16 @@ describe('runSessionAskFork', () => {
 		expect(await call('mcp__voiceos__ask_session', {})).toMatchObject({
 			hookSpecificOutput: { permissionDecision: 'deny' },
 		});
+		// Its own memory folder reads; the transcripts beside it and other worktrees do not.
+		const memory = memoryDirFor('/w/checkout');
+		const decisionOf = async (tool: string, input: Record<string, unknown>) =>
+			((await call(tool, input)) as { hookSpecificOutput: { permissionDecision: string } })
+				.hookSpecificOutput.permissionDecision;
+
+		expect(await decisionOf('Read', { file_path: join(memory, 'notes.md') })).toBe('allow');
+		expect(await decisionOf('Read', { file_path: join(memory, '..', 'abc.jsonl') })).toBe('deny');
+		expect(await decisionOf(SEARCH_TOOL, { pattern: 'x', path: '/w/store-front' })).toBe('deny');
+		expect(await decisionOf(SEARCH_TOOL, { pattern: 'x', path: memory })).toBe('allow');
 	});
 
 	it('a copy that never answers → failed when its time is up', async () => {

@@ -1,7 +1,8 @@
 // Which files one session may show another: inside its own folders, and never a secret. A secret
 // moves only through request_secret, with the developer's OK.
 import { realpathSync } from 'node:fs';
-import { isAbsolute, relative, resolve } from 'node:path';
+import { homedir } from 'node:os';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 
 const SECRET_NAME_PATTERNS = [
 	/^\.env(\..*)?$/i,
@@ -37,6 +38,19 @@ export interface SessionRoots {
 	cwd: string;
 	dirs: string[];
 }
+
+// The session's own Claude memory, which is what it knows between conversations: Claude Code keeps
+// it under projects/<the cwd, every other character than a letter or digit as ->/memory. Only that
+// folder joins a session's readable roots: the transcripts beside it can hold whatever was pasted.
+export const memoryDirFor = (
+	cwd: string,
+	configDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'),
+): string => join(configDir, 'projects', cwd.replace(/[^a-zA-Z0-9]/g, '-'), 'memory');
+
+export const withMemoryDir = (roots: SessionRoots): SessionRoots => ({
+	cwd: roots.cwd,
+	dirs: [...roots.dirs, memoryDirFor(roots.cwd)],
+});
 
 // Where a path really is: a symlink inside the worktree pointing at ~/.ssh is judged by its target.
 // A path that does not exist (yet) is judged as written.

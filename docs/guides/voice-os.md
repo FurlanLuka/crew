@@ -692,8 +692,9 @@ on This Mac or on Build box?").
 
 **Asking.** `ask_session` gets an answer without interrupting the other session. Voice OS makes a
 copy of that session's conversation, and the copy answers from what the session knows. When it has
-to look something up it can read and search files in that session's own folders, nothing else: it
-cannot run commands, change files or reach another worktree. The asking session waits for the
+to look something up it can read and search files in that session's own folders and its Claude
+memory, nothing else: it cannot run commands, change files or reach another worktree. Its search is
+Voice OS's own, so it works whatever search tools your Claude Code has. The asking session waits for the
 answer, up to three minutes, and can get files back with it. The other session never notices.
 
 **When an answer needs real work.** If the copy would have to run something (the tests, a server, a

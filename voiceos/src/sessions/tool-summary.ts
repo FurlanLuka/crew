@@ -1,4 +1,6 @@
 // How a tool call reads in one line: in the stream, a permission ask, a sub-agent's step.
+import { SEARCH_TOOL } from './peer-search.js';
+
 const MAX_SUMMARY_CHARS = 140;
 
 export const clipText = (text: string, limit = MAX_SUMMARY_CHARS): string => {
@@ -42,6 +44,10 @@ export const summarizeTool = (
 			return `search for ${clipText(readString(input.pattern), 60)}`;
 		case 'Glob':
 			return `find files matching ${clipText(readString(input.pattern), 60)}`;
+		case SEARCH_TOOL:
+			return readString(input.pattern)
+				? `search for ${clipText(readString(input.pattern), 60)}`
+				: `find files named ${clipText(readString(input.name), 60)}`;
 		case 'WebFetch':
 			return `fetch ${clipText(readString(input.url), 80)}`;
 		case 'WebSearch':

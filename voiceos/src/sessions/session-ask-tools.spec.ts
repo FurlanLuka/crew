@@ -5,7 +5,8 @@ import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import type { Observation } from '../shared/protocol.js';
-import { PEER_ALLOWED_TOOLS, SessionAskBridge } from './session-ask-tools.js';
+import { memoryDirFor } from './peer-paths.js';
+import { isPeerToolName, PEER_ALLOWED_TOOLS, SessionAskBridge } from './session-ask-tools.js';
 
 const made: string[] = [];
 
@@ -44,18 +45,67 @@ const setup = (deadlineMs?: number) => {
 		return client;
 	};
 
-	return { bridge, emitted, connect };
+	return { home, bridge, emitted, connect };
 };
 
 const textOf = (result: unknown): string =>
 	((result as { content: { text: string }[] }).content[0]?.text ?? '') as string;
 
 describe('the session tools', () => {
-	it('three tools, the names the worker allows without asking', async () => {
+	it('four tools, the names the worker allows without asking', async () => {
 		const client = await setup().connect();
 		const { tools } = await client.listTools();
 
 		expect(tools.map((tool) => `mcp__voiceos__${tool.name}`)).toEqual(PEER_ALLOWED_TOOLS);
+	});
+
+	it('search_files searches its own folders and never shows a secret', async () => {
+		const client = await setup().connect();
+		const result = await client.callTool({
+			name: 'search_files',
+			arguments: { pattern: 'orders' },
+		});
+
+		expect(textOf(result)).toBe('schema.sql:1: create table orders();');
+		const listed = await client.callTool({ name: 'search_files', arguments: { name: '*' } });
+
+		expect(textOf(listed)).toBe('schema.sql');
+	});
+
+	it("search_files reaches the session's memory folder, never the transcripts beside it", async () => {
+		const { home, connect } = setup();
+		const previous = process.env.CLAUDE_CONFIG_DIR;
+		process.env.CLAUDE_CONFIG_DIR = join(home, '.claude');
+
+		try {
+			const memory = memoryDirFor(join(home, 'checkout'));
+			mkdirSync(memory, { recursive: true });
+			writeFileSync(join(memory, 'notes.md'), 'rows kept in phone_speak\n');
+			writeFileSync(join(memory, '..', 'abc.jsonl'), 'rows pasted here\n');
+			const client = await connect();
+			const found = await client.callTool({
+				name: 'search_files',
+				arguments: { pattern: 'rows', path: memory },
+			});
+			const beside = await client.callTool({
+				name: 'search_files',
+				arguments: { pattern: 'rows', path: join(memory, '..') },
+			});
+
+			expect(textOf(found)).toMatch(/memory\/notes\.md:1: rows kept in phone_speak$/);
+			expect(textOf(beside)).toBe(`${join(memory, '..')} is outside your folders.`);
+		} finally {
+			if (previous === undefined) {
+				delete process.env.CLAUDE_CONFIG_DIR;
+			} else {
+				process.env.CLAUDE_CONFIG_DIR = previous;
+			}
+		}
+	});
+
+	it('a search is an ordinary tool row, not a peer card', () => {
+		expect(isPeerToolName('mcp__voiceos__search_files')).toBe(false);
+		expect(isPeerToolName('mcp__voiceos__ask_session')).toBe(true);
 	});
 
 	it('ask_session → reported to the main, and returns the answer it sends back', async () => {

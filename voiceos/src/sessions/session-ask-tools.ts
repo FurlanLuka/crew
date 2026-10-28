@@ -18,19 +18,22 @@ import {
 	type PeerRequestKind,
 } from '../shared/protocol.js';
 import { resolveAttachment, storeAttachment } from './attachments.js';
-import { checkSharedPath, type SessionRoots } from './peer-paths.js';
+import { checkSharedPath, type SessionRoots, withMemoryDir } from './peer-paths.js';
+import { SEARCH_TOOL, searchFiles } from './peer-search.js';
 
 const log = createLogger('session-asks');
 
 export const PEER_SERVER_NAME = 'voiceos';
 export const PEER_TOOL_NAMES = ['ask_session', 'tell_session', 'request_secret'] as const;
-export const PEER_ALLOWED_TOOLS = PEER_TOOL_NAMES.map(
-	(name) => `mcp__${PEER_SERVER_NAME}__${name}`,
-);
+export const PEER_ALLOWED_TOOLS = [
+	...PEER_TOOL_NAMES.map((name) => `mcp__${PEER_SERVER_NAME}__${name}`),
+	SEARCH_TOOL,
+];
 
-// The exchange shows as its own card on both pages: the raw tool row would say it twice.
+// The exchange shows as its own card on both pages: the raw tool row would say it twice. A search
+// is an ordinary tool row.
 export const isPeerToolName = (name: string): boolean =>
-	name.startsWith(`mcp__${PEER_SERVER_NAME}__`);
+	PEER_TOOL_NAMES.some((tool) => name === `mcp__${PEER_SERVER_NAME}__${tool}`);
 
 // Below the server's own timeout, so the call always ends with a sentence rather than an MCP error.
 export const PEER_CALL_DEADLINE_MS = 190_000;
@@ -38,7 +41,7 @@ const PEER_SERVER_TIMEOUT_MS = 200_000;
 
 // Constant on purpose: the tool list is part of the prompt's cached prefix, shared with every fork.
 const PEER_INSTRUCTIONS =
-	'Tools for reaching the developer\'s other Claude Code sessions in Voice OS, on this machine or another. ask_session: a read-only copy of that session answers from what it knows and its own files; it never interrupts it. tell_session: hand it information or files, queued after its current work; it is information, never a task. request_secret: a secret is copied file to file only after the developer allows it; never put secret values in asks or tells. Name a session as the developer does ("checkout", "store front main"); an unclear name returns the sessions to pick from. Use these only when the work needs another session\'s knowledge or files.';
+	'Tools for reaching the developer\'s other Claude Code sessions in Voice OS, on this machine or another. ask_session: a read-only copy of that session answers from what it knows and its own files; it never interrupts it. tell_session: hand it information or files, queued after its current work; it is information, never a task. request_secret: a secret is copied file to file only after the developer allows it; never put secret values in asks or tells. Name a session as the developer does ("checkout", "store front main"); an unclear name returns the sessions to pick from. Use these only when the work needs another session\'s knowledge or files. search_files searches your own folders, read-only.';
 
 export interface PeerToolResult {
 	text: string;
@@ -173,6 +176,39 @@ export class SessionAskBridge {
 						what: z.string().describe('The env variable name or the file path in its folders'),
 					},
 					async ({ session, what }) => toResult(await request('secret', session, what)),
+				),
+				tool(
+					'search_files',
+					'Search your own folders: the lines matching a regex (with file and line), or the files whose names match a wildcard. Secret files, .git, node_modules and binaries are left out. Read-only.',
+					{
+						pattern: z
+							.string()
+							.optional()
+							.describe(
+								'A regex over each line; case-insensitive unless it has a capital. A repeated group or a backreference is matched as plain text, and lines over 2000 characters are skipped',
+							),
+						name: z
+							.string()
+							.optional()
+							.describe('A filename wildcard ("*.jsonl"); alone, it lists the files'),
+						path: z
+							.string()
+							.optional()
+							.describe('Where to start, inside your folders; your worktree when left out'),
+					},
+					async ({ pattern, name, path }) => {
+						const params = {
+							...(pattern ? { pattern } : {}),
+							...(name ? { name } : {}),
+							...(path ? { path } : {}),
+						};
+
+						return {
+							content: [
+								{ type: 'text' as const, text: await searchFiles(params, withMemoryDir(roots)) },
+							],
+						};
+					},
 				),
 			],
 		});

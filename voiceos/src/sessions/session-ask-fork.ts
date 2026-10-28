@@ -11,9 +11,11 @@ import { dropCheckpoints, isTopLevelAssistant, readText, runFork } from './fork.
 import {
 	isSecretPath,
 	isSecretPattern,
+	withMemoryDir,
 	resolveInsideRoots,
 	type SessionRoots,
 } from './peer-paths.js';
+import { SEARCH_TOOL } from './peer-search.js';
 import type { QueryLaunch } from './worker.js';
 
 const log = createLogger('session-asks');
@@ -22,7 +24,8 @@ export const SESSION_ASK_TIMEOUT_MS = 3 * 60_000;
 const SESSION_ASK_MAX_TURNS = 8;
 const NEEDS_WORK = 'NEEDS_WORK';
 const FILES_MARKER = 'FILES:';
-const READ_TOOLS = new Set(['Read', 'Grep', 'Glob']);
+// Grep and Glob where Claude Code still ships them; search_files, Voice OS's own, where it does not.
+const READ_TOOLS = new Set(['Read', 'Grep', 'Glob', SEARCH_TOOL]);
 const SECRET_GLOBS = [
 	'.env',
 	'.env.*',
@@ -62,7 +65,7 @@ export const SECRET_EXCLUDING_GLOB = `!{${[
 export const buildSessionAskPrompt = (fromLabel: string, question: string, cwd: string): string =>
 	[
 		`Another session, ${fromLabel}, asks you this while you work on something else. It is not a new task and not the developer. The question is about your own work and your own files unless it says otherwise.`,
-		`Answer from this conversation first. If you need to look something up, use Read, Grep and Glob on your own folders (your worktree is ${cwd}); Bash and every other tool are refused here, and nothing you do here changes your work.`,
+		`Answer from this conversation first. If you need to look something up, use Read for a file and search_files to search or list your own folders (your worktree is ${cwd}; your memory folder is readable too); Bash and every other tool are refused here, and nothing you do here changes your work.`,
 		'Never repeat a secret value (a key, token or password): name the variable or the file instead.',
 		`Reply with the answer only, written for another Claude: plain and complete, a few sentences or a short list. If answering would need running something (tests, a command, a server, a database), reply ${NEEDS_WORK}: and one line saying exactly what would have to run. To hand over files, end with a line ${FILES_MARKER} and then one path per line, inside your folders.`,
 		'',
@@ -101,7 +104,7 @@ export const decideForkTool = (
 	if (!READ_TOOLS.has(toolName)) {
 		return {
 			kind: 'deny',
-			reason: `Only Read, Grep and Glob run here: use Read for a file, Grep to search, Glob to list. If answering needs more, reply ${NEEDS_WORK}: and what would have to run.`,
+			reason: `Only reading runs here: Read for a file, search_files to search or list. If answering needs more, reply ${NEEDS_WORK}: and what would have to run.`,
 		};
 	}
 
@@ -117,6 +120,11 @@ export const decideForkTool = (
 
 	if (pathVerdict) {
 		return pathVerdict;
+	}
+
+	// search_files keeps to the roots and leaves secrets out by itself; its path is checked here too.
+	if (toolName === SEARCH_TOOL) {
+		return { kind: 'allow' };
 	}
 
 	const pattern = readString(input, 'pattern') ?? '';
@@ -379,7 +387,7 @@ export const runSessionAskFork = async ({
 		sessionId,
 		prompt: buildSessionAskPrompt(fromLabel, question, launch.cwd),
 		maxTurns: SESSION_ASK_MAX_TURNS,
-		preToolUse: createForkToolHook({ cwd: launch.cwd, dirs: launch.dirs }),
+		preToolUse: createForkToolHook(withMemoryDir({ cwd: launch.cwd, dirs: launch.dirs })),
 		timeoutMs,
 		...(onItem ? { onMessage: createForkSteps(launch.cwd, onItem) } : {}),
 		...(runQuery ? { runQuery } : {}),

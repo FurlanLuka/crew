@@ -423,15 +423,17 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   `runCrewOn`); a new ref's activation is held until it is listed.
   **Sessions asking sessions** (`sessions/session-ask-tools.ts`, `session-ask-fork.ts`, `fork.ts`,
   `peer-paths.ts`, `secrets.ts`, `state/session-asks.ts`): every non-setup session gets an in-process
-  MCP server `voiceos` (`ask_session`, `tell_session`, `request_secret`; constant names and
-  descriptions, `alwaysLoad`, in `allowedTools`), built fresh per query by `SessionAskBridge.serverFor`
-  and carried in `QueryLaunch.peerServer`, so forks declare the same tools and keep the prompt cache
-  (their hooks deny every call). A call is reported as `session_ask_requested` and its tool call waits
+  MCP server `voiceos` (`ask_session`, `tell_session`, `request_secret`, and `search_files` —
+  `peer-search.ts`, Voice OS's own read-only search, since Claude Code no longer ships Grep/Glob;
+  constant names and descriptions, `alwaysLoad`, in `allowedTools`), built fresh per query by
+  `SessionAskBridge.serverFor` and carried in `QueryLaunch.peerServer`, so forks declare the same
+  tools and keep the prompt cache (their hooks deny every call but `search_files`). A call is reported as `session_ask_requested` and its tool call waits
   (190 s) for `session_ask_answered`; the main's reducer decides everything: the name (asker's
   machine first, else a refusal listing candidates), the limits (3 per turn, no tell back to the
   session whose message started the turn), cards on both streams (`StreamItem` `session_ask`). An ask
-  runs a read-only fork on the target's machine (`session_fork` → `runSessionAskFork`: Read/Grep/Glob
-  inside the session's roots, secret paths and globs denied by `decideForkTool`) → `session_fork_settled`;
+  runs a read-only fork on the target's machine (`session_fork` → `runSessionAskFork`: Read, Grep/Glob
+  where shipped and `search_files` inside the session's roots plus its Claude memory folder
+  (`withMemoryDir`, never the transcripts), secret paths and globs denied by `decideForkTool`) → `session_fork_settled`;
   `needs_work` opens a held `work` ask (docked on the asker, spoken, 15 min) whose Allow queues the work
   to the target with `replyTo`, and the turn's final text goes back (`settleReplyBack`). The page: the
   asker's `session_ask` card (`peerRef`, `settledAt`) holds the exchange; the asked session gets no

@@ -23,6 +23,14 @@ describe('summarizeTool', () => {
 		expect(summarizeTool('Bash', { command: 'x'.repeat(300) }).length).toBeLessThanOrEqual(144));
 	it('MCP tool → server and tool name', () =>
 		expect(summarizeTool('mcp__linear__save_issue', {})).toBe('use linear save_issue'));
+	it("Voice OS's own search → what it searched for, or the files it listed", () => {
+		expect(summarizeTool('mcp__voiceos__search_files', { pattern: 'RETRY_LIMIT' })).toBe(
+			'search for RETRY_LIMIT',
+		);
+		expect(summarizeTool('mcp__voiceos__search_files', { name: '*.jsonl' })).toBe(
+			'find files named *.jsonl',
+		);
+	});
 	it('unknown tool → use <name>', () =>
 		expect(summarizeTool('Frobnicate', {})).toBe('use Frobnicate'));
 });
