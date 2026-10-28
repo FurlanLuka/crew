@@ -4498,6 +4498,13 @@ describe('phone', () => {
 		return { context, page, client };
 	};
 
+	// A screen above Home holds one history entry once it has rendered; a back before that would
+	// leave the page, which no phone does.
+	const waitForHeldEntry = (page: Page) =>
+		page.waitForFunction(
+			() => (history.state as { voiceosPhone?: boolean } | null)?.voiceosPhone === true,
+		);
+
 	const countGetUserMedia = (page: Page) =>
 		page.evaluate(() => (window as unknown as { __gum: number }).__gum);
 
@@ -4618,8 +4625,8 @@ describe('phone', () => {
 
 		// Opened again, the browser's back still returns Home.
 		await row.click();
-		// The page, not only the server, is on the session: its entry is held once it shows it.
 		await page.getByRole('button', { name: 'More' }).waitFor({ timeout: 5000 });
+		await waitForHeldEntry(page);
 		await page.goBack();
 		await waitUntil(() => store.state.view.kind === 'active');
 		expect(new URL(page.url()).pathname).toBe(`/phone/${PHONE_KEY}`);
@@ -4636,7 +4643,7 @@ describe('phone', () => {
 		await page.getByRole('button', { name: 'Back', exact: true }).click();
 		await row.click();
 		await page.getByRole('button', { name: 'More' }).waitFor({ timeout: 5000 });
-		await Bun.sleep(200);
+		await waitForHeldEntry(page);
 
 		await page.goBack();
 		await waitUntil(() => store.state.view.kind === 'active');
@@ -4652,12 +4659,15 @@ describe('phone', () => {
 		await waitUntil(() => store.state.view.kind === 'session');
 		await page.getByRole('button', { name: 'More' }).click();
 		await page.locator('.mpanel').waitFor({ timeout: 5000 });
+		await waitForHeldEntry(page);
 
 		await page.goBack();
 		await page.locator('.mpanel').waitFor({ state: 'detached', timeout: 5000 });
 		expect(store.state.view.kind).toBe('session');
 		expect(new URL(page.url()).pathname).toBe(`/phone/${PHONE_KEY}`);
 
+		// ⋯ closed: the session holds its own entry again.
+		await waitForHeldEntry(page);
 		await page.goBack();
 		await waitUntil(() => store.state.view.kind === 'active');
 		expect(new URL(page.url()).pathname).toBe(`/phone/${PHONE_KEY}`);
