@@ -71,7 +71,8 @@ html:has(.vo.phone) body {
 .vo.phone.swiping .ph-screen {
 	box-shadow: -10px 0 30px rgba(0, 0, 0, 0.6);
 }
-/* What a back swipe uncovers: the screen it returns to, set back a little and dimmed, as iOS does. */
+/* What a back swipe uncovers: the screen it returns to, set back a little and dimmed, as iOS does.
+   use-swipe-back.ts starts from these values (UNDER_SHIFT_PERCENT, UNDER_DIM); change both together. */
 .vo.phone .ph-under {
 	/* The screen's own grid cell: the bar below stays on top and in place. */
 	grid-row: 1;

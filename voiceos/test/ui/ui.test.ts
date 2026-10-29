@@ -58,6 +58,7 @@ let browser: Browser;
 let gateway: Gateway;
 let store: Store;
 const received: ReceivedMessage[] = [];
+let heldActions: Action[] | null = null;
 // Which client claimed the main screen, in order: the gateway takes claim_main itself.
 const claims: string[] = [];
 const audioChunks: number[] = [];
@@ -137,7 +138,12 @@ const startServer = (port = 0): Gateway => {
 			received.push({ message, client });
 
 			if (message.type === 'action') {
-				store.dispatch(message.action);
+				// A slow server, for the tests of what a page shows before the server answers.
+				if (heldActions) {
+					heldActions.push(message.action);
+				} else {
+					store.dispatch(message.action);
+				}
 			}
 		},
 		onAudio: (chunk, client) => {
@@ -4633,6 +4639,45 @@ describe('phone', () => {
 		await context.close();
 	}, 20_000);
 
+	it('a tap moves the screen before the server answers; one it never answers goes back', async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openPhone();
+		const row = page.locator(`.ph-row[data-ref="${REF}"]`);
+		await row.waitFor({ timeout: 5000 });
+		heldActions = [];
+
+		try {
+			await row.click();
+			await page.getByRole('button', { name: 'More' }).waitFor({ timeout: 1000 });
+			expect(store.state.view.kind).toBe('active');
+			// Opened from Home, before any answer: back returns to Home, never the machine's page.
+			await page.getByRole('button', { name: 'Back', exact: true }).click();
+			await page.locator('.ph-list').first().waitFor({ timeout: 1000 });
+			expect(heldActions?.at(-1)).toEqual({ type: 'switch_view', view: { kind: 'active' } });
+			await row.click();
+			await page.getByRole('button', { name: 'More' }).waitFor({ timeout: 1000 });
+			// Never answered: after a few seconds the page shows the server's screen again.
+			await page.locator(`.ph-row[data-ref="${REF}"]`).waitFor({ timeout: 6000 });
+		} finally {
+			heldActions = null;
+			await context.close();
+		}
+	}, 20_000);
+
+	it('the server answered, then went back to Home at once: the phone follows the server', async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openPhone();
+		const row = page.locator(`.ph-row[data-ref="${REF}"]`);
+
+		await row.click();
+		await waitUntil(() => store.state.view.kind === 'session');
+		await page.getByRole('button', { name: 'More' }).waitFor({ timeout: 5000 });
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
+		// Well under the pending time: an old move must not hold the session on screen.
+		await row.waitFor({ timeout: 1000 });
+		await context.close();
+	}, 20_000);
+
 	it("Back, then a session opened at once: the browser's back still returns Home, never leaves the app", async () => {
 		await ensureIdle(REF);
 		const { context, page } = await openPhone();
@@ -4747,6 +4792,13 @@ describe('phone', () => {
 
 		await drag(page, 6, 236);
 		await waitUntil(() => store.state.view.kind === 'active');
+		// Home was already uncovered by the swipe: it does not slide in a second time.
+		await page.locator('.ph-list').first().waitFor({ timeout: 5000 });
+		expect(await page.locator('.ph-screen.pop').count()).toBe(0);
+		// Only that change skipped its slide: the next screen slides in as usual.
+		await page.locator(`.ph-row[data-ref="${REF}"]`).click();
+		await page.getByRole('button', { name: 'More' }).waitFor({ timeout: 5000 });
+		expect(await page.locator('.ph-screen.push').count()).toBe(1);
 		await context.close();
 	}, 20_000);
 
@@ -4758,6 +4810,19 @@ describe('phone', () => {
 		// Held at 150 px: the finger is still down.
 		await drag(page, 6, 156, 'none', 60);
 		await page.locator(`.ph-under .ph-row[data-ref="${REF}"]`).waitFor({ timeout: 5000 });
+		// Home underneath follows the finger: part-way in, part-way lit.
+		const under = await page.locator('.ph-under').evaluate((node) => ({
+			shift: Number.parseFloat(
+				/translateX\((-?[\d.]+)%\)/.exec((node as HTMLElement).style.transform)?.[1] ?? 'NaN',
+			),
+			light: Number.parseFloat(
+				/brightness\(([\d.]+)\)/.exec((node as HTMLElement).style.filter)?.[1] ?? 'NaN',
+			),
+		}));
+		expect(under.shift).toBeGreaterThan(-24);
+		expect(under.shift).toBeLessThan(0);
+		expect(under.light).toBeGreaterThan(0.6);
+		expect(under.light).toBeLessThan(1);
 		// The bar stays on top of what is uncovered.
 		const isBarOnTop = await page.evaluate(() => {
 			const bar = (document.querySelector('.phone-bar') as HTMLElement).getBoundingClientRect();
