@@ -9,6 +9,7 @@ import type { Dispatch } from '../../types.js';
 import type { KeptDictation } from '../../use-connection.js';
 import { isIosApp } from '../../phone.js';
 import { readBackView, readDepth, readViewKey } from '../../phone-nav.js';
+import { usePendingView } from '../../use-phone-pending.js';
 import { usePhoneHistory } from '../../use-phone-history.js';
 import { usePhoneTransition } from '../../use-phone-transition.js';
 import { usePhoneViewport } from '../../use-phone-viewport.js';
@@ -39,8 +40,8 @@ interface PhoneVoiceOSProps {
 }
 
 export const PhoneVoiceOS = ({
-	state,
-	dispatch,
+	state: serverState,
+	dispatch: serverDispatch,
 	send,
 	voice,
 	isAwake,
@@ -51,13 +52,16 @@ export const PhoneVoiceOS = ({
 	onNewSession,
 	onSetUp,
 }: PhoneVoiceOSProps) => {
+	// The screen moves before the server answers; everything below sees the view the phone shows.
+	const { state, dispatch } = usePendingView(serverState, serverDispatch);
 	// The session ⋯ was opened on: another session on screen closes it.
 	const [moreFor, setMoreFor] = useState<string | null>(null);
 	const { view } = state;
 	const session = view.kind === 'session' ? state.sessions[view.ref] : undefined;
 	const isMoreOpen = Boolean(session && moreFor === session.ref);
 	const rootRef = useRef<HTMLDivElement>(null);
-	const transition = usePhoneTransition(view);
+	const isSwiped = useRef(false);
+	const transition = usePhoneTransition(view, isSwiped);
 	const stateRef = useRef(state);
 	stateRef.current = state;
 
@@ -88,7 +92,17 @@ export const PhoneVoiceOS = ({
 	useSwipeBack({
 		rootRef,
 		isEnabled: level > 0 && isIosApp(),
-		onBack: goBack,
+		onBack: () => {
+			isSwiped.current = true;
+			const result = goBack();
+
+			// Only a screen change follows the swipe; ⋯ closing keeps this one.
+			if (result === 'here') {
+				isSwiped.current = false;
+			}
+
+			return result;
+		},
 		onPeek: setIsPeeking,
 	});
 	// Under a swipe back to Home, Home itself, as an app uncovers the screen it returns to. Any other
