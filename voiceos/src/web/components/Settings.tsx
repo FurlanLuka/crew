@@ -1,15 +1,18 @@
-// Voice OS settings (the gear): one page with a side menu — how this tab listens, voice off, the two
-// keys, Discord, the names you gave sessions, the machines, and whether crew opens into Voice OS.
+// Voice OS settings (the gear): one page with a side menu — your phone, how this tab listens, voice
+// off, the two keys, Discord, the names you gave sessions, the machines, and whether crew opens into
+// Voice OS.
 import { type FormEvent, useEffect, useState } from 'react';
 import { LOCAL_MACHINE } from '../../shared/machine-ref.js';
 import type { MachineStatus, State } from '../../shared/protocol.js';
 import { readAlwaysVoice, writeAlwaysVoice } from '../home/prefs.js';
 import { INPUT_MODES, type InputMode } from '../listen-mode.js';
+import { IS_PHONE, IS_PHONE_LINK } from '../phone.js';
 import { isOk, readCrewLine, runCrew, useCrew } from '../setup/api.js';
 import type { Dispatch } from '../types.js';
 import { isKeyMissing, type KeyName } from './BeforeYouTalk.js';
-import { MODE_COPY } from './ModeMenu.js';
+import { MODE_COPY, PHONE_DESCRIPTIONS } from './ModeMenu.js';
 import { RenameSession } from './RenameSession.js';
+import { YourPhone } from './YourPhone.js';
 
 interface SettingsProps {
 	state: State;
@@ -303,6 +306,7 @@ const NamesSection = ({ state, dispatch }: { state: State; dispatch: Dispatch })
 
 // The side menu: each entry scrolls to its section on the one page, so nothing is hidden behind it.
 const SECTIONS = [
+	{ id: 'vs-phone', title: 'Your phone' },
 	{ id: 'vs-listening', title: 'Listening' },
 	{ id: 'vs-voice', title: 'Voice' },
 	{ id: 'vs-keys', title: 'Keys' },
@@ -377,6 +381,7 @@ export const Settings = ({
 				))}
 			</nav>
 			<div className="vs-set">
+				<YourPhone isPhoneLink={IS_PHONE_LINK} />
 				<div className="vs-sec" id="vs-listening">
 					<h2>Listening</h2>
 					<p className="vs-lead">
@@ -392,7 +397,7 @@ export const Settings = ({
 								onClick={() => onListenMode(mode)}
 							>
 								<b>{MODE_COPY[mode].name}</b>
-								<span>{MODE_COPY[mode].description}</span>
+								<span>{(IS_PHONE && PHONE_DESCRIPTIONS[mode]) || MODE_COPY[mode].description}</span>
 							</button>
 						))}
 					</div>
@@ -408,7 +413,9 @@ export const Settings = ({
 								<span className="m">
 									{state.voiceOff
 										? 'Nothing listens or speaks. Discord’s bot is out of its channel.'
-										: 'Also in the top bar: click “voice”.'}
+										: IS_PHONE
+											? 'Voice OS listens and speaks.'
+											: 'Also in the top bar: click “voice”.'}
 								</span>
 							</span>
 							<button

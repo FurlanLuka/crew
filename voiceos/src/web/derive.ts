@@ -35,6 +35,21 @@ export interface Badge {
 	isAlarm: boolean;
 }
 
+// Under a session's name: its machine, its crew label when a name hides it, and how long it has been
+// in its state ("This Mac · running 7m").
+export const describeSessionMeta = (state: State, session: Session, now: number): string => {
+	const badge = describeSessionBadge(session, state.asks);
+	const work = describeWork(session, now);
+
+	return [
+		readMachineTitle(state, readMachine(session.ref)),
+		session.label !== readSessionLabel(state, session.ref) ? session.label : '',
+		`${badge.label}${work.for ? ` ${work.for}` : ''}`,
+	]
+		.filter(Boolean)
+		.join(' · ');
+};
+
 export interface OtherSessionRow {
 	ref: string;
 	label: string;

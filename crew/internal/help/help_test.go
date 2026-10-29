@@ -350,7 +350,7 @@ func TestServerReplacesVoice(t *testing.T) {
 		t.Error("voice is an alias now; crew server is the entry")
 	}
 	server := findSubcommand(&Root, "server")
-	for _, name := range []string{"start", "stop", "restart", "status", "keys", "logs", "debug-notes", "notes", "remote", "machines", "discord", "dev"} {
+	for _, name := range []string{"start", "stop", "restart", "status", "keys", "logs", "debug-notes", "notes", "remote", "machines", "discord", "phones", "tailscale", "dev"} {
 		if findSubcommand(server, name) == nil {
 			t.Errorf("server %s not documented", name)
 		}

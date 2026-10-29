@@ -305,6 +305,39 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   read waits 25/30/35 s — `discord-send.json` pins the argv on both sides). Sessions learn of
   it from the crew section only when `DiscordSendReady` (here, or the main asked with a 3 s deadline):
   `workspace.PromptExtras`, set by `main`.
+  **Phones** (`cmd_server_phones.go`, `internal/voice/phones.go`, `gateway/phones.ts`,
+  `gateway/phone-page.ts`): `crew server phones [ls] | add [--name] | rm <id>` keep
+  `~/.crew/voiceos/phones.json` (`{id, name, key_sha256, created}`, flocked + atomic; only the key's
+  sha256 is kept, so `add` prints the link `<base>/phone/<key>` once). `phoneBase` (pure) picks the
+  base: tailscale.json's url → the proxy when it answers for Voice OS → localhost (`via`
+  tailscale|proxy|local). `phones-seen.json` (`{id: {seen, device}}`) is Voice OS's alone, so Go
+  and TS never write one file. `/phone/<key>` never redirects (the saved app's address must keep the
+  key): a known key gets the app's HTML with the session cookie (Secure when `isSecureRequest`), a
+  per-key manifest (`/phone/<key>/manifest.webmanifest`, start_url and id the link, scope `/`),
+  `apple-mobile-web-app-*` tags, the `/icons/*.png` (180/192/512, embedded) and
+  `window.__VOICEOS_PHONE__`; an unknown or revoked key gets a plain 401. `isAuthorized` accepts the
+  main token or any key in phones.json, read per request, so `crew server phones rm` cuts a phone
+  off on its next request. **Tailscale** (`internal/voice/tailscale.go`): `crew server tailscale
+  [status] | serve | off`; the CLI is on PATH or inside the Mac app. `serve` refuses unless
+  installed, running, signed in and HTTPS is on, then runs `tailscale serve --bg --https=443
+  http://127.0.0.1:<port>` and writes `~/.crew/voiceos/tailscale.json` `{host, url}`; `off` removes
+  it. `listAllowedOrigins` is re-evaluated per check and adds `https://<host>` from it.
+  **Phone layout** (`web/phone.ts`, `components/phone/*`): `isPhone` = a `/phone/` path, the server's
+  mark, or a viewport ≤ 600 px at load, decided once. `PhoneVoiceOS` swaps only the tree inside
+  `VoiceOS` (voice input, notices and dialogs stay): `PhoneTopBar`, Home = `PhoneHome` (a grouped
+  list, `describePhoneCard`), each screen a `.ph-screen` that slides by depth (`phone-nav.ts`: one back
+  rule, `parentView`), swiped back from the left edge in the installed iPhone app (`use-swipe-back.ts`) and
+  popped by the browser's back through one history entry (`use-phone-history.ts`), sized to the
+  visual viewport (`use-phone-viewport.ts`); a phone's audio session is `play-and-record`
+  (`audio-session.ts`) and the speech player wakes or remakes its context, logging under `speech`,
+  `PhoneSession` (`AskDock`/`DenialSheet` as the stream's last children), `PhoneMore` (⋯, built on
+  `SessionPanels`, shared with `Cockpit`), `PhoneBar` (mode sheet left; words or a box in the
+  middle; hold mic for push, send for dictation and text, nothing for the always-listening modes),
+  `InstallGuide` (a `/phone/` link not standalone: iOS steps or Android's install prompt). The
+  `text` input mode (`INPUT_MODES`, "Text only") has no mic or stream, and a server `listen_off`
+  leaves it alone. `phone.css` is scoped under `.vo.phone`. Settings → Your phone
+  (`YourPhone.tsx`, `your-phone.ts`) is the QR code, the Tailscale checklist and Revoke, each a
+  crew command.
   **Queries** (`cmd_server_query.go`, `internal/voice/query*.go`, `remote_query.go`): `crew server
   logs|debug-notes [show <n>]|notes` are read-only, `parseQueryArgs` pure (unknown flags fail,
   times made absolute UTC where typed, `--lines` 1–1000), the path by `DecideRole` (`--local` →
@@ -390,15 +423,17 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   `runCrewOn`); a new ref's activation is held until it is listed.
   **Sessions asking sessions** (`sessions/session-ask-tools.ts`, `session-ask-fork.ts`, `fork.ts`,
   `peer-paths.ts`, `secrets.ts`, `state/session-asks.ts`): every non-setup session gets an in-process
-  MCP server `voiceos` (`ask_session`, `tell_session`, `request_secret`; constant names and
-  descriptions, `alwaysLoad`, in `allowedTools`), built fresh per query by `SessionAskBridge.serverFor`
-  and carried in `QueryLaunch.peerServer`, so forks declare the same tools and keep the prompt cache
-  (their hooks deny every call). A call is reported as `session_ask_requested` and its tool call waits
+  MCP server `voiceos` (`ask_session`, `tell_session`, `request_secret`, and `search_files` —
+  `peer-search.ts`, Voice OS's own read-only search, since Claude Code no longer ships Grep/Glob;
+  constant names and descriptions, `alwaysLoad`, in `allowedTools`), built fresh per query by
+  `SessionAskBridge.serverFor` and carried in `QueryLaunch.peerServer`, so forks declare the same
+  tools and keep the prompt cache (their hooks deny every call but `search_files`). A call is reported as `session_ask_requested` and its tool call waits
   (190 s) for `session_ask_answered`; the main's reducer decides everything: the name (asker's
   machine first, else a refusal listing candidates), the limits (3 per turn, no tell back to the
   session whose message started the turn), cards on both streams (`StreamItem` `session_ask`). An ask
-  runs a read-only fork on the target's machine (`session_fork` → `runSessionAskFork`: Read/Grep/Glob
-  inside the session's roots, secret paths and globs denied by `decideForkTool`) → `session_fork_settled`;
+  runs a read-only fork on the target's machine (`session_fork` → `runSessionAskFork`: Read, Grep/Glob
+  where shipped and `search_files` inside the session's roots plus its Claude memory folder
+  (`withMemoryDir`, never the transcripts), secret paths and globs denied by `decideForkTool`) → `session_fork_settled`;
   `needs_work` opens a held `work` ask (docked on the asker, spoken, 15 min) whose Allow queues the work
   to the target with `replyTo`, and the turn's final text goes back (`settleReplyBack`). The page: the
   asker's `session_ask` card (`peerRef`, `settledAt`) holds the exchange; the asked session gets no
@@ -425,7 +460,7 @@ crew/
   cmd_procs.go         crew ps, crew kill  cmd_uninstall.go  crew uninstall
   cmd_transfer.go      crew export, crew import (parseImportArgs: --plan | project | workspace | --all)
   cmd_launch.go        crew launch, claude, edit          cmd_trash.go  crew trash
-  cmd_housekeeping.go  crew clean          cmd_server*.go  bare crew, crew server (+ the crew voice alias), keys
+  cmd_housekeeping.go  crew clean          cmd_server*.go  bare crew, crew server (+ the crew voice alias), keys, phones + tailscale
   cmd_scan.go          crew add project --scan             cmd_binding_preview.go  add binding --dry-run, ls bindings --preview
   cmd_rm_cost.go       rm workspace|worktree --dry-run     cmd_update.go  crew update [--check]
   cmd_golden_test.go   the Go-written goldens in voiceos/testdata/ the web's Set up reads
@@ -447,7 +482,8 @@ crew/
     uninstall/  crew uninstall
     release/    crew's GitHub release assets: AssetURL, InstallBinary (crew update and Voice OS)
     voice/      Voice OS lifecycle (tmux session, remembered port, proxy route, login link), its
-                install (install.go), requirements (requirements.go) and API keys (keys.go)
+                install (install.go), requirements (requirements.go), API keys (keys.go), phone
+                links (phones.go) and Tailscale serve (tailscale.go)
     workspace/  Ref/Resolved, worktree CRUD, migration, base branches, smoke start, the launch picker
                 and the worktree (launch) page; check.go (the check target, VerdictFor), setup_job.go
                 (the runner), store.go (loadFor/updateFor), pool.go (RemoveFromPool, WorkspacesWith),

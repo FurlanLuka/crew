@@ -1,8 +1,24 @@
 import type { Server, ServerWebSocket } from 'bun';
-import type { ClientMessage, ServerMessage } from '../shared/protocol.js';
+import type { AppClientMessage, ServerMessage } from '../shared/protocol.js';
 import type { Store } from '../state/store.js';
 import { createLogger } from '../log.js';
-import { isAuthorized, createSessionCookie, areTokensEqual, checkRequest } from './auth.js';
+import {
+	authorizeRequest,
+	createSessionCookie,
+	areTokensEqual,
+	checkRequest,
+	isSecureRequest,
+	type Authorization,
+} from './auth.js';
+import { createMainClient } from './main-client.js';
+import {
+	describeDevice,
+	deviceFromUserAgent,
+	type FindPhone,
+	type Phone,
+	type RecordPhoneSeen,
+} from './phones.js';
+import { createPhoneRoutes } from './phone-page.js';
 import { handleCrewRequest, type RunSetupCommand } from '../crew/api.js';
 import { handleAttachRequest, type AttachFile } from './attach.js';
 import { parseClientMessage } from './validate.js';
@@ -13,7 +29,21 @@ const TOPIC = 'events';
 
 export interface ClientData {
 	id: string;
+	// Set when the page signed in with a phone key, so removing that phone can close the socket.
+	phoneId?: string;
+	// The "open on <device>" label, read from the handshake's User-Agent.
+	device: string;
+	// The page's own id from hello_tab: which tab this connection is, across reconnects.
+	tabId?: string;
+	hasPendingClaim?: boolean;
+	isTabRefused?: boolean;
 }
+
+// A close code the page reads as "signed out", not a network drop to reconnect from.
+export const REVOKED_CLOSE_CODE = 4401;
+const PHONE_SWEEP_MS = 2000;
+// How long a connection has to answer a ping before it counts as dropped.
+const PROBE_MS = 2000;
 
 export interface GatewayOptions {
 	store: Store;
@@ -21,11 +51,14 @@ export interface GatewayOptions {
 	port: number;
 	listAllowedOrigins: (port: number) => string[];
 	index: Bun.HTMLBundle | Response;
-	onMessage: (message: ClientMessage, clientId: string) => void;
+	onMessage: (message: AppClientMessage, clientId: string) => void;
 	onAudio: (chunk: Uint8Array, clientId: string) => void;
 	// After the snapshot is sent: a page (re)connected, so anything said now has a tab to play in.
 	onConnect?: (clientId: string) => void;
 	onDisconnect?: (clientId: string) => void;
+	// The main tab's live connection changed (a claim, or that tab back on a new connection):
+	// speech moves to it.
+	onMainConnection?: (clientId: string) => void;
 	readHealth: () => Record<string, unknown>;
 	// A stored image by its name in Voice OS's media folder — nothing else on disk is ever served.
 	readMedia?: (name: string) => MediaFile;
@@ -33,6 +66,14 @@ export interface GatewayOptions {
 	runCrew?: RunSetupCommand;
 	// A file attached on a session's page (POST /api/attach). Without it the route answers 503.
 	attachFile?: AttachFile;
+	// Phones signed in with their own key (phones.json, read per request). Without it only the token works.
+	findPhone?: FindPhone;
+	hasPhone?: (id: string) => boolean;
+	recordPhoneSeen?: RecordPhoneSeen;
+	// How often open phone sockets are checked against phones.json; tests shorten it.
+	phoneSweepMs?: number;
+	// How long a ping waits for its pong when two pages say the same tab id; tests shorten it.
+	probeMs?: number;
 	development?: boolean;
 }
 
@@ -61,9 +102,81 @@ const createTextResponse = (
 export const startGateway = (options: GatewayOptions): Gateway => {
 	const { store, token } = options;
 	const serverId = `${process.pid}-${Date.now()}`;
-	// Known only once the server has its port; the /ws route reads it on each handshake.
-	let origins: string[] = [];
+	// Known only once the server has its port. Origins are listed per check: tailscale.json can
+	// appear while the server runs, and the page must load from it without a restart.
+	let listenPort = options.port;
+	const readOrigins = () => options.listAllowedOrigins(listenPort);
 	const clients = new Map<string, ServerWebSocket<ClientData>>();
+	// Pings out to a connection whose tab id another page said: resolved by its pong or the timeout.
+	const probes = new Map<string, (isAlive: boolean) => void>();
+	// One ping per connection at a time: a second one would leave the first timer to terminate a
+	// connection whose pong only reached the second.
+	const pendingProbes = new Map<string, Promise<boolean>>();
+
+	const probe = (clientId: string): Promise<boolean> => {
+		const socket = clients.get(clientId);
+
+		if (!socket) {
+			return Promise.resolve(false);
+		}
+
+		const pending = pendingProbes.get(clientId);
+
+		if (pending) {
+			return pending;
+		}
+
+		const answer = new Promise<boolean>((resolve) => {
+			const timer = setTimeout(() => {
+				probes.delete(clientId);
+				pendingProbes.delete(clientId);
+				log.info('connection silent, closed', { client: clientId });
+				// Dropped without a close (iOS): nothing would ever end it otherwise.
+				socket.terminate();
+				resolve(false);
+			}, options.probeMs ?? PROBE_MS);
+
+			probes.set(clientId, (isAlive) => {
+				clearTimeout(timer);
+				probes.delete(clientId);
+				pendingProbes.delete(clientId);
+				resolve(isAlive);
+			});
+			socket.ping();
+		});
+
+		pendingProbes.set(clientId, answer);
+
+		return answer;
+	};
+
+	const mainClient = createMainClient({
+		broadcast: (message) => server.publish(TOPIC, JSON.stringify(message)),
+		send: (clientId, message) => clients.get(clientId)?.send(JSON.stringify(message)),
+		probe,
+		onMainConnection: options.onMainConnection,
+	});
+
+	const authorize = (request: Request): Authorization<Phone> => {
+		const authorization = authorizeRequest(request, token, options.findPhone);
+
+		if (authorization && authorization !== 'token') {
+			options.recordPhoneSeen?.(
+				authorization.id,
+				deviceFromUserAgent(request.headers.get('user-agent')),
+			);
+		}
+
+		return authorization;
+	};
+
+	const phoneRoutes = createPhoneRoutes({
+		// The app's page is Bun's bundle; asking our own / is the one way to get its built HTML.
+		fetchAppHtml: () => fetch(`http://127.0.0.1:${listenPort}/`),
+		cacheAppHtml: !options.development,
+		findPhone: options.findPhone,
+		recordPhoneSeen: options.recordPhoneSeen,
+	});
 
 	const server: Server<ClientData> = Bun.serve<ClientData>({
 		hostname: '127.0.0.1',
@@ -84,10 +197,13 @@ export const startGateway = (options: GatewayOptions): Gateway => {
 					return createTextResponse(503, 'crew is not available here');
 				}
 
+				const authorization = authorize(request);
+
 				return handleCrewRequest({
 					request,
-					origins,
-					isAuthorized: isAuthorized(request, token),
+					origins: readOrigins(),
+					isAuthorized: Boolean(authorization),
+					isPhone: Boolean(authorization && authorization !== 'token'),
 					runCrew,
 				});
 			},
@@ -100,18 +216,17 @@ export const startGateway = (options: GatewayOptions): Gateway => {
 
 				return handleAttachRequest({
 					request,
-					origins,
-					isAuthorized: isAuthorized(request, token),
+					origins: readOrigins(),
+					isAuthorized: Boolean(authorize(request)),
 					attachFile,
 				});
 			},
 			'/healthz': () => Response.json({ ok: true, ...options.readHealth() }),
+			...phoneRoutes,
 			'/whoami': (request: Request) =>
-				isAuthorized(request, token)
-					? Response.json({ ok: true })
-					: createTextResponse(401, 'unauthorized'),
+				authorize(request) ? Response.json({ ok: true }) : createTextResponse(401, 'unauthorized'),
 			'/media': (request: Request) => {
-				if (!isAuthorized(request, token)) {
+				if (!authorize(request)) {
 					log.warn('media unauthorized');
 
 					return createTextResponse(401, 'unauthorized');
@@ -152,15 +267,19 @@ export const startGateway = (options: GatewayOptions): Gateway => {
 				// Redirect so the token leaves the address bar and browser history.
 				return new Response(null, {
 					status: 302,
-					headers: { location: '/', 'set-cookie': createSessionCookie(token) },
+					headers: {
+						location: '/',
+						'set-cookie': createSessionCookie(token, isSecureRequest(request)),
+					},
 				});
 			},
 			'/ws': (request: Request, bunServer: Server<ClientData>) => {
 				const origin = request.headers.get('origin');
+				const authorization = authorize(request);
 				const refusal = checkRequest({
 					origin,
-					origins,
-					isAuthorized: isAuthorized(request, token),
+					origins: readOrigins(),
+					isAuthorized: Boolean(authorization),
 				});
 
 				if (refusal) {
@@ -170,8 +289,13 @@ export const startGateway = (options: GatewayOptions): Gateway => {
 				}
 
 				const id = `c${++clientCounter}`;
+				const device = describeDevice(request.headers.get('user-agent'));
+				const data: ClientData =
+					authorization && authorization !== 'token'
+						? { id, device, phoneId: authorization.id }
+						: { id, device };
 
-				if (bunServer.upgrade(request, { data: { id } })) {
+				if (bunServer.upgrade(request, { data })) {
 					return undefined;
 				}
 
@@ -191,7 +315,12 @@ export const startGateway = (options: GatewayOptions): Gateway => {
 				);
 				socket.subscribe(TOPIC);
 				clients.set(socket.data.id, socket);
-				log.info('client connected', { client: socket.data.id, seq: store.state.seq });
+				socket.send(JSON.stringify(mainClient.message()));
+				log.info('client connected', {
+					client: socket.data.id,
+					seq: store.state.seq,
+					phone: socket.data.phoneId ?? null,
+				});
 				options.onConnect?.(socket.data.id);
 			},
 			message(socket, raw) {
@@ -212,11 +341,28 @@ export const startGateway = (options: GatewayOptions): Gateway => {
 					return;
 				}
 
-				options.onMessage(parsed.message, socket.data.id);
+				const { message } = parsed;
+
+				if (
+					message.type === 'client_log' ||
+					message.type === 'hello_tab' ||
+					message.type === 'claim_main'
+				) {
+					void mainClient.handle(message, socket.data);
+
+					return;
+				}
+
+				options.onMessage(message, socket.data.id);
+			},
+			pong(socket) {
+				probes.get(socket.data.id)?.(true);
 			},
 			close(socket) {
 				clients.delete(socket.data.id);
 				log.info('client disconnected', { client: socket.data.id });
+				probes.get(socket.data.id)?.(false);
+				mainClient.disconnected(socket.data);
 				options.onDisconnect?.(socket.data.id);
 			},
 		},
@@ -224,13 +370,34 @@ export const startGateway = (options: GatewayOptions): Gateway => {
 
 	const port = server.port ?? options.port;
 
-	origins = options.listAllowedOrigins(port);
+	listenPort = port;
 
 	const unsubscribe = store.subscribe((stamped) => {
 		server.publish(TOPIC, JSON.stringify({ type: 'input', stamped } satisfies ServerMessage));
 	});
 
-	log.info('listening', { port, origins });
+	// A request is checked when it arrives, but a socket stays open: removing a phone must also end
+	// the connections it already has. phones.json is cached by mtime, so a sweep costs one stat.
+	const { hasPhone } = options;
+	const sweep = hasPhone
+		? setInterval(() => {
+				for (const socket of clients.values()) {
+					const { phoneId } = socket.data;
+
+					if (phoneId && !hasPhone(phoneId)) {
+						log.info('phone removed, closing its socket', {
+							client: socket.data.id,
+							phone: phoneId,
+						});
+						socket.close(REVOKED_CLOSE_CODE, 'phone removed');
+					}
+				}
+			}, options.phoneSweepMs ?? PHONE_SWEEP_MS)
+		: null;
+
+	sweep?.unref();
+
+	log.info('listening', { port, origins: readOrigins() });
 
 	return {
 		port,
@@ -248,6 +415,10 @@ export const startGateway = (options: GatewayOptions): Gateway => {
 		},
 		countClients: () => clients.size,
 		stop: () => {
+			if (sweep) {
+				clearInterval(sweep);
+			}
+
 			unsubscribe();
 			server.stop(true);
 		},

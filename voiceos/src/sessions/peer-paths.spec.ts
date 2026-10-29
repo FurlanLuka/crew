@@ -7,6 +7,7 @@ import {
 	isSecretPath,
 	isSecretPattern,
 	resolveInsideRoots,
+	memoryDirFor,
 } from './peer-paths.js';
 
 const roots = { cwd: '/w/checkout', dirs: ['/w/shared'] };
@@ -108,4 +109,11 @@ describe('a symlink inside the worktree', () => {
 			reason: 'config.txt looks like a secret; use request_secret',
 		});
 	});
+});
+
+describe('memoryDirFor', () => {
+	it("Claude Code's folder for the cwd: every character but letters and digits as -", () =>
+		expect(memoryDirFor('/Users/dev/.crew/workspaces/store-front/main', '/h/.claude')).toBe(
+			'/h/.claude/projects/-Users-dev--crew-workspaces-store-front-main/memory',
+		));
 });

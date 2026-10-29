@@ -1,0 +1,14 @@
+[
+  {
+    "id": "p3fa9c1",
+    "name": "Phone",
+    "created": "2026-10-02T09:30:00Z",
+    "device": "iPhone",
+    "last_seen": "2026-10-02T10:05:00Z"
+  },
+  {
+    "id": "pa0b1c2",
+    "name": "Work phone",
+    "created": "2026-10-02T09:45:00Z"
+  }
+]

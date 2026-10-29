@@ -1,0 +1,11 @@
+{
+  "installed": true,
+  "running": true,
+  "signed_in": true,
+  "user": "dev@example.com",
+  "host": "mac.tail1.ts.net",
+  "https": true,
+  "serving": true,
+  "url": "https://mac.tail1.ts.net",
+  "detail": ""
+}

@@ -1026,7 +1026,31 @@ export type ServerMessage =
 	| { type: 'dictation_kept'; text: string; reason: string }
 	// "Open the doc": opened in this tab's browser, since the developer may be anywhere.
 	| { type: 'open_url'; url: string; title: string }
+	// The one tab that listens and speaks, by the tabId its page sends in hello_tab (null: none yet).
+	// It stays main across reconnects until another tab claims. device is a label ("iPhone",
+	// "Mac · Chrome"), empty when tabId is null. Sent on connect and on every claim.
+	| { type: 'main_client'; tabId: string | null; device: string }
+	// The hello_tab's id belongs to another live page (a duplicated tab copies it): make a new one,
+	// say hello_tab again, and stay off the main screen.
+	| { type: 'tab_taken' }
 	| { type: 'error'; message: string };
+
+export type ClientLogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+// Handled by the gateway alone, as connection state and logging: never the reducer's.
+export type GatewayClientMessage =
+	// The page's own facts into Voice OS's log (cat ≤ 40, msg ≤ 300 chars, fields ≤ 2 KB as JSON).
+	| {
+			type: 'client_log';
+			level: ClientLogLevel;
+			cat: string;
+			msg: string;
+			fields?: Record<string, unknown>;
+	  }
+	// Sent on every connection: the page's own id, kept across its reconnects.
+	| { type: 'hello_tab'; tabId: string }
+	// This tab becomes the main one: a fresh page load, or "Use here". Needs a hello_tab first.
+	| { type: 'claim_main' };
 
 export type ClientMessage =
 	| { type: 'action'; action: Action }
@@ -1045,4 +1069,7 @@ export type ClientMessage =
 	// The listening menu while the owner is on Discord: how the Discord channel listens.
 	| { type: 'discord_listen'; mode: ListeningMode }
 	// The box's /mute and /unmute: Voice OS's own chatter, as the kernel's mute.
-	| { type: 'mute'; isMuted: boolean };
+	| { type: 'mute'; isMuted: boolean }
+	| GatewayClientMessage;
+
+export type AppClientMessage = Exclude<ClientMessage, GatewayClientMessage>;

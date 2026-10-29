@@ -17,6 +17,7 @@ describe('matchRoute', () => {
 		['/nowhere', '', { half: 'home' }],
 		['/voice', '', { half: 'voice', view: { kind: 'active' } }],
 		['/voice/settings', '', { half: 'voice', view: { kind: 'settings' } }],
+		['/phone/k3f9a1c2', '', { half: 'voice', view: { kind: 'active' } }],
 		['/voice/activate', '', { half: 'voice', view: { kind: 'activate' } }],
 		['/voice/activate/vm1', '', { half: 'voice', view: { kind: 'activate', machine: 'vm1' } }],
 		[

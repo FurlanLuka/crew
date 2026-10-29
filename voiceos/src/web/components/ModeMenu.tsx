@@ -68,7 +68,81 @@ export const MODE_COPY: Record<InputMode, ModeCopy> = {
 			</svg>
 		),
 	},
+	text: {
+		name: 'Text only',
+		description: 'No microphone. Type, and Voice OS stays quiet in this tab.',
+		icon: (
+			<svg {...ICON_PROPS}>
+				<rect x="1.75" y="4" width="12.5" height="8" rx="1.75" />
+				<path d="M4.5 6.75h.01M7 6.75h.01M9.5 6.75h.01M12 6.75h.01M5.25 9.25h5.5" />
+			</svg>
+		),
+	},
 };
+
+// A phone has no Space key, and Text only is about this phone, not a tab: the sheet and Settings on
+// a phone say these instead.
+export const PHONE_DESCRIPTIONS: Partial<Record<InputMode, string>> = {
+	push: 'Hold the mic on the right while you speak; let go to send.',
+	dictation: 'For brain dumps: pauses never end it. Send when you are done.',
+	text: 'No microphone. Type, and Voice OS stays quiet on this phone.',
+};
+
+interface ModeListProps {
+	mode: InputMode;
+	modes: InputMode[];
+	onChoose: (mode: InputMode) => void;
+	onKeyDown?: (event: KeyboardEvent<HTMLDivElement>) => void;
+	itemRefs?: { current: (HTMLButtonElement | null)[] };
+	// What each mode says where the general copy would read wrong (a phone has no Space key).
+	descriptions?: Partial<Record<InputMode, string>>;
+}
+
+// The modes as a menu: the voice bar's dropdown, and the phone's sheet over the conversation.
+export const ModeList = ({
+	mode,
+	modes,
+	onChoose,
+	onKeyDown,
+	itemRefs,
+	descriptions = {},
+}: ModeListProps) => (
+	<div className="mode-menu" role="menu" aria-label="Listening mode" onKeyDown={onKeyDown}>
+		<div className="mode-menu-title" aria-hidden="true">
+			How Voice OS listens
+		</div>
+		{modes.map((option, index) => {
+			const copy = MODE_COPY[option];
+			const isChosen = option === mode;
+
+			return (
+				<button
+					key={option}
+					ref={(item) => {
+						if (itemRefs) {
+							itemRefs.current[index] = item;
+						}
+					}}
+					type="button"
+					role="menuitemradio"
+					aria-checked={isChosen}
+					className="mode-item"
+					data-mode={option}
+					onClick={() => onChoose(option)}
+				>
+					<span className="mode-tile">{copy.icon}</span>
+					<span className="mode-text">
+						<span className="mode-name">{copy.name}</span>
+						<span className="mode-desc">{descriptions[option] ?? copy.description}</span>
+					</span>
+					<span className="mode-check" aria-hidden="true">
+						{isChosen ? '✓' : ''}
+					</span>
+				</button>
+			);
+		})}
+	</div>
+);
 
 interface ModeMenuProps {
 	mode: InputMode;
@@ -147,38 +221,13 @@ export const ModeMenu = ({
 				{MODE_COPY[mode].name} <span aria-hidden="true">⌄</span>
 			</button>
 			{isOpen ? (
-				<div className="mode-menu" role="menu" aria-label="Listening mode" onKeyDown={handleKey}>
-					<div className="mode-menu-title" aria-hidden="true">
-						How Voice OS listens
-					</div>
-					{modes.map((option, index) => {
-						const copy = MODE_COPY[option];
-						const isChosen = option === mode;
-
-						return (
-							<button
-								key={option}
-								ref={(item) => {
-									itemRefs.current[index] = item;
-								}}
-								type="button"
-								role="menuitemradio"
-								aria-checked={isChosen}
-								className="mode-item"
-								onClick={() => choose(option)}
-							>
-								<span className="mode-tile">{copy.icon}</span>
-								<span className="mode-text">
-									<span className="mode-name">{copy.name}</span>
-									<span className="mode-desc">{copy.description}</span>
-								</span>
-								<span className="mode-check" aria-hidden="true">
-									{isChosen ? '✓' : ''}
-								</span>
-							</button>
-						);
-					})}
-				</div>
+				<ModeList
+					mode={mode}
+					modes={modes}
+					onChoose={choose}
+					onKeyDown={handleKey}
+					itemRefs={itemRefs}
+				/>
 			) : null}
 		</div>
 	);

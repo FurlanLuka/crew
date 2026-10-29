@@ -35,6 +35,7 @@ export const MIC_TITLES: Record<InputMode, string> = {
 		'On demand: always listening, but only what follows “Voice OS” is taken; say “end of turn” to send at once',
 	'hands-free': 'Hands-free: always listening, speak over Voice OS to interrupt it',
 	dictation: 'Dictation: click to start, click again or Send when done',
+	text: 'Text only: no microphone here; type below',
 };
 
 const DISCORD_MODES: InputMode[] = ['on-demand', 'hands-free'];

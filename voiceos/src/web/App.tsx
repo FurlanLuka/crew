@@ -6,6 +6,7 @@ import { ConnectionBanner } from './components/ConnectionBanner.js';
 import { VoiceOS } from './components/VoiceOS.js';
 import { Home } from './home/Home.js';
 import { Opening, isReducedMotion } from './home/Opening.js';
+import { IS_PHONE_LINK } from './phone.js';
 import { type Half, readAlwaysVoice, shouldOpenVoice, writeLastHalf } from './home/prefs.js';
 import { VoiceMoment } from './home/VoiceMoment.js';
 import {
@@ -83,6 +84,9 @@ const App = () => {
 		ignoredAt,
 		openRequest,
 		keptDictation,
+		mainState,
+		mainDevice,
+		claimMain,
 	} = useConnection((message) => player.receive(message));
 	// The "Voice OS" wordmark moment: "Voice" struck through while voice is off.
 	const [moment, setMoment] = useState<{ isStruck: boolean } | null>(null);
@@ -141,7 +145,8 @@ const App = () => {
 	const routeViewKey = route.half === 'voice' ? viewKey(route.view) : null;
 
 	useEffect(() => {
-		if (route.half !== 'voice' || !state || routeViewKey === null) {
+		// A phone's link keeps its address: it is the installed app's start address, key and all.
+		if (route.half !== 'voice' || !state || routeViewKey === null || IS_PHONE_LINK) {
 			return;
 		}
 
@@ -164,7 +169,7 @@ const App = () => {
 
 	// The server's view moved (a click, a voice command, another tab): the address follows it.
 	useEffect(() => {
-		if (route.half !== 'voice' || !state || viewNow === null) {
+		if (route.half !== 'voice' || !state || viewNow === null || IS_PHONE_LINK) {
 			return;
 		}
 
@@ -300,6 +305,9 @@ const App = () => {
 							keptDictation={keptDictation}
 							blockedOpen={blockedOpen}
 							player={player}
+							mainState={mainState}
+							mainDevice={mainDevice}
+							onClaimMain={claimMain}
 							onHome={goHome}
 							onSetUp={openSetup}
 						/>

@@ -159,11 +159,18 @@ const SAMPLES: { [T in SetupCommandType]: Extract<SetupCommand, { type: T }> } =
 	chat_rm: { type: 'chat_rm', id: 'chat/3fa9c1' },
 	discord_channels: { type: 'discord_channels' },
 	discord_text_channel: { type: 'discord_text_channel', channel: '1001' },
+	phones_ls: { type: 'phones_ls' },
+	phones_add: { type: 'phones_add', name: 'iPhone' },
+	phones_rm: { type: 'phones_rm', id: 'p1a2b3' },
+	tailscale_status: { type: 'tailscale_status' },
+	tailscale_serve: { type: 'tailscale_serve' },
+	tailscale_off: { type: 'tailscale_off' },
 };
 
 // The other shape of a variant whose flags are optional: crew's help tree must know it too.
 const SECOND_SAMPLES: SetupCommand[] = [
 	{ type: 'chat_add' },
+	{ type: 'phones_add' },
 	{ type: 'uninstall', mode: 'keep', confirm: true },
 	{ type: 'dev_add', project: 'store-api', name: 'worker' },
 	{ type: 'add_worktree', ref: 'store-front/wrk2' },
@@ -308,9 +315,15 @@ describe('parseSetupCommand', () => {
 				'machines_ls',
 				'machines_rename',
 				'machines_rm',
+				'phones_add',
+				'phones_ls',
+				'phones_rm',
 				'server_restart',
 				'server_stop',
 				'uninstall',
+				'tailscale_off',
+				'tailscale_serve',
+				'tailscale_status',
 				'update',
 			].sort(),
 		);

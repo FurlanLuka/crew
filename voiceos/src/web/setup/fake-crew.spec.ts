@@ -56,6 +56,9 @@ const BUILT: [string, SetupCommand, number?][] = [
 	['server-discord-status.json', { type: 'discord_status' }],
 	['ls-chats.json', { type: 'ls_chats' }],
 	['server-discord-channels.json', { type: 'discord_channels' }],
+	['server-phones.json', { type: 'phones_ls' }],
+	['server-phones-add.json', { type: 'phones_add' }],
+	['server-tailscale-status.json', { type: 'tailscale_status' }],
 	['migrate.json', { type: 'migrate', confirm: true }],
 ];
 

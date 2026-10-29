@@ -83,6 +83,8 @@ export const SetupCommandSchema = z.discriminatedUnion('type', [
 	variant('discord_status', {}),
 	variant('ls_chats', {}),
 	variant('discord_channels', {}),
+	variant('phones_ls', {}),
+	variant('tailscale_status', {}),
 	variant('debug_tail', { lines: lines.optional() }),
 	variant('doctor', {}),
 	variant('migrate_dry_run', {}),
@@ -203,6 +205,13 @@ export const SetupCommandSchema = z.discriminatedUnion('type', [
 	variant('chat_rm', { id: z.string().regex(/^(?:chat\/)?[0-9a-f]{6}$/) }),
 	// A channel's id, or voice: back to the voice channel's own chat.
 	variant('discord_text_channel', { channel: word }),
+	// A phone signed in with its own key: the link carries the key, shown once.
+	variant('phones_add', {
+		name: flagValue.pipe(z.string().trim().min(1).max(MAX_NAME_LENGTH)).optional(),
+	}),
+	variant('phones_rm', { id: word }),
+	variant('tailscale_serve', {}),
+	variant('tailscale_off', {}),
 ]);
 
 export type SetupCommand = z.infer<typeof SetupCommandSchema>;
@@ -261,6 +270,7 @@ const long: CommandTraits = { ...read, timeoutMs: LONG_MS };
 const text: CommandTraits = { ...read, json: false };
 const local: CommandTraits = { ...write, localOnly: true };
 const said: CommandTraits = { ...write, json: false };
+const localSaid: CommandTraits = { ...local, json: false };
 const replacesServer: CommandTraits = { ...local, detached: true, json: false };
 
 export const COMMAND_TRAITS: Record<SetupCommandType, CommandTraits> = {
@@ -347,6 +357,13 @@ export const COMMAND_TRAITS: Record<SetupCommandType, CommandTraits> = {
 	chat_add: write,
 	chat_rm: write,
 	discord_text_channel: local,
+	// Keys and the tailnet belong to the machine whose page asks: never a remote's.
+	phones_ls: { ...read, localOnly: true },
+	phones_add: local,
+	phones_rm: localSaid,
+	tailscale_status: { ...read, localOnly: true },
+	tailscale_serve: localSaid,
+	tailscale_off: localSaid,
 };
 
 export const traitsOf = (command: SetupCommand): CommandTraits => COMMAND_TRAITS[command.type];
@@ -621,6 +638,18 @@ const baseArgv = (command: SetupCommand): string[] => {
 			return ['chat', 'rm', command.id];
 		case 'discord_text_channel':
 			return ['voice', 'discord', 'setup', `--text-channel=${command.channel}`];
+		case 'phones_ls':
+			return ['voice', 'phones', 'ls'];
+		case 'phones_add':
+			return ['voice', 'phones', 'add', ...flag('name', command.name)];
+		case 'phones_rm':
+			return ['voice', 'phones', 'rm', command.id];
+		case 'tailscale_status':
+			return ['voice', 'tailscale', 'status'];
+		case 'tailscale_serve':
+			return ['voice', 'tailscale', 'serve'];
+		case 'tailscale_off':
+			return ['voice', 'tailscale', 'off'];
 
 		default: {
 			const unreachable: never = command;

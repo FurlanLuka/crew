@@ -42,6 +42,7 @@ it? [Working with Voice OS](../tutorials/2-voice-os.md) walks through it step by
 - [Slash commands](#slash-commands)
 - [Dev servers](#dev-servers)
 - [Notes and debug notes](#notes-and-debug-notes)
+- [On your phone](#on-your-phone)
 - [Other machines](#other-machines)
 - [Running Voice OS](#running-voice-os)
 - [Where state lives](#where-state-lives)
@@ -125,10 +126,8 @@ setting a cookie. If you lose the cookie, or want to sign in from another browse
 > authority (`crew dev proxy trust` shows how, once per device). Until then the proxy link works
 > for text and clicks only.
 
-On a phone the page fits the width: the top bar keeps the tabs (they scroll sideways), and the
-session's stream takes the screen, with the spoken line and the input under it.
-
-![Voice OS on a phone: store/main's stream adding a search box to the catalog, with a diff, its spoken line and the input](../images/voice-os/phone.png)
+On a phone Voice OS has a layout of its own, and the phone gets a link of its own that stays
+signed in: see [On your phone](#on-your-phone).
 
 **Keys.** The first time you open Voice OS without them, the page asks for the Anthropic and
 Soniox keys (and the microphone). Each key is checked with its service before it is saved; a
@@ -249,9 +248,9 @@ them per machine (`crew chat add`, `crew ls chats`, `crew chat rm`).
 
 ![The New session dialog over Home: This Mac picked over Build box, ~/notes as the folder, research as the name, and Start session ringed](../images/voice-os/new-session.png)
 
-**Settings** is one page with a menu down the side: how you listen (four modes, each explained),
-voice off, the two keys (checked before saving), Discord, session names, your machines, and whether
-crew opens straight into Voice OS.
+**Settings** is one page with a menu down the side: your phone ([On your phone](#on-your-phone)),
+how you listen (each mode explained), voice off, the two keys (checked before saving), Discord,
+session names, your machines, and whether crew opens straight into Voice OS.
 
 **Sending things to Discord.** With Discord set up, ask a session to send something there ("send
 that screenshot to Discord", "post the summary in Discord") and it runs `crew server discord send`,
@@ -260,7 +259,7 @@ own chat, or to a text channel you pick under **Settings → Discord → Message
 discord setup --text-channel=<name>`). Sessions are told about it only when Discord is set up, and
 they post only when you ask.
 
-![Settings: a side menu, the four listening modes as cards with Push to talk picked, voice on with Mute voice, the Soniox and Anthropic keys with Replace, and Discord not set up](../images/voice-os/settings.png)
+![Settings, opened on Your phone: the side menu (Your phone, Listening, Voice, Keys, Discord, Names, Machines, Opening crew), no code yet with New code and the three steps, the recommended Tailscale checklist, and the phones iPhone and Work phone with Revoke](../images/voice-os/settings.png)
 
 Click a row or a tab to open that session. Opening a session only shows it. An inactive session's
 page shows its history and an **Activate** button, with no input box (see
@@ -297,6 +296,7 @@ second tab never starts listening on its own.
 | **On demand** | Always listening, but Voice OS only acts on what follows "Voice OS": "Voice OS, tell checkout to run the tests." A chime says it heard its name and the input shows *Listening to you*. The turn ends when you pause, or at once when you say "end of turn". A second request needs "Voice OS" again. |
 | **Hands-free** | Always listening. Every sentence is a turn. |
 | **Dictation** | For brain dumps. Click the mic (or press **Space**) to start and talk as long as you like: pauses never end it, and "stop" or "wait" are just words. **Send** sends everything, word for word, to the session on screen, marked as dictated. It never goes through Voice OS's routing. **Discard** throws it away (it asks once more when there are words). With no session on screen, or one waiting on your answer, the words land in the text box to send from there. |
+| **Text only** | No microphone at all. You type, and Voice OS stays quiet in that tab. Handy on a phone in a meeting. |
 
 You can also switch modes by voice: "Switch to on demand." · "Hands-free on." · "Turn off
 hands-free." · "Push to talk." Voice OS confirms the change aloud.
@@ -692,8 +692,9 @@ on This Mac or on Build box?").
 
 **Asking.** `ask_session` gets an answer without interrupting the other session. Voice OS makes a
 copy of that session's conversation, and the copy answers from what the session knows. When it has
-to look something up it can read and search files in that session's own folders, nothing else: it
-cannot run commands, change files or reach another worktree. The asking session waits for the
+to look something up it can read and search files in that session's own folders and its Claude
+memory, nothing else: it cannot run commands, change files or reach another worktree. Its search is
+Voice OS's own, so it works whatever search tools your Claude Code has. The asking session waits for the
 answer, up to three minutes, and can get files back with it. The other session never notices.
 
 **When an answer needs real work.** If the copy would have to run something (the tests, a server, a
@@ -839,6 +840,103 @@ Read both from a terminal, or have an agent read them:
 
 Notes and debug notes live on the main. On a remote these commands ask the main through the link.
 
+## On your phone
+
+I use Voice OS on my phone as an app on the home screen. It opens full screen, stays signed in,
+and has a layout made for one hand.
+
+### Add your phone
+
+Open **Settings** (the gear at the top right). **Your phone** is the first section. Press **New
+code** and it shows a QR code, and beside it where the code leads: through crew's proxy on this
+network, through Tailscale, or only this Mac, which a phone can't reach.
+
+![Settings, Your phone: a QR code with three steps (scan it, add it to the home screen, open it from there), reached at voice--os.192.168.1.20.nip.io through crew's proxy, New code and Trust crew's certificate on the phone; the recommended Tailscale card with Tailscale running and signed in on this Mac, HTTPS for the tailnet still off with Turn it on in Tailscale, and Put Voice OS on Tailscale with Set it up; then two phones, iPhone and Work phone, each with Revoke](../images/voice-os/settings-your-phone.png)
+
+Scan the code with the phone's camera. The link carries a key of the phone's own, so it opens
+signed in. crew keeps only a hash of that key, so the code is shown only until you leave the page,
+and every **New code** adds another phone to the list. Each phone you add shows up below the code with
+when it was added and last opened.
+
+Through crew's proxy, the phone has to trust crew's certificate first, or the page loads without the
+microphone. **Trust crew's certificate on the phone…** says how, once per phone. The proxy only works
+on the same network as this machine.
+
+Tailscale is the way I recommend. Only your own devices reach Voice OS, it works away from home,
+and the phone gets a real certificate with nothing to trust by hand. The **Reach it with Tailscale**
+card is a checklist: Tailscale running and signed in on this Mac, HTTPS turned on for your tailnet
+(**Turn it on in Tailscale** opens the admin page), then **Set it up** to put Voice OS on Tailscale.
+Install Tailscale on the phone too and sign in with the same account. Once Voice OS is on Tailscale
+the card says **On Tailscale**, with **Stop serving** to take it off, and new codes lead there.
+Make a new code after switching, since a code made before still points at the proxy.
+
+### Save it to the home screen
+
+Opened in the browser, the phone's link first shows how to save it. On an iPhone, tap **Share** in
+Safari and choose **Add to Home Screen**. On Android, tap **Install**, or when there's no button
+open the browser's menu and choose **Add to home screen**. **Use it in the browser instead** skips
+this.
+
+![The iPhone install guide: Put Voice OS on your home screen, step 1 Tap Share below, step 2 Choose Add to Home Screen, and Use it in Safari instead](../images/voice-os/phone-install-iphone.png)
+
+![The Android install guide: Install Voice OS with an Install button, a note to use the menu and Add to home screen when there's no button, and Use it in the browser instead](../images/voice-os/phone-install-android.png)
+
+From then on, open it from the home screen.
+
+### The phone layout
+
+**Home** lists your active sessions, one row each, grouped like your groups on the desktop. The one
+waiting on you comes first, its line in red with what it asks. Each row says how long the session
+has been working or waiting. **+** and the gear are at the top. Tap a session to open it.
+
+![Voice OS Home on a phone: 3 sessions on 2 machines, one needs you; store/wrk1 asks where the worker should pick up the order emails, waiting 15 minutes; store/main on This Mac working for 7 minutes and store/main on Build box for 10; the bar at the bottom says Hold the mic to talk](../images/voice-os/phone-home.png)
+
+A session is its stream, with back on the left, the name with its state in the middle and **⋯** on
+the right. To go back, swipe from the left edge of the screen as in any app, or use the phone's own
+back gesture.
+
+![store/main on a phone: the request to add a search box to the catalog, the reads and edits, a diff of CatalogPage.tsx, 14 tests passing and the answer still streaming, with Hold the mic to talk at the bottom](../images/voice-os/phone-session.png)
+
+A question, a plan or a permission sits at the end of the stream, right above the bar, so you
+answer it with your thumb.
+
+![store/wrk1 on a phone waiting on a question at the end of its stream: where should the worker pick up the order emails from, with A Redis queue, A jobs table in Postgres, Send them inline for now and Something else](../images/voice-os/phone-question.png)
+
+**⋯** opens everything the desktop shows beside the stream: the session's status and cost, **Stop
+turn**, the permission mode, model and context chips, the dev servers with their logs, links,
+**Restart** and **Stop**, what you said, notes, the other sessions and where the session works.
+**Done** at the top right closes it.
+
+![⋯ for store/main: status running, cost $0.64, Stop turn, Auto, Opus 5.5 1M and 412k of 1M; the web, api and worker dev servers with Restart and Stop; the last thing said; notes; store/wrk1 waiting and Build box's store/main working elsewhere; and where it works](../images/voice-os/phone-more.png)
+
+**Settings** (the gear on Home) is one scroll of groups, like the phone's own settings: the
+listening mode, voice on or off, keys, Discord, names and machines.
+
+![Settings on a phone: Your phone, then Listening with Push to talk ticked, Voice, Keys and the other groups, each a rounded block](../images/voice-os/phone-settings.png)
+
+The bar at the bottom changes with the listening mode, which the round button on its left picks.
+
+![The listening-mode sheet on a phone: How Voice OS listens, with Push to talk ticked, On demand, Hands-free, Dictation and Text only](../images/voice-os/phone-modes.png)
+
+- **Push to talk**: hold the mic on the right while you speak and let go to send. Sliding your thumb
+  off it still sends.
+- **On demand** and **Hands-free**: no button. The bar shows what it hears as you talk.
+- **Dictation**: tap the mic to start, then the send button when you're done.
+- **Text only**: a text box with a send button, no microphone, and Voice OS stays quiet on this
+  phone. Typing on the phone happens here.
+
+Voice OS speaks even with the phone on silent, as a call would. A phone stops the microphone and
+the speech when the app goes to the background or the screen locks; what was said meanwhile stays in
+the stream. Push to talk
+is the most reliable mode on a phone, and [Discord](../tutorials/4-from-anywhere.md#voice-os-in-discord)
+keeps going with the screen off.
+
+### Revoke a phone
+
+Lost the phone, or done with it? Press **Revoke** next to it in Settings → Your phone. Its link stops
+working on its next request, even in the saved app. From a terminal it's
+`crew server phones rm <id>`, with the ids from `crew server phones`.
+
 ## Other machines
 
 One Voice OS can drive the sessions on other machines too, such as a VM or a second computer, over
@@ -911,6 +1009,8 @@ to the release.
 | `crew server keys set <anthropic\|soniox>` | Sets a key from stdin, for example `pbpaste \| crew server keys set soniox`. |
 | `crew server machines [ls\|add\|rm\|rename]` | Manages the other machines. |
 | `crew server remote [status\|stop]` | Makes this machine a remote, or reports or stops it. |
+| `crew server phones [ls\|add\|rm]` | Lists your phones, makes a phone's link, or revokes one. Settings → Your phone runs these. |
+| `crew server tailscale [status\|serve\|off]` | Shows whether Tailscale is ready, puts Voice OS on your tailnet, or takes it off. |
 
 Add `--no-open` to `start` or `restart` to skip opening the browser. `--json` gives
 machine-readable output. [Every crew command](../commands.md#crew-server) has the details.
@@ -952,6 +1052,9 @@ downgraded; Settings tells you to update this machine instead.
 | `~/.crew/voiceos/media/` | Images sessions showed, kept for 30 days. |
 | `~/.crew/voiceos/attachments/` | Files you attached, kept for 30 days. |
 | `~/.crew/voiceos/machines.json` | The other machines. |
+| `~/.crew/voiceos/phones.json` | Your phones, each with a hash of its key (the key itself is only in the phone's link). |
+| `~/.crew/voiceos/phones-seen.json` | When Voice OS last saw each phone, and what kind it is. |
+| `~/.crew/voiceos/tailscale.json` | Where Voice OS is on your tailnet, while `crew server tailscale serve` shares it. |
 | `~/.crew/voiceos/logs/voiceos.log` | The log, rotated into `.1` … `.5` (`crew server logs`). |
 | `~/.crew/voiceos/logs/debug-notes.jsonl` | Debug notes (`crew server debug-notes`). |
 | `~/.crew/voiceos/remote/` | A remote's own daemon state, socket and log. |

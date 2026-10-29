@@ -143,9 +143,20 @@ export interface HandleCrewRequestParams {
 	request: Request;
 	origins: string[];
 	isAuthorized: boolean;
+	// Signed in with a phone key rather than the Mac's token.
+	isPhone?: boolean;
 	runCrew: RunSetupCommand;
 	now?: () => number;
 }
+
+// Least privilege: a phone may look, but a lost phone must not be able to mint more phones or
+// open the machine to the network.
+const MAC_ONLY_COMMANDS: ReadonlySet<string> = new Set([
+	'phones_add',
+	'phones_rm',
+	'tailscale_serve',
+	'tailscale_off',
+]);
 
 // Every refusal before a command is known is logged the same way: the status and crew's reason,
 // the type unknown, never the body.
@@ -159,6 +170,7 @@ export const handleCrewRequest = async ({
 	request,
 	origins,
 	isAuthorized,
+	isPhone = false,
 	runCrew,
 	now = Date.now,
 }: HandleCrewRequestParams): Promise<Response> => {
@@ -205,6 +217,13 @@ export const handleCrewRequest = async ({
 
 	const { command } = parsed;
 	const { machine } = body.data;
+
+	if (isPhone && MAC_ONLY_COMMANDS.has(command.type)) {
+		log.warn('crew api refused for a phone', { type: command.type, machine });
+
+		return fail(403, 'Manage phones and Tailscale from the Mac.');
+	}
+
 	const startedAt = now();
 	const reply = await runCrew(machine, command);
 	const ms = now() - startedAt;

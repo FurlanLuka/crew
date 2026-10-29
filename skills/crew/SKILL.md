@@ -77,7 +77,7 @@ crew config [show|set|refresh]                             bare: show
 crew config show                                           <key>\t<value>
 crew dev proxy [status|trust [--install]|stop]            <up|up (not listening)|down>\t<domain>\t<port>\t<status url>\thttps <up|not listening|off>\t<https port>
 crew debug [--tail=<n>]                                    <date> <time> [<category>] <message>
-crew server [start|stop|restart|status|logs|debug-notes|notes|keys|remote|machines|discord|dev] [--no-open]   <up|up (not answering)|down>\t<port>\t<localhost url>\t<proxy url>
+crew server [start|stop|restart|status|logs|debug-notes|notes|keys|remote|machines|discord|phones|tailscale|dev] [--no-open]   <up|up (not answering)|down>\t<port>\t<localhost url>\t<proxy url>
 crew server start [--no-open]      crew server stop      crew server restart [--no-open]      crew server status
 crew server keys [status] | crew server keys set <anthropic|soniox>   <name>\t<missing|set (<file|env>)>\t<path>
 crew server keys status
@@ -96,6 +96,14 @@ crew server discord status [--json]                         <field>\t<value>
 crew server discord channels [--json]                       <id>\t<name>\t<text|voice>[, voice channel][, messages go here]
 crew server discord send [--text=<message>] [--file=<path>]…   sent to <#channel | the voice channel's chat>: <link>
 crew server discord off                                     removed\t<path>
+crew server phones [ls] | add [--name=<name>] | rm <id>    <id>\t<name>\t<created>\t<device|->\t<last_seen|->
+crew server phones ls [--json]                              <id>\t<name>\t<created>\t<device|->\t<last_seen|->
+crew server phones add [--name=<name>] [--json]             <link> / <name> (<id>) via <Tailscale|the dev proxy|localhost>: …
+crew server phones rm <id>
+crew server tailscale [status] | serve | off                <check>\t<value>
+crew server tailscale status [--json]                       <check>\t<value>
+crew server tailscale serve                                 https://<host>
+crew server tailscale off                                   removed\t<path>
 crew server dev push [--dry-run] | status
 crew server dev push [--dry-run]                            <machine>\t<goos>_<goarch>|skipped: <why> / Pushing <version> to every machine; …
 crew server dev status [--json]                             <version> from <source>: <phase> / <machine>\t<goos>_<goarch>\t<state>
@@ -570,6 +578,24 @@ needs View Channel, Send Messages and Attach Files; `voice` goes back to the voi
 without the flag keeps it). `crew server discord channels` lists where a message can go
 (`<id>\t<name>\t<text|voice>`, marking the voice channel and the current one). A session is told
 about `send` in its orientation only when Discord is set up (on a remote, when the main says so).
+
+**Phones.** A phone opens Voice OS by a link of its own. `crew server phones add [--name=<name>]`
+prints the link once (`<base>/phone/<key>`; only the key's sha256 is kept in
+`~/.crew/voiceos/phones.json`, so a lost link means rm and add again), then a line saying how it
+reaches Voice OS; `--json`: `{id, name, link, address, via}` with `via` `tailscale` (Voice OS on
+the tailnet, HTTPS from anywhere), `proxy` (the dev proxy, same network) or `local` (localhost,
+this machine only). The name defaults to `Phone`, then `Phone 2`…. `crew server phones` lists
+`<id>\t<name>\t<created>\t<device|->\t<last_seen|->` (device and last seen as Voice OS wrote them to
+`phones-seen.json`; `--json` `[{id, name, created, device?, last_seen?}]`); `crew server phones rm
+<id>` stops that link at once. Hand the user the link — it is a sign-in; never paste it anywhere else.
+
+**Tailscale.** `crew server tailscale` checks installed, running, signed in, HTTPS certificates
+on for the tailnet, and whether crew serves Voice OS there, as `<check>\t<value>` rows with a
+`detail` row naming what is in the way (`--json`: `{installed, running, signed_in, user, host,
+https, serving, url, detail}`). `crew server tailscale serve` refuses until all of those hold, then
+runs `tailscale serve --bg --https=443 http://127.0.0.1:<Voice OS port>`, records
+`~/.crew/voiceos/tailscale.json` (`{host, url}`) and prints the url; phone links made after it use
+it. `crew server tailscale off` stops it and removes the record (`removed\t<path>`).
 
 **Trying a branch on every machine: `crew server dev push`.** A remote refuses a main on another
 version, so a branch built from source can't meet your remotes until it is released. `crew server dev

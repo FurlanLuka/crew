@@ -9,6 +9,9 @@ import {
 import { isValidHost } from '../shared/machines.js';
 import { GROUP_ID_PATTERN, MAX_GROUP_NAME_LENGTH } from '../shared/groups.js';
 
+export const MAX_CLIENT_LOG_CAT = 40;
+export const MAX_CLIENT_LOG_MSG = 300;
+
 const sampleRateSchema = z.number().int().min(8000).max(192000);
 const refSchema = z.string().min(1).max(200);
 const machineIdSchema = z.string().regex(/^[a-z0-9-]{1,64}$/);
@@ -167,6 +170,16 @@ const clientMessageSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('audio_done'), id: z.string() }),
 	z.object({ type: z.literal('discord_listen'), mode: z.enum(['on-demand', 'hands-free']) }),
 	z.object({ type: z.literal('mute'), isMuted: z.boolean() }),
+	// Capped rather than refused: a long message is still worth its first words in the log.
+	z.object({
+		type: z.literal('client_log'),
+		level: z.enum(['debug', 'info', 'warn', 'error']),
+		cat: z.string().transform((value) => value.slice(0, MAX_CLIENT_LOG_CAT)),
+		msg: z.string().transform((value) => value.slice(0, MAX_CLIENT_LOG_MSG)),
+		fields: z.record(z.string(), z.unknown()).optional(),
+	}),
+	z.object({ type: z.literal('hello_tab'), tabId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/) }),
+	z.object({ type: z.literal('claim_main') }),
 ]) satisfies z.ZodType<ClientMessage>;
 
 export type ParseResult = { ok: true; message: ClientMessage } | { ok: false; error: string };

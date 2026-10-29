@@ -1,7 +1,8 @@
 // The real UI bundle and gateway, with a store the test drives instead of Claude workers and the
 // fake crew behind /api/crew. Voice OS's half; Set up's is setup.test.ts.
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
@@ -9,9 +10,16 @@ import index from '../../src/web/index.html';
 import { listAllowedOrigins } from '../../src/gateway/auth.js';
 import { startGateway, type Gateway } from '../../src/gateway/server.js';
 import { attachFileTo } from '../../src/gateway/attach.js';
+import { createPhones } from '../../src/gateway/phones.js';
 import { storeAttachment } from '../../src/sessions/attachments.js';
 import { configureLog } from '../../src/log.js';
-import type { Action, ClientMessage, PendingAsk, WorktreeInfo } from '../../src/shared/protocol.js';
+import type {
+	Action,
+	ClientMessage,
+	PendingAsk,
+	View,
+	WorktreeInfo,
+} from '../../src/shared/protocol.js';
 import { isActive } from '../../src/shared/active.js';
 import { Store } from '../../src/state/store.js';
 import { createFakeCrew } from '../support/fake-crew.js';
@@ -50,7 +58,11 @@ let browser: Browser;
 let gateway: Gateway;
 let store: Store;
 const received: ReceivedMessage[] = [];
+// Which client claimed the main screen, in order: the gateway takes claim_main itself.
+const claims: string[] = [];
 const audioChunks: number[] = [];
+// Which client each audio chunk came from, in the same order.
+const audioClients: string[] = [];
 const effects: string[] = [];
 
 const waitUntil = async (check: () => boolean, timeoutMs = 5000): Promise<void> => {
@@ -81,10 +93,30 @@ const ensureIdle = async (ref: string): Promise<void> => {
 
 const crew = createFakeCrew();
 const filesRoot = mkdtempSync(join(tmpdir(), 'voiceos-ui-files-'));
+// A phone signed in with its own key, as crew's phones add writes it: only the key's hash on disk.
+const PHONE_KEY = 'phone-key-0123456789abcdefghijkl';
+const phonesFile = join(filesRoot, 'phones.json');
+writeFileSync(
+	phonesFile,
+	JSON.stringify({
+		phones: [
+			{
+				id: 'p3fa9c1',
+				name: 'Phone',
+				key_sha256: createHash('sha256').update(PHONE_KEY).digest('hex'),
+				created: '2026-10-26T09:00:00Z',
+			},
+		],
+	}),
+);
+const phones = createPhones({ phonesFile, seenFile: join(filesRoot, 'phones-seen.json') });
 
 const startServer = (port = 0): Gateway => {
 	return startGateway({
 		runCrew: crew.runCrew,
+		findPhone: phones.findPhone,
+		onMainConnection: (client) => claims.push(client),
+		recordPhoneSeen: phones.recordSeen,
 		attachFile: attachFileTo({
 			readState: () => store.state,
 			dispatch: (observation) => store.dispatch(observation),
@@ -108,7 +140,10 @@ const startServer = (port = 0): Gateway => {
 				store.dispatch(message.action);
 			}
 		},
-		onAudio: (chunk) => audioChunks.push(chunk.byteLength),
+		onAudio: (chunk, client) => {
+			audioChunks.push(chunk.byteLength);
+			audioClients.push(client);
+		},
 		readHealth: () => ({}),
 		// No hot reload: its socket would push every file another process saves into pages the test already closed.
 		development: false,
@@ -122,6 +157,15 @@ const watchErrors = (page: Page): void => {
 	page.on('pageerror', (error) =>
 		pageErrors.push(`${error.message}\n${(error.stack ?? '').slice(0, 900)}`),
 	);
+};
+
+// A tab opened after this one took the main screen: this one is used here again, so it listens,
+// speaks and takes clicks.
+const takeMainScreen = async (page: Page): Promise<void> => {
+	const button = page.getByRole('button', { name: 'Use here' });
+
+	await button.click({ timeout: 5000 });
+	await button.waitFor({ state: 'detached', timeout: 5000 });
 };
 
 const chooseMode = async (page: Page, name: string): Promise<void> => {
@@ -259,14 +303,15 @@ describe('voice os ui', () => {
 		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		const firstTab = await signIn();
 		const secondTab = await signIn();
-		await firstTab.page.locator('.vo-row[data-ref="store-front/main"]').click();
+		// The tab opened last is the main screen; the first follows its view under its overlay.
+		await secondTab.page.locator('.vo-row[data-ref="store-front/main"]').click();
 
-		await secondTab.page
+		await firstTab.page
 			.locator('.vo-tab[aria-current="true"]', { hasText: 'store-front/main' })
 			.waitFor({ timeout: 5000 });
 		// Active, so it opens inside Active.
 		expect(store.state.view).toEqual({ kind: 'session', ref: 'store-front/main', from: 'active' });
-		await secondTab.page.waitForURL('**/voice/session/store-front/main');
+		await firstTab.page.waitForURL('**/voice/session/store-front/main');
 		await firstTab.context.close();
 		await secondTab.context.close();
 	}, 20_000);
@@ -497,6 +542,7 @@ describe('voice os ui', () => {
 		const first = await signIn();
 		const second = await signIn();
 		const { page } = first;
+		await takeMainScreen(page);
 
 		try {
 			await page.locator('.vo-tab[data-ref="store-front/main"]').click({ button: 'right' });
@@ -540,6 +586,7 @@ describe('voice os ui', () => {
 
 			await page.locator('.vo-gchip').click();
 			await second.page.locator('.vo-gbox').waitFor({ timeout: 5000 });
+			await takeMainScreen(second.page);
 			await second.page.getByRole('button', { name: 'Close all three' }).last().click();
 			await page.locator('.vo-gchip').waitFor({ timeout: 5000 });
 		} finally {
@@ -552,7 +599,7 @@ describe('voice os ui', () => {
 		}
 	}, 30_000);
 
-	it('on a phone: a long press opens the menu and its tap does nothing else; a press that moves does not; a tap opens; an open group fits the width', async () => {
+	it('a narrow window (390, loaded wide): a long press opens the menu and its tap does nothing else; a press that moves does not; a tap opens; an open group fits the width', async () => {
 		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		store.dispatch({
 			type: 'create_group',
@@ -560,18 +607,16 @@ describe('voice os ui', () => {
 			name: 'store and checkout together',
 			color: 'violet',
 		});
-		const context = await browser.newContext({
-			permissions: ['microphone'],
-			viewport: { width: 390, height: 844 },
-			hasTouch: true,
-			isMobile: true,
-		});
+		// Loaded wide, then narrowed: the desktop arrangement at 390. A page that opens that narrow is
+		// a phone, and gets the phone's own layout (the phone block).
+		const context = await browser.newContext({ permissions: ['microphone'], hasTouch: true });
 		const page = await context.newPage();
 		watchErrors(page);
 
 		try {
 			await page.goto(`http://localhost:${gateway.port}/login?token=${TOKEN}`);
 			await page.goto(`http://localhost:${gateway.port}/voice`);
+			await page.setViewportSize({ width: 390, height: 844 });
 			const chip = page.locator('.vo-gchip');
 			await chip.waitFor({ timeout: 5000 });
 			const box = await chip.boundingBox();
@@ -876,6 +921,7 @@ describe('voice os ui', () => {
 	it('voice off from the top bar → listening stops, "Voice" struck in the moment, no press, typing still sends; back on → listening again, the moment whole', async () => {
 		const { context, page, client } = await openMicTab();
 		const other = await signIn();
+		await takeMainScreen(page);
 		await chooseMode(page, 'Hands-free');
 		await waitUntil(() => listFromClient(client, 'listen_start').length === 1);
 
@@ -893,6 +939,9 @@ describe('voice os ui', () => {
 			await other.page.locator('.vo-top').getByRole('button', { name: 'Turn voice on' }).count(),
 		).toBe(1);
 		await other.context.close();
+		// The reloaded tab took the main screen and keeps it once closed (a tab, not a connection): this
+		// one is used here again.
+		await takeMainScreen(page);
 		await page.locator('.vo-bar').getByRole('button', { name: 'Turn voice on' }).waitFor();
 		expect(await page.getByRole('button', { name: 'Listening mode' }).count()).toBe(0);
 
@@ -1936,15 +1985,12 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
-	it('on a phone: an asking card with a wide answer, and the asked side panel, never scroll the page sideways', async () => {
+	it('a narrow window (390, loaded wide): an asking card with a wide answer, and the asked side panel, never scroll the page sideways', async () => {
 		const ASKER = 'store-front/main';
 		const ASKED = 'checkout-api/main';
-		const context = await browser.newContext({
-			permissions: ['microphone'],
-			viewport: { width: 390, height: 844 },
-			hasTouch: true,
-			isMobile: true,
-		});
+		// Loaded wide, then narrowed: the desktop arrangement at 390. A page that opens that narrow is
+		// a phone, and gets the phone's own layout (the phone block).
+		const context = await browser.newContext({ permissions: ['microphone'], hasTouch: true });
 		const page = await context.newPage();
 		watchErrors(page);
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: ASKER } });
@@ -1970,6 +2016,7 @@ describe('voice os ui', () => {
 		try {
 			await page.goto(`http://localhost:${gateway.port}/login?token=${TOKEN}`);
 			await page.goto(`http://localhost:${gateway.port}/voice`);
+			await page.setViewportSize({ width: 390, height: 844 });
 			await page
 				.locator('.stream .pc[data-request="ask"]')
 				.last()
@@ -2429,13 +2476,10 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
-	it('on a phone: a long command, its open field, a long question and a whole plan → nothing scrolls sideways, the answers stay on screen', async () => {
-		const context = await browser.newContext({
-			permissions: ['microphone'],
-			viewport: { width: 390, height: 844 },
-			hasTouch: true,
-			isMobile: true,
-		});
+	it('a narrow window (390, loaded wide): a long command, its open field, a long question and a whole plan → nothing scrolls sideways, the answers stay on screen', async () => {
+		// Loaded wide, then narrowed: the desktop arrangement at 390. A page that opens that narrow is
+		// a phone, and gets the phone's own layout (the phone block).
+		const context = await browser.newContext({ permissions: ['microphone'], hasTouch: true });
 		const page = await context.newPage();
 		watchErrors(page);
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
@@ -2456,6 +2500,7 @@ describe('voice os ui', () => {
 		try {
 			await page.goto(`http://localhost:${gateway.port}/login?token=${TOKEN}`);
 			await page.goto(`http://localhost:${gateway.port}/voice`);
+			await page.setViewportSize({ width: 390, height: 844 });
 			openPermission('ui-phone-perm', {
 				input: {
 					command: `pnpm --filter @store/checkout-web exec playwright test ${'e2e/checkout/totals-retry.spec.ts '.repeat(6)}&& git push origin crew/store-front/main`,
@@ -3792,7 +3837,7 @@ describe('layout', () => {
 		await context.close();
 	}, 20_000);
 
-	it('a phone (390 wide): one column, nothing wider than the screen, the voice bar docked, the mode menu stepped aside', async () => {
+	it('a narrow window (390, loaded wide): one column, nothing wider than the screen, the voice bar docked, the mode menu stepped aside', async () => {
 		// Enough active tabs to overflow 390px whatever earlier tests left active; taken back after.
 		const listed = store.state.order.flatMap((ref) => {
 			const session = store.state.sessions[ref];
@@ -3821,16 +3866,14 @@ describe('layout', () => {
 		}
 
 		store.dispatch({ type: 'switch_view', view: { kind: 'session', ref: 'store-front/main' } });
-		const context = await browser.newContext({
-			permissions: ['microphone'],
-			viewport: { width: 390, height: 844 },
-			hasTouch: true,
-			isMobile: true,
-		});
+		// Loaded wide, then narrowed: the desktop arrangement at 390. A page that opens that narrow is
+		// a phone, and gets the phone's own layout (the phone block).
+		const context = await browser.newContext({ permissions: ['microphone'], hasTouch: true });
 		const page = await context.newPage();
 		watchErrors(page);
 		await page.goto(`http://localhost:${gateway.port}/login?token=${TOKEN}`);
 		await page.goto(`http://localhost:${gateway.port}/voice`);
+		await page.setViewportSize({ width: 390, height: 844 });
 		await page.locator('.vo-head h1').waitFor({ timeout: 5000 });
 
 		const layout = await page.evaluate(() => ({
@@ -3917,6 +3960,7 @@ describe('attaching files', () => {
 	it('a pasted image → a thumbnail chip on every tab; ✕ takes it off', async () => {
 		const { context, page } = await openSession();
 		const other = await signIn();
+		await takeMainScreen(page);
 
 		await handOver(page, 'paste', [{ name: 'image.png', type: 'image/png', base64: PNG_BASE64 }]);
 		await page.locator('.att-chip.thumb img').waitFor({ timeout: 5000 });
@@ -4408,6 +4452,837 @@ describe('slash commands', () => {
 		await fieldOf(page).fill('/');
 		await page.getByRole('listbox', { name: 'Commands' }).waitFor({ timeout: 5000 });
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+		await context.close();
+	}, 20_000);
+});
+
+describe('phone', () => {
+	const REF = 'store-front/main';
+	const fromClient = (client: string, type: string) =>
+		received.filter((entry) => entry.client === client && entry.message.type === type);
+
+	// A phone as it signs in: its own link (/phone/<key>), so the key's cookie, the page's injected head
+	// and the socket are what the test runs on. getUserMedia is counted. The install guide is waved
+	// away, and the Esc that names the page's client goes up a level, so the screen is put back after.
+	const openPhone = async (view: View = { kind: 'active' }): Promise<MicTab> => {
+		const context = await browser.newContext({
+			permissions: ['microphone'],
+			viewport: { width: 390, height: 844 },
+			hasTouch: true,
+		});
+		await context.addInitScript(() => {
+			const probe = window as unknown as { __gum: number };
+			const getUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+			probe.__gum = 0;
+
+			navigator.mediaDevices.getUserMedia = (constraints) => {
+				probe.__gum++;
+
+				return getUserMedia(constraints);
+			};
+		});
+		const page = await context.newPage();
+		watchErrors(page);
+		const response = await page.goto(`http://localhost:${gateway.port}/phone/${PHONE_KEY}`);
+		expect(response?.status()).toBe(200);
+		expect(new URL(page.url()).pathname).toBe(`/phone/${PHONE_KEY}`);
+		await page.getByRole('button', { name: 'Use it in the browser instead' }).click();
+		await page.waitForSelector('.vo.phone .mtop');
+		const before = received.length;
+		await page.keyboard.press('Escape');
+		// The page's client id is whatever sent its first message.
+		await waitUntil(() => received.length > before);
+		const client = received.at(-1)?.client ?? '';
+		store.dispatch({ type: 'switch_view', view });
+
+		return { context, page, client };
+	};
+
+	// A screen above Home holds one history entry once it has rendered; a back before that would
+	// leave the page, which no phone does.
+	const waitForHeldEntry = (page: Page) =>
+		page.waitForFunction(
+			() => (history.state as { voiceosPhone?: boolean } | null)?.voiceosPhone === true,
+		);
+
+	const countGetUserMedia = (page: Page) =>
+		page.evaluate(() => (window as unknown as { __gum: number }).__gum);
+
+	const chooseOnPhone = async (page: Page, name: RegExp) => {
+		await page.getByRole('button', { name: 'Listening mode' }).click();
+		await page.getByRole('menuitemradio', { name }).click();
+	};
+
+	const onSession: View = { kind: 'session', ref: REF };
+
+	const isNotWider = (page: Page) =>
+		page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+
+	it('opens as a phone: the phone top bar and bar, no tab strip, nothing wider than the screen', async () => {
+		const { context, page } = await openPhone();
+
+		await page.locator('.mtop.home').waitFor({ timeout: 5000 });
+		expect(await page.locator('.vo-top').count()).toBe(0);
+		expect(await page.locator('.phone-bar').count()).toBe(1);
+		expect(await isNotWider(page)).toBe(true);
+		await context.close();
+	}, 20_000);
+
+	it('hands-free on a phone: the mic sends nothing while Voice OS speaks, and again once it is quiet', async () => {
+		await ensureIdle(REF);
+		const { context, page, client } = await openPhone(onSession);
+		const chunksFrom = () => audioClients.filter((from) => from === client).length;
+
+		await chooseOnPhone(page, /Hands-free/);
+		await waitUntil(() => fromClient(client, 'listen_start').length === 1);
+		await waitUntil(() => chunksFrom() > 3);
+
+		// 1.5 s of speech at the speech rate (a quiet tone, so it really plays).
+		const samples = new Int16Array(36_000).map((_, index) => Math.round(Math.sin(index / 8) * 800));
+		const base64 = Buffer.from(samples.buffer).toString('base64');
+		gateway.broadcast({ type: 'audio', id: 'ui-echo-clip', base64, isLast: false });
+		gateway.broadcast({ type: 'audio', id: 'ui-echo-clip', base64: '', isLast: true });
+		await Bun.sleep(300);
+		const during = chunksFrom();
+		await Bun.sleep(900);
+		expect(chunksFrom()).toBe(during);
+
+		// Over, and past its echo: the mic sends again.
+		await Bun.sleep(1200);
+		await waitUntil(() => chunksFrom() > during + 2);
+		await chooseOnPhone(page, /Push to talk/);
+		await context.close();
+	}, 30_000);
+
+	it('edge to edge: the page colour reaches the bottom of the screen, under the bar, on html and body too', async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openPhone(onSession);
+		await page.locator('.phone-bar').waitFor({ timeout: 5000 });
+
+		const edges = await page.evaluate(() => {
+			const box = (selector: string) =>
+				(document.querySelector(selector) as HTMLElement).getBoundingClientRect();
+
+			return {
+				height: window.innerHeight,
+				page: Math.round(box('.vo.phone').bottom),
+				bar: Math.round(box('.phone-bar').bottom),
+				html: getComputedStyle(document.documentElement).backgroundColor,
+				body: getComputedStyle(document.body).backgroundColor,
+			};
+		});
+		expect(edges).toEqual({
+			height: 844,
+			page: 844,
+			bar: 844,
+			html: 'rgb(11, 13, 16)',
+			body: 'rgb(11, 13, 16)',
+		});
+		// The last rows of pixels are the page's colour, not black.
+		const shot = await page.screenshot({ clip: { x: 0, y: 840, width: 390, height: 4 } });
+		const { width, height, data } = await page.evaluate(async (base64) => {
+			const image = new Image();
+			image.src = `data:image/png;base64,${base64}`;
+			await image.decode();
+			const canvas = document.createElement('canvas');
+			canvas.width = image.width;
+			canvas.height = image.height;
+			const drawing = canvas.getContext('2d') as CanvasRenderingContext2D;
+			drawing.drawImage(image, 0, 0);
+
+			return {
+				width: image.width,
+				height: image.height,
+				data: [...drawing.getImageData(0, image.height - 1, 1, 1).data],
+			};
+		}, shot.toString('base64'));
+		expect(width).toBeGreaterThan(0);
+		expect(height).toBeGreaterThan(0);
+		expect(data.slice(0, 3)).toEqual([11, 13, 16]);
+		await context.close();
+	}, 20_000);
+
+	it('Home is one list row per session, never the desktop rows; a tap opens the session, back returns', async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openPhone();
+		const row = page.locator(`.ph-row[data-ref="${REF}"]`);
+
+		await row.waitFor({ timeout: 5000 });
+		expect(await page.locator('.vo-row').count()).toBe(0);
+		expect(await row.locator('.ph-line').innerText()).toBe('Ready');
+		expect(await isNotWider(page)).toBe(true);
+		await row.click();
+		await waitUntil(() => store.state.view.kind === 'session' && store.state.view.ref === REF);
+		await page.getByRole('button', { name: 'More' }).waitFor({ timeout: 5000 });
+
+		// The top bar's back goes up a level and gives the history entry back, so the phone's own back
+		// from Home leaves the app.
+		await page.getByRole('button', { name: 'Back', exact: true }).click();
+		await waitUntil(() => store.state.view.kind === 'active');
+		await page.waitForFunction(
+			() => !(history.state as { voiceosPhone?: boolean } | null)?.voiceosPhone,
+		);
+
+		// Opened again, the browser's back still returns Home.
+		await row.click();
+		await page.getByRole('button', { name: 'More' }).waitFor({ timeout: 5000 });
+		await waitForHeldEntry(page);
+		await page.goBack();
+		await waitUntil(() => store.state.view.kind === 'active');
+		expect(new URL(page.url()).pathname).toBe(`/phone/${PHONE_KEY}`);
+		await context.close();
+	}, 20_000);
+
+	it("Back, then a session opened at once: the browser's back still returns Home, never leaves the app", async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openPhone();
+		const row = page.locator(`.ph-row[data-ref="${REF}"]`);
+
+		await row.click();
+		await page.getByRole('button', { name: 'More' }).waitFor({ timeout: 5000 });
+		await page.getByRole('button', { name: 'Back', exact: true }).click();
+		await row.click();
+		await page.getByRole('button', { name: 'More' }).waitFor({ timeout: 5000 });
+		await waitForHeldEntry(page);
+
+		await page.goBack();
+		await waitUntil(() => store.state.view.kind === 'active');
+		expect(new URL(page.url()).pathname).toBe(`/phone/${PHONE_KEY}`);
+		await context.close();
+	}, 20_000);
+
+	it("the phone's back gesture (the browser's back) closes ⋯ first, then leaves the session", async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openPhone();
+
+		await page.locator(`.ph-row[data-ref="${REF}"]`).click();
+		await waitUntil(() => store.state.view.kind === 'session');
+		await page.getByRole('button', { name: 'More' }).click();
+		await page.locator('.mpanel').waitFor({ timeout: 5000 });
+		await waitForHeldEntry(page);
+
+		await page.goBack();
+		await page.locator('.mpanel').waitFor({ state: 'detached', timeout: 5000 });
+		expect(store.state.view.kind).toBe('session');
+		expect(new URL(page.url()).pathname).toBe(`/phone/${PHONE_KEY}`);
+
+		// ⋯ closed: the session holds its own entry again.
+		await waitForHeldEntry(page);
+		await page.goBack();
+		await waitUntil(() => store.state.view.kind === 'active');
+		expect(new URL(page.url()).pathname).toBe(`/phone/${PHONE_KEY}`);
+		await context.close();
+	}, 20_000);
+
+	// A finger dragged across the screen, from fromX to toX, as touch events on the page; it ends with
+	// touchend, touchcancel when the system takes the gesture, or 'none' with the finger still down.
+	// 20 px each stepMs: 30 ms is a flick.
+	const drag = (page: Page, fromX: number, toX: number, end = 'touchend', stepMs = 30) =>
+		page.evaluate(
+			async ({ startX, endX, endType, step }) => {
+				const root = document.querySelector('.vo.phone') as HTMLElement;
+				const touchAt = (x: number) =>
+					new Touch({ identifier: 1, target: root, clientX: x, clientY: 400 });
+				const fire = (type: string, x: number) =>
+					root.dispatchEvent(
+						new TouchEvent(type, {
+							bubbles: true,
+							cancelable: true,
+							touches: type === endType ? [] : [touchAt(x)],
+							changedTouches: [touchAt(x)],
+						}),
+					);
+				fire('touchstart', startX);
+
+				for (let x = startX + 10; x <= endX; x += 20) {
+					fire('touchmove', x);
+					await new Promise((resolve) => setTimeout(resolve, step));
+				}
+
+				if (endType !== 'none') {
+					fire(endType, endX);
+				}
+			},
+			{ startX: fromX, endX: toX, endType: end, step: stepMs },
+		);
+
+	// Finishes a drag(…, 'none'): the finger leaves the screen where it stopped.
+	const lift = (page: Page, x: number) =>
+		page.evaluate((endX) => {
+			const root = document.querySelector('.vo.phone') as HTMLElement;
+			const touch = new Touch({ identifier: 1, target: root, clientX: endX, clientY: 400 });
+			root.dispatchEvent(
+				new TouchEvent('touchend', { bubbles: true, cancelable: true, changedTouches: [touch] }),
+			);
+		}, x);
+
+	// The installed app: the swipe is only ours there. Read as the swipe is armed, so the screen is
+	// rendered again after the flag is set.
+	const markInstalled = async (page: Page, view: View) => {
+		await page.evaluate(() =>
+			Object.defineProperty(navigator, 'standalone', { value: true, configurable: true }),
+		);
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
+		store.dispatch({ type: 'switch_view', view });
+		await page.getByRole('button', { name: 'More' }).waitFor({ timeout: 5000 });
+		await Bun.sleep(200);
+	};
+
+	const readScreenShift = (page: Page) =>
+		page.locator('.ph-screen').evaluate((node) => (node as HTMLElement).style.transform);
+
+	const fromHome: View = { kind: 'session', ref: REF, from: 'active' };
+
+	it('installed: a drag from the left edge goes back; a short one springs the screen home', async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openPhone(fromHome);
+		await markInstalled(page, fromHome);
+
+		// Short and slow: not past a third, not a flick.
+		await drag(page, 6, 76, 'touchend', 120);
+		await Bun.sleep(400);
+		expect(store.state.view.kind).toBe('session');
+		await page.locator('.ph-under').waitFor({ state: 'detached', timeout: 2000 });
+		expect(await readScreenShift(page)).toBe('');
+
+		await drag(page, 6, 236);
+		await waitUntil(() => store.state.view.kind === 'active');
+		await context.close();
+	}, 20_000);
+
+	it('installed: mid-swipe, Home shows underneath; once back, nothing is left under the screen', async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openPhone(fromHome);
+		await markInstalled(page, fromHome);
+
+		// Held at 150 px: the finger is still down.
+		await drag(page, 6, 156, 'none', 60);
+		await page.locator(`.ph-under .ph-row[data-ref="${REF}"]`).waitFor({ timeout: 5000 });
+		// The bar stays on top of what is uncovered.
+		const isBarOnTop = await page.evaluate(() => {
+			const bar = (document.querySelector('.phone-bar') as HTMLElement).getBoundingClientRect();
+			const hit = document.elementFromPoint(bar.left + bar.width / 2, bar.top + bar.height / 2);
+
+			return Boolean(hit?.closest('.phone-bar'));
+		});
+		expect(isBarOnTop).toBe(true);
+
+		await lift(page, 156);
+		await waitUntil(() => store.state.view.kind === 'active');
+		await page.locator('.ph-under').waitFor({ state: 'detached', timeout: 5000 });
+		await context.close();
+	}, 20_000);
+
+	it('installed: a swipe back to a machine page draws nothing underneath', async () => {
+		await ensureIdle(REF);
+		// Not active: opened, the session sits under its machine's page, not Home.
+		store.dispatch({ type: 'deactivate', ref: REF });
+		const fromMachine: View = { kind: 'session', ref: REF };
+		const { context, page } = await openPhone(fromMachine);
+
+		try {
+			await markInstalled(page, fromMachine);
+			await drag(page, 6, 156, 'none', 60);
+			await page.locator('.vo.phone.swiping').waitFor({ timeout: 5000 });
+			expect(await page.locator('.ph-under').count()).toBe(0);
+		} finally {
+			store.dispatch({ type: 'activate', ref: REF });
+			await context.close();
+		}
+	}, 20_000);
+
+	it('installed, ⋯ open: a swipe draws nothing underneath, closes ⋯ and the session stays', async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openPhone(fromHome);
+		await markInstalled(page, fromHome);
+		await page.getByRole('button', { name: 'More' }).click();
+		await page.locator('.mpanel').waitFor({ timeout: 5000 });
+
+		await drag(page, 6, 156, 'none', 60);
+		await page.locator('.vo.phone.swiping').waitFor({ timeout: 5000 });
+		expect(await page.locator('.ph-under').count()).toBe(0);
+
+		await lift(page, 156);
+		await page.locator('.mpanel').waitFor({ state: 'detached', timeout: 5000 });
+		expect(store.state.view.kind).toBe('session');
+		await page.waitForFunction(
+			() => (document.querySelector('.ph-screen') as HTMLElement).style.transform === '',
+		);
+		await context.close();
+	}, 20_000);
+
+	it('installed: the view changes under a held swipe; nothing is left underneath when a session opens again', async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openPhone(fromHome);
+		await markInstalled(page, fromHome);
+
+		await drag(page, 6, 156, 'none', 60);
+		await page.locator('.ph-under').waitFor({ timeout: 5000 });
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
+		await page.locator('.ph-list').first().waitFor({ timeout: 5000 });
+		store.dispatch({ type: 'switch_view', view: fromHome });
+		await page.getByRole('button', { name: 'More' }).waitFor({ timeout: 5000 });
+
+		expect(await page.locator('.ph-under').count()).toBe(0);
+		expect(await page.locator('.vo.phone.swiping').count()).toBe(0);
+		expect(await readScreenShift(page)).toBe('');
+		await context.close();
+	}, 20_000);
+
+	it('installed: a swipe the system cancels springs home and never goes back', async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openPhone(fromHome);
+		await markInstalled(page, fromHome);
+
+		await drag(page, 6, 236, 'touchcancel');
+		await Bun.sleep(500);
+		expect(store.state.view.kind).toBe('session');
+		await page.locator('.ph-under').waitFor({ state: 'detached', timeout: 2000 });
+		expect(await readScreenShift(page)).toBe('');
+		await context.close();
+	}, 20_000);
+
+	it('installed: a drag that starts inside the screen is not a back swipe', async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openPhone(fromHome);
+		await markInstalled(page, fromHome);
+
+		await drag(page, 100, 336);
+		await Bun.sleep(400);
+		expect(store.state.view.kind).toBe('session');
+		await context.close();
+	}, 20_000);
+
+	it("in a browser tab the edge drag is the browser's, not ours", async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openPhone(fromHome);
+		await page.getByRole('button', { name: 'More' }).waitFor({ timeout: 5000 });
+
+		await drag(page, 6, 236);
+		await Bun.sleep(500);
+		expect(store.state.view.kind).toBe('session');
+		await context.close();
+	}, 20_000);
+
+	it('installed, ⋯ open: an edge drag closes ⋯ and leaves the screen in place', async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openPhone(fromHome);
+		await markInstalled(page, fromHome);
+		await page.getByRole('button', { name: 'More' }).click();
+		await page.locator('.mpanel').waitFor({ timeout: 5000 });
+
+		await drag(page, 6, 236);
+		await page.locator('.mpanel').waitFor({ state: 'detached', timeout: 5000 });
+		expect(store.state.view.kind).toBe('session');
+		expect(await readScreenShift(page)).toBe('');
+		await context.close();
+	}, 20_000);
+
+	it('Settings on a phone: one scroll of groups, no section menu, nothing sideways; a mode row picks the mode', async () => {
+		const { context, page } = await openPhone({ kind: 'settings' });
+		await page.getByRole('region', { name: 'Voice OS settings' }).waitFor({ timeout: 5000 });
+
+		expect(await page.getByRole('navigation', { name: 'Settings sections' }).isVisible()).toBe(
+			false,
+		);
+		expect(await isNotWider(page)).toBe(true);
+		// A phone has no "voice" in its top bar: the row says what it does instead.
+		const settings = page.getByRole('region', { name: 'Voice OS settings' });
+		expect(await settings.innerText()).toContain('Voice OS listens and speaks.');
+		expect(await settings.innerText()).not.toContain('click “voice”');
+		const dictation = page.locator('.vs-mode', { hasText: 'Dictation' });
+		expect(await dictation.innerText()).toContain('Send when you are done.');
+		await dictation.click();
+		await page
+			.locator('.vs-mode[aria-pressed="true"]', { hasText: 'Dictation' })
+			.waitFor({ timeout: 5000 });
+		await chooseOnPhone(page, /Push to talk/);
+		await context.close();
+	}, 20_000);
+
+	it('holding the mic sends ptt_start, letting go ptt_stop; the bar lights up while held', async () => {
+		await ensureIdle(REF);
+		const { context, page, client } = await openPhone(onSession);
+		const mic = page.getByRole('button', { name: 'Hold to talk' });
+		await mic.waitFor({ timeout: 5000 });
+		const box = await mic.boundingBox();
+
+		await page.mouse.move((box?.x ?? 0) + 18, (box?.y ?? 0) + 18);
+		await page.mouse.down();
+		await waitUntil(() => fromClient(client, 'ptt_start').length === 1);
+		await page.locator('.mbar.hot').waitFor({ timeout: 5000 });
+		await Bun.sleep(400);
+		await page.mouse.up();
+		await waitUntil(() => fromClient(client, 'ptt_stop').length === 1);
+		await context.close();
+	}, 20_000);
+
+	it('text only: a message box that sends what is typed, and no audio at all', async () => {
+		await ensureIdle(REF);
+		const { context, page, client } = await openPhone(onSession);
+		const chunks = audioChunks.length;
+
+		await chooseOnPhone(page, /Text only/);
+		const gumAfterChoosing = await countGetUserMedia(page);
+		const box = page.getByRole('textbox', { name: 'Type a message' });
+		await box.waitFor({ timeout: 5000 });
+		expect(await box.getAttribute('placeholder')).toBe(`Message ${REF}`);
+		await box.fill('run the catalog tests again');
+		await page.getByRole('button', { name: 'Send', exact: true }).click();
+		await waitUntil(() =>
+			fromClient(client, 'utterance').some(
+				(entry) => (entry.message as { text?: string }).text === 'run the catalog tests again',
+			),
+		);
+		await page.keyboard.down('Space');
+		await Bun.sleep(300);
+		await page.keyboard.up('Space');
+		await Bun.sleep(300);
+		expect(fromClient(client, 'ptt_start')).toHaveLength(0);
+		expect(audioChunks.length).toBe(chunks);
+		// Nothing asks for the mic once Text only is chosen.
+		expect(await countGetUserMedia(page)).toBe(gumAfterChoosing);
+		await context.close();
+	}, 20_000);
+
+	it('text only from the first load opens no mic at all, and a server listen_off leaves it alone', async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openPhone(onSession);
+
+		await chooseOnPhone(page, /Text only/);
+		await page.reload();
+		await page.getByRole('textbox', { name: 'Type a message' }).waitFor({ timeout: 5000 });
+		await Bun.sleep(500);
+		expect(await countGetUserMedia(page)).toBe(0);
+
+		// Another tab took listening: the server tells this one to go back to push to talk.
+		gateway.broadcast({ type: 'listen_off', reason: 'another tab is listening' });
+		await Bun.sleep(400);
+		expect(await page.getByRole('textbox', { name: 'Type a message' }).isVisible()).toBe(true);
+		expect(await page.getByRole('button', { name: 'Hold to talk' }).count()).toBe(0);
+		expect(await countGetUserMedia(page)).toBe(0);
+		await context.close();
+	}, 20_000);
+
+	it("a phone's link in the browser, keys missing: the install guide, never the keys sheet over it", async () => {
+		store.dispatch({ type: 'setup', missing: ['/k/anthropic.key', '/k/soniox.key'] });
+		const context = await browser.newContext({
+			viewport: { width: 390, height: 844 },
+			hasTouch: true,
+			userAgent:
+				'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1',
+		});
+		const page = await context.newPage();
+		watchErrors(page);
+
+		try {
+			await page.goto(`http://localhost:${gateway.port}/phone/${PHONE_KEY}`);
+			await page
+				.getByRole('heading', { name: 'Put Voice OS on your home screen' })
+				.waitFor({ timeout: 5000 });
+			await Bun.sleep(300);
+			expect(await page.getByRole('dialog', { name: 'Before you talk' }).count()).toBe(0);
+
+			// Waved away: Voice OS in the browser, and the keys can ask now.
+			await page.getByRole('button', { name: 'Use it in Safari instead' }).click();
+			await page.getByRole('dialog', { name: 'Before you talk' }).waitFor({ timeout: 5000 });
+		} finally {
+			store.dispatch({ type: 'setup', missing: [] });
+			await context.close();
+		}
+	}, 20_000);
+
+	it('dictation: the mic starts it, Send ends it — ptt_start with dictation, then ptt_stop', async () => {
+		await ensureIdle(REF);
+		const { context, page, client } = await openPhone(onSession);
+
+		await chooseOnPhone(page, /Dictation/);
+		await page.getByRole('button', { name: 'Start dictating' }).click();
+		await waitUntil(() => fromClient(client, 'ptt_start').length === 1);
+		expect(fromClient(client, 'ptt_start')[0]?.message).toMatchObject({ dictation: true });
+		await page.locator('.mbar.tall').waitFor({ timeout: 5000 });
+		await Bun.sleep(400);
+		await page.getByRole('button', { name: 'Send the dictation' }).click();
+		await waitUntil(() => fromClient(client, 'ptt_stop').length === 1);
+		await page.getByRole('button', { name: 'Start dictating' }).waitFor({ timeout: 5000 });
+		await context.close();
+	}, 20_000);
+
+	it('⋯ opens the side panel full screen; × closes it, and the other tabs never move', async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openPhone(onSession);
+
+		await page.getByRole('button', { name: 'More' }).click();
+		const more = page.getByRole('region', { name: 'Session details' });
+		await more.waitFor({ timeout: 5000 });
+		expect(await more.getByText('Session', { exact: true }).isVisible()).toBe(true);
+		expect(await more.getByRole('button', { name: 'Rename' }).isVisible()).toBe(true);
+		expect(await more.getByRole('button', { name: 'Deactivate' }).isVisible()).toBe(true);
+		expect(await isNotWider(page)).toBe(true);
+		expect(store.state.view).toMatchObject({ kind: 'session', ref: REF });
+		await more.getByRole('button', { name: 'Done' }).click();
+		await more.waitFor({ state: 'detached', timeout: 5000 });
+		await context.close();
+	}, 20_000);
+
+	it('a question is the last thing in the stream, the bar under it, nothing sideways', async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openPhone(onSession);
+
+		store.dispatch({
+			type: 'ask_opened',
+			ask: {
+				id: 'ui-phone-question',
+				ref: REF,
+				at: 5,
+				kind: 'question',
+				input: {},
+				questions: [
+					{
+						question: 'Where should the worker pick up the order emails from?',
+						multiSelect: false,
+						options: [{ label: 'A Redis queue' }, { label: 'A jobs table in Postgres' }],
+					},
+				],
+			},
+		});
+		const card = page.locator('.vo-stream > section[aria-label="question"]');
+		await card.waitFor({ timeout: 5000 });
+		const isLast = await page.evaluate(() => {
+			const stream = document.querySelector('.vo-stream');
+
+			return stream?.lastElementChild?.getAttribute('aria-label') === 'question';
+		});
+		expect(isLast).toBe(true);
+		expect(await page.locator('.phone-bar section[aria-label="question"]').count()).toBe(0);
+		expect(await isNotWider(page)).toBe(true);
+		store.dispatch({ type: 'ask_closed', askId: 'ui-phone-question' });
+		await context.close();
+	}, 20_000);
+
+	it('one main screen: the page opened last takes it, the other steps aside; Use here moves it back', async () => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
+		const first = await signIn();
+		const overlayOf = (page: Page) =>
+			page.getByRole('dialog', { name: 'Voice OS is open elsewhere' });
+
+		await Bun.sleep(300);
+		expect(await overlayOf(first.page).count()).toBe(0);
+
+		const second = await signIn();
+		await overlayOf(first.page).waitFor({ timeout: 5000 });
+		expect(await overlayOf(first.page).innerText()).toContain('Voice OS is open on');
+		expect(await overlayOf(second.page).count()).toBe(0);
+
+		// Aside, the first neither talks nor listens: Space opens nothing.
+		const starts = received.filter((entry) => entry.message.type === 'ptt_start').length;
+		await first.page.keyboard.down('Space');
+		await Bun.sleep(300);
+		await first.page.keyboard.up('Space');
+		await Bun.sleep(200);
+		expect(received.filter((entry) => entry.message.type === 'ptt_start')).toHaveLength(starts);
+
+		await first.page.getByRole('button', { name: 'Use here' }).click();
+		await overlayOf(first.page).waitFor({ state: 'detached', timeout: 5000 });
+		await overlayOf(second.page).waitFor({ timeout: 5000 });
+
+		// The main screen is a tab, not a connection: closing it leaves the other aside until Use here.
+		await first.context.close();
+		await Bun.sleep(300);
+		expect(await overlayOf(second.page).count()).toBe(1);
+		await second.context.close();
+	}, 30_000);
+
+	it('the phone opened last is the main screen: its mic works; the Mac tab behind it steps aside', async () => {
+		await ensureIdle(REF);
+		const mac = await signIn();
+		const { context, page, client } = await openPhone(onSession);
+
+		await mac.page
+			.getByRole('dialog', { name: 'Voice OS is open elsewhere' })
+			.waitFor({ timeout: 5000 });
+		const mic = page.getByRole('button', { name: 'Hold to talk' });
+		await mic.waitFor({ timeout: 5000 });
+		const box = await mic.boundingBox();
+		await page.mouse.move((box?.x ?? 0) + 18, (box?.y ?? 0) + 18);
+		await page.mouse.down();
+		await waitUntil(() => fromClient(client, 'ptt_start').length === 1);
+		await page.mouse.up();
+		await waitUntil(() => fromClient(client, 'ptt_stop').length === 1);
+		await context.close();
+		await mac.context.close();
+	}, 30_000);
+
+	const overlayOn = (page: Page) =>
+		page.getByRole('dialog', { name: 'Voice OS is open elsewhere' });
+
+	// The page's client id: whatever its next message comes from (Esc sends one).
+	const readClientId = async (page: Page): Promise<string> => {
+		const before = received.length;
+		await page.keyboard.press('Escape');
+		await waitUntil(() => received.length > before);
+
+		return received.at(-1)?.client ?? '';
+	};
+
+	it('a server restart: only the tab that was main claims it back; the other stays aside, no claim on its reconnect', async () => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
+		const aside = await signIn();
+		const main = await signIn();
+		await overlayOn(aside.page).waitFor({ timeout: 5000 });
+
+		const port = gateway.port;
+		gateway.stop();
+		gateway = startServer(port);
+
+		// Both tabs come back (a restarted server reloads them). The former main takes it again; the
+		// other never claims, so it is aside again, and the main one has no overlay.
+		await main.page.locator('.vo-top').waitFor({ timeout: 15_000 });
+		await Bun.sleep(1500);
+		await overlayOn(aside.page).waitFor({ timeout: 10_000 });
+		expect(await overlayOn(main.page).count()).toBe(0);
+		// Counted, not inferred from the overlays: the aside tab's new connection never claimed.
+		const asideId = await readClientId(aside.page);
+		expect(claims.filter((client) => client === asideId)).toEqual([]);
+		expect(await main.page.getByText('Voice is on no screen right now.').count()).toBe(0);
+		await aside.context.close();
+		await main.context.close();
+	}, 40_000);
+
+	it('a duplicated tab (its sessionStorage copied) is told tab_taken, takes its own id and stays aside', async () => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
+		const original = await signIn();
+		const readTabId = (page: Page) => page.evaluate(() => sessionStorage.getItem('voiceos-tab-id'));
+		const copiedId = await readTabId(original.page);
+		expect(copiedId).toBeTruthy();
+
+		// "Duplicate tab": the copy loads with the original's sessionStorage. Copied once, so the
+		// id the page makes for itself is what its later loads read.
+		const context = await browser.newContext({ permissions: ['microphone'] });
+		const page = await context.newPage();
+		watchErrors(page);
+		await page.goto(`http://localhost:${gateway.port}/login?token=${TOKEN}`);
+		await context.addInitScript((id: string) => {
+			if (!sessionStorage.getItem('ui-duplicated')) {
+				sessionStorage.setItem('ui-duplicated', '1');
+				sessionStorage.setItem('voiceos-tab-id', id);
+				sessionStorage.setItem('voiceos-was-main', '1');
+			}
+		}, copiedId ?? '');
+		await page.goto(`http://localhost:${gateway.port}/voice`);
+		await page.waitForSelector('.vo-top');
+
+		await page.waitForFunction((id) => sessionStorage.getItem('voiceos-tab-id') !== id, copiedId, {
+			timeout: 5000,
+		});
+		await overlayOn(page).waitFor({ timeout: 5000 });
+		expect(await overlayOn(original.page).count()).toBe(0);
+		expect(await page.evaluate(() => sessionStorage.getItem('voiceos-was-main'))).toBeNull();
+
+		// Its new id was said again: Use here works from it, and the original steps aside.
+		await takeMainScreen(page);
+		await overlayOn(original.page).waitFor({ timeout: 5000 });
+		await original.context.close();
+		await context.close();
+	}, 30_000);
+
+	it('a tab aside plays nothing and reports no audio_done; the main one does', async () => {
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
+		const aside = await signIn();
+		const asideId = await readClientId(aside.page);
+		const main = await signIn();
+		const mainId = await readClientId(main.page);
+		await overlayOn(aside.page).waitFor({ timeout: 5000 });
+
+		// 0.2 s of silence at the speech rate.
+		const pcm = Buffer.alloc(9600).toString('base64');
+		gateway.broadcast({ type: 'audio', id: 'ui-aside-clip', base64: pcm, isLast: false });
+		gateway.broadcast({ type: 'audio', id: 'ui-aside-clip', base64: '', isLast: true });
+		const doneFrom = (client: string) =>
+			received.filter(
+				(entry) =>
+					entry.client === client &&
+					entry.message.type === 'audio_done' &&
+					entry.message.id === 'ui-aside-clip',
+			);
+		await waitUntil(() => doneFrom(mainId).length === 1, 5000);
+		await Bun.sleep(300);
+		expect(doneFrom(asideId)).toHaveLength(0);
+		await aside.context.close();
+		await main.context.close();
+	}, 30_000);
+
+	it('the hold mic asks for the microphone inside the press itself, before anything waits (iOS), echo and noise cancelled', async () => {
+		await ensureIdle(REF);
+		// No microphone permission granted ahead: nothing opens the mic at load, the press is first.
+		const context = await browser.newContext({
+			viewport: { width: 390, height: 844 },
+			hasTouch: true,
+		});
+		await context.addInitScript(() => {
+			const probe = window as unknown as {
+				__inPress: boolean;
+				__gumInPress: boolean[];
+				__audio: unknown[];
+			};
+			probe.__inPress = false;
+			probe.__gumInPress = [];
+			probe.__audio = [];
+			// Capture on window runs first; the bubbling one on window runs after React's own handler
+			// (on the root), so between the two is the press's own turn.
+			window.addEventListener('pointerdown', () => (probe.__inPress = true), { capture: true });
+			window.addEventListener('pointerdown', () => (probe.__inPress = false));
+			const getUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+
+			navigator.mediaDevices.getUserMedia = (constraints) => {
+				probe.__gumInPress.push(probe.__inPress);
+				probe.__audio.push(constraints?.audio);
+
+				return getUserMedia(constraints);
+			};
+		});
+		const page = await context.newPage();
+		watchErrors(page);
+		await page.goto(`http://localhost:${gateway.port}/phone/${PHONE_KEY}`);
+		await page.getByRole('button', { name: 'Use it in the browser instead' }).click();
+		await page.waitForSelector('.vo.phone .mtop');
+		store.dispatch({ type: 'switch_view', view: onSession });
+		const mic = page.getByRole('button', { name: 'Hold to talk' });
+		await mic.waitFor({ timeout: 5000 });
+		const box = await mic.boundingBox();
+
+		await page.mouse.move((box?.x ?? 0) + 18, (box?.y ?? 0) + 18);
+		await page.mouse.down();
+		await page.waitForFunction(
+			() => (window as unknown as { __gumInPress: boolean[] }).__gumInPress.length > 0,
+		);
+		await page.mouse.up();
+		expect(
+			await page.evaluate(() => (window as unknown as { __gumInPress: boolean[] }).__gumInPress),
+		).toEqual([true]);
+		// A phone's speaker sits next to its mic: cancelling on even in push to talk.
+		expect(
+			await page.evaluate(() => (window as unknown as { __audio: unknown[] }).__audio),
+		).toEqual([
+			{ channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: false },
+		]);
+		await context.close();
+	}, 30_000);
+
+	it('Settings → Your phone: New code shows the QR and where the phone reaches this Mac', async () => {
+		const { context, page } = await signIn();
+		store.dispatch({ type: 'switch_view', view: { kind: 'settings' } });
+		const section = page.locator('#vs-phone');
+
+		await section.waitFor({ timeout: 5000 });
+		expect(await section.getByText('No code yet').isVisible()).toBe(true);
+		await section.getByRole('button', { name: 'New code' }).click();
+		await section
+			.getByRole('img', { name: "QR code of the phone's link" })
+			.waitFor({ timeout: 5000 });
+		expect(await section.getByText('Reached at').isVisible()).toBe(true);
+		expect(await section.getByText('Recommended').isVisible()).toBe(true);
+		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		await context.close();
 	}, 20_000);
 });

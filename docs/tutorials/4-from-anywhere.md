@@ -14,8 +14,9 @@ the server runs on your laptop or on a VM. The details are in
 
 There are two ways to reach the page from somewhere else. **crew's proxy** gives it a real hostname
 on your network that any device can open. An **SSH tunnel** forwards the page's port to the
-computer you're on, so it opens as `localhost` there. The proxy is the one for a phone. The tunnel
-is the quick one from another computer that already has SSH.
+computer you're on, so it opens as `localhost` there. The tunnel is the quick one from another
+computer that already has SSH. A phone has its own way in, through the proxy or Tailscale, and
+[On a phone](#on-a-phone) covers it.
 
 The microphone matters for choosing. Browsers give it only to `localhost` and HTTPS pages. A tunnel
 is `localhost`, so voice works at once. The proxy needs HTTPS, which crew serves with its own
@@ -61,9 +62,8 @@ When a proxy link doesn't load on a phone, it's nearly always one of two things.
 load at all, the phone can't reach the machine (another network, guest Wi-Fi isolation, a VPN,
 cellular). If `http://<server IP>/` loads but the hostname doesn't, the phone's DNS is refusing
 `nip.io`, which routers with rebind protection and iOS Private Relay do. Allow `nip.io` there, or use
-a domain of your own. [Tailscale](https://tailscale.com) sidesteps both: put the machine and the
-phone on it, set **Server IP** to the Tailscale address, and the links work off your home network
-too.
+a domain of your own. [Tailscale](https://tailscale.com) sidesteps both, and for a phone it's the
+way I recommend (see [On a phone](#on-a-phone)).
 
 ## An SSH tunnel
 
@@ -82,21 +82,55 @@ you put your own alias there.
 
 ## On a phone
 
-The page fits a phone. Voice OS keeps the tabs in the top bar, and the session's stream takes the
-screen with the spoken line and the input under it.
+Voice OS on my phone is an app on the home screen. It opens full screen, stays signed in, and has
+its own layout: Home with the sessions, a session's stream, and the listening mode on the bar at
+the bottom.
 
-![Voice OS on a phone: store/main's stream adding a search box to the catalog, with a diff, its spoken line and the input](../images/voice-os/phone.png)
+![store/main on a phone: back, the name and ⋯ at the top, the stream adding a search box to the catalog with a diff of CatalogPage.tsx, and Hold the mic to talk at the bottom](../images/voice-os/phone.png)
 
-Set up works too. The toolbar and Setup with Claude stack, and tables scroll sideways.
+Everything starts in Voice OS's **Settings** (the gear at the top right), under **Your phone**.
+**New code** makes a QR code for one phone and says where it leads.
 
-![Set up's board on a phone: This Mac with Workspaces and Projects, Add project, Setup with Claude stacked under them and the projects table scrolling sideways](../images/setup/board-phone.png)
+![Settings, Your phone: a QR code with three steps (scan it, add it to the home screen, open it from there), reached at voice--os.192.168.1.20.nip.io through crew's proxy, New code and Trust crew's certificate on the phone; the recommended Tailscale card with Tailscale running and signed in on this Mac, HTTPS for the tailnet still off with Turn it on in Tailscale, and Put Voice OS on Tailscale with Set it up; then two phones, iPhone and Work phone, each with Revoke](../images/voice-os/settings-your-phone.png)
 
-The page wants a sign-in the first time a browser opens it, and that link is the one thing the page
-can't hand you. On the machine, `crew server status` prints it, the localhost one and the proxy one.
-Open the proxy link on the phone once, after trusting the certificate, and it stays signed in.
+### Through crew's proxy
+
+Out of the box the code leads through crew's proxy, the one set up above, so it works on the same
+network as the machine. The phone needs crew's certificate for the microphone, so press **Trust
+crew's certificate on the phone…** first and do what it says on the phone (it's the same step as
+[Trust the certificate](#trust-the-certificate)). Then make the code.
+
+### Through Tailscale
+
+[Tailscale](https://tailscale.com) is what I use and recommend. Only my own devices reach the page,
+it works away from home, on cellular too, and the phone gets a real certificate, so there's nothing
+to trust by hand. The **Reach it with Tailscale** card under the code is a checklist of three:
+
+1. **Tailscale on this Mac**: install it, start it and sign in. The line ticks once it's running
+   and signed in.
+2. **HTTPS for your tailnet**: Tailscale gives the link its certificate, and it's off by default.
+   **Turn it on in Tailscale** opens the admin page where you switch it on.
+3. **Put Voice OS on Tailscale**: press **Set it up**. Voice OS is now at an `https://….ts.net`
+   address on your tailnet, and the card says **On Tailscale**.
+
+On the phone, install Tailscale and sign in with the same account. Make the code after this, so
+it leads through Tailscale. **Stop serving** on the card takes Voice OS off your tailnet again.
+
+### Save it to the home screen
+
+Scan the code with the phone's camera. The page that opens shows how to save it: on an iPhone tap
+**Share** in Safari and choose **Add to Home Screen**, on Android tap **Install**. From then on I open
+it from the home screen and it's signed in.
+
+![The iPhone install guide: Put Voice OS on your home screen, step 1 Tap Share below, step 2 Choose Add to Home Screen, and Use it in Safari instead](../images/voice-os/phone-install-iphone.png)
+
+Each code is a key for one phone, shown once. The phones you added are listed under the card, with
+when each was last opened, and **Revoke** cuts one off at once, saved app included.
+[On your phone](../guides/voice-os.md#on-your-phone) in the Voice OS guide goes through the layout,
+the bar in each listening mode and Text only.
 
 Push to talk is the most reliable listening mode on a phone, because phones pause the microphone
-when the tab goes to the background or the screen locks. That's the main reason I use Discord when
+when the app goes to the background or the screen locks. That's the main reason I use Discord when
 I'm out.
 
 ## Voice OS in Discord
@@ -108,8 +142,6 @@ and no open tab, and it keeps going with the screen off.
 
 Voice OS's **Settings** (the gear at the top right) has a **Discord** section. Until it's set up it
 says **Not set up** and lists the steps.
-
-![Voice OS Settings: the side menu, the four listening modes with Push to talk picked, Voice is on with Mute voice, the Soniox and Anthropic keys with Replace, and Discord not set up](../images/voice-os/settings.png)
 
 ### Make the server and the bot
 

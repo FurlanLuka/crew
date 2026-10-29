@@ -3,53 +3,22 @@
 import { useState } from 'react';
 import { isActive } from '../../shared/active.js';
 import { readMachine, toLocalRef } from '../../shared/machine-ref.js';
-import { readMachineTitle, readSessionLabel } from '../../shared/machines.js';
-import type { Session, State, StreamItem } from '../../shared/protocol.js';
-import { describeWork } from '../../state/working.js';
-import {
-	describeSessionBadge,
-	findRunFor,
-	isRunRunning,
-	readRefTitle,
-	readWorkingOn,
-} from '../derive.js';
-import { isOk, readCrewLine, runCrew, useCrew } from '../setup/api.js';
-import { hasDevServers } from '../setup/derive.js';
-import type { CrewMember, CrewProject } from '../setup/types.js';
+import { readSessionLabel } from '../../shared/machines.js';
+import type { Session, State } from '../../shared/protocol.js';
+import { describeSessionBadge, describeSessionMeta, readRefTitle } from '../derive.js';
+import { isOk, readCrewLine, runCrew } from '../setup/api.js';
 import type { Dispatch } from '../types.js';
 import { useNow } from '../use-now.js';
-import { DevPanel } from './DevPanel.js';
-import { DocsPanel } from './DocsPanel.js';
-import { ElsewherePanel } from './ElsewherePanel.js';
-import { NotesPanel } from './NotesPanel.js';
 import { RenameSession } from './RenameSession.js';
+import { SessionPanels, useSessionDialogs } from './SessionPanels.js';
 import { SessionStateRow } from './SessionStateRow.js';
 import { SessionStream } from './SessionStream.js';
-import { SubagentDialog } from './SubagentDialog.js';
-import { SubagentsPanel } from './SubagentsPanel.js';
-import { VoicePanel } from './VoicePanel.js';
-import { findPeerRun } from '../../state/peer-runs.js';
-import { PeerRunDialog } from './PeerRunDialog.js';
-import { PeerRunsPanel } from './PeerRunsPanel.js';
 
 interface CockpitProps {
 	session: Session;
 	state: State;
 	dispatch: Dispatch;
 }
-
-// Whether any of the worktree's projects has a dev server recorded, from crew. A plain session has no
-// worktree to ask about.
-const useHasDevServers = (session: Session): boolean => {
-	const machine = readMachine(session.ref);
-	const members = useCrew<CrewMember[]>(
-		machine,
-		session.isChat ? null : { type: 'show', ref: toLocalRef(session.ref) },
-	);
-	const projects = useCrew<CrewProject[]>(machine, session.isChat ? null : { type: 'ls_projects' });
-
-	return hasDevServers(members.data ?? [], projects.data ?? []);
-};
 
 // Where a Remove stands: the confirm shown, crew running, or crew's reason it was not removed.
 export type Removal =
@@ -67,7 +36,7 @@ interface RemoveChatProps {
 
 // A plain session goes: its Claude stops, crew drops its record; the folder and the conversation's
 // files stay where they are.
-const RemoveChat = ({ session, dispatch, state, onState }: RemoveChatProps) => {
+export const RemoveChat = ({ session, dispatch, state, onState }: RemoveChatProps) => {
 	const remove = async () => {
 		onState({ kind: 'removing' });
 		dispatch({ type: 'deactivate', ref: session.ref });
@@ -118,37 +87,23 @@ const RemoveChat = ({ session, dispatch, state, onState }: RemoveChatProps) => {
 	);
 };
 
+// A session that has not started: why its stream is only history.
+export const StoppedNote = ({ session, isOn }: { session: Session; isOn: boolean }) =>
+	session.status === 'stopped' && !session.error ? (
+		<div className="line notice c-dim">
+			{isOn
+				? 'Not running yet.'
+				: 'Not active: its history only. Voice OS runs no Claude here and says nothing about it.'}
+		</div>
+	) : null;
+
 export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 	const [isRenaming, setIsRenaming] = useState(false);
 	const [removal, setRemoval] = useState<Removal>(null);
-	const [openTaskId, setOpenTaskId] = useState<string | null>(null);
-	const openRun = session.subagentRuns.find((run) => run.taskId === openTaskId) ?? null;
-	// A copy's steps: this session's own (another session asked it) or the asked session's (it asked).
-	const [openPeer, setOpenPeer] = useState<{ ref: string; requestId: string } | null>(null);
-	const openPeerRun = openPeer
-		? findPeerRun(state.sessions[openPeer.ref], openPeer.requestId)
-		: undefined;
-	const peerRunFor = (item: StreamItem) =>
-		item.kind === 'session_ask' && item.peerRef
-			? (findPeerRun(state.sessions[item.peerRef], item.requestId) ?? null)
-			: null;
+	const dialogs = useSessionDialogs(session, state);
 	const now = useNow();
 	const isOn = isActive(state, session.ref);
-	const workingOn = readWorkingOn(session);
 	const badge = describeSessionBadge(session, state.asks);
-	const work = describeWork(session, now);
-	const machine = readMachine(session.ref);
-	const servers = state.devServers[session.ref] ?? [];
-	const isDevStarting = state.devStarting.includes(session.ref);
-	// Running servers show even before crew's reads answer.
-	const isDevShown = useHasDevServers(session) || servers.length > 0 || isDevStarting;
-	const meta = [
-		readMachineTitle(state, machine),
-		session.label !== readSessionLabel(state, session.ref) ? session.label : '',
-		`${badge.label}${work.for ? ` ${work.for}` : ''}`,
-	]
-		.filter(Boolean)
-		.join(' · ');
 
 	return (
 		<section className="vo-view vo-session" aria-label="session">
@@ -164,7 +119,7 @@ export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 				) : (
 					<h1 title={readRefTitle(state, session.ref)}>{readSessionLabel(state, session.ref)}</h1>
 				)}
-				<span className="m">{meta}</span>
+				<span className="m">{describeSessionMeta(state, session, now)}</span>
 				<div className="row-actions">
 					<button type="button" className="btn sm ghost rename" onClick={() => setIsRenaming(true)}>
 						Rename
@@ -193,96 +148,16 @@ export const Cockpit = ({ session, state, dispatch }: CockpitProps) => {
 					session={session}
 					className="vo-stream stream"
 					hasAsk={state.asks.some((ask) => ask.ref === session.ref)}
-					openFor={(item) => {
-						if (item.kind === 'session_ask') {
-							const peerRef = item.peerRef;
-
-							return peerRef && item.request === 'ask' && peerRunFor(item)
-								? () => setOpenPeer({ ref: peerRef, requestId: item.requestId })
-								: null;
-						}
-
-						const run = item.kind === 'tool' ? findRunFor(session, item.toolUseId) : null;
-
-						return run ? () => setOpenTaskId(run.taskId) : null;
-					}}
-					peerRunFor={peerRunFor}
+					openFor={dialogs.openFor}
+					peerRunFor={dialogs.peerRunFor}
 				>
-					{session.status === 'stopped' && !session.error && (
-						<div className="line notice c-dim">
-							{isOn
-								? 'Not running yet.'
-								: 'Not active: its history only. Voice OS runs no Claude here and says nothing about it.'}
-						</div>
-					)}
+					<StoppedNote session={session} isOn={isOn} />
 				</SessionStream>
 				<aside className="vo-panels side">
-					<div className="vo-panel panel">
-						<span className="label">Session</span>
-						<div className="kv">
-							<span>status</span>
-							<b>{session.status}</b>
-						</div>
-						<div className="kv">
-							<span>cost</span>
-							<b>${session.costUsd.toFixed(2)}</b>
-						</div>
-						{workingOn && <p className="m">working on: {workingOn}</p>}
-						{(session.status === 'running' || session.status === 'blocked') && (
-							<div className="row-actions">
-								<button
-									type="button"
-									className="btn sm"
-									onClick={() => dispatch({ type: 'interrupt', ref: session.ref })}
-								>
-									Stop turn · “stop”
-								</button>
-							</div>
-						)}
-					</div>
-					<SubagentsPanel subagents={session.subagents} onOpen={setOpenTaskId} />
-					<PeerRunsPanel
-						runs={session.peerRuns}
-						onOpen={(requestId) => setOpenPeer({ ref: session.ref, requestId })}
-					/>
-					{isDevShown && (
-						<DevPanel
-							worktree={session.ref}
-							servers={servers}
-							isStarting={isDevStarting}
-							offer={state.devOffer}
-							dispatch={dispatch}
-						/>
-					)}
-					<VoicePanel state={state} screen={session.ref} />
-					<NotesPanel state={state} screen={session.ref} />
-					<DocsPanel session={session} />
-					<ElsewherePanel state={state} screen={session.ref} dispatch={dispatch} />
-					<div className="vo-panel panel">
-						<span className="label">Where</span>
-						<p className="m">{session.cwd}</p>
-						{session.dirs.map((dir) => (
-							<p key={dir} className="m">
-								{dir}
-							</p>
-						))}
-					</div>
+					<SessionPanels session={session} state={state} dispatch={dispatch} dialogs={dialogs} />
 				</aside>
 			</div>
-			{openPeer && openPeerRun && (
-				<PeerRunDialog
-					run={openPeerRun}
-					sessionLabel={readSessionLabel(state, openPeer.ref)}
-					onClose={() => setOpenPeer(null)}
-				/>
-			)}
-			{openRun && (
-				<SubagentDialog
-					run={openRun}
-					isRunning={isRunRunning(session, openRun)}
-					onClose={() => setOpenTaskId(null)}
-				/>
-			)}
+			{dialogs.dialogs}
 		</section>
 	);
 };

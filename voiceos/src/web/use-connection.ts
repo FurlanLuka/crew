@@ -7,6 +7,16 @@ import type {
 	State,
 } from '../shared/protocol.js';
 import { reduce } from '../state/reducer.js';
+import { logPageFacts, setClientLogSink } from './client-log.js';
+import {
+	type MainClient,
+	markReloadByPage,
+	readMainState,
+	readTabId,
+	renewTabId,
+	rememberMain,
+	shouldReclaim,
+} from './main-screen.js';
 import type { ListenCommand } from './types.js';
 
 export type ConnectionStatus = 'connecting' | 'open' | 'unauthorized' | 'closed';
@@ -19,6 +29,9 @@ export interface AppliedServerMessage {
 }
 
 const OUTBOX_MESSAGES_KEPT = 20;
+// This tab's id for the main screen, read once per load; replaced only when the server says another
+// live page holds it (tab_taken).
+let tabId = typeof window === 'undefined' ? '' : readTabId();
 const FIRST_RETRY_MS = 500;
 const MAX_RETRY_MS = 8000;
 const RELOAD_KEY = 'voiceos-reloaded-at';
@@ -94,6 +107,7 @@ const reloadIfNotRecent = (): boolean => {
 
 	console.warn('reloading: this tab runs older code than the server');
 	sessionStorage.setItem(RELOAD_KEY, String(now));
+	markReloadByPage();
 	location.reload();
 
 	return true;
@@ -116,11 +130,14 @@ export const useConnection = (onSpeech: (message: SpeechMessage) => void) => {
 	const [keptDictation, setKeptDictation] = useState<KeptDictation | null>(null);
 	const speechRef = useRef(onSpeech);
 	speechRef.current = onSpeech;
+	// null until the server first says who has the main screen.
+	const [main, setMain] = useState<MainClient | null>(null);
 
 	useEffect(() => {
 		const lifetime = new AbortController();
 		// Backs off across reconnects and resets once a socket opens.
 		let retryDelayMs = FIRST_RETRY_MS;
+		let isFirstOpen = true;
 
 		const connect = () => {
 			if (lifetime.signal.aborted) {
@@ -144,9 +161,16 @@ export const useConnection = (onSpeech: (message: SpeechMessage) => void) => {
 				hasOpened = true;
 				retryDelayMs = FIRST_RETRY_MS;
 				setStatus('open');
+				// On every connection, first: the server knows this tab by it, across dropped sockets.
+				webSocket.send(JSON.stringify({ type: 'hello_tab', tabId } satisfies ClientMessage));
 
 				for (const message of outbox.current.splice(0)) {
 					webSocket.send(JSON.stringify(message));
+				}
+
+				if (isFirstOpen) {
+					isFirstOpen = false;
+					void logPageFacts();
 				}
 			};
 
@@ -169,6 +193,31 @@ export const useConnection = (onSpeech: (message: SpeechMessage) => void) => {
 				if (message.type === 'listen_off' || message.type === 'listen_on') {
 					setListenCommand({ mode: message.type === 'listen_on' ? message.mode : 'push' });
 					setIsAwake(false);
+
+					return;
+				}
+
+				// A duplicated tab: a new id of its own, said at once; it is not main, so the claim its
+				// load sent was dropped by the server.
+				if (message.type === 'tab_taken') {
+					tabId = renewTabId();
+					webSocket.send(JSON.stringify({ type: 'hello_tab', tabId } satisfies ClientMessage));
+					// mainState is read from tabId: a fresh object re-renders with the new id.
+					setMain((current) => (current ? { ...current } : current));
+
+					return;
+				}
+
+				if (message.type === 'main_client') {
+					const next = { tabId: message.tabId, device: message.device };
+					const wasMain = rememberMain(next, tabId);
+					setMain(next);
+
+					// The server restarted and knows no main: only the tab that held it takes it back;
+					// every other tab stays as it was.
+					if (shouldReclaim(next, wasMain)) {
+						webSocket.send(JSON.stringify({ type: 'claim_main' } satisfies ClientMessage));
+					}
 
 					return;
 				}
@@ -271,6 +320,14 @@ export const useConnection = (onSpeech: (message: SpeechMessage) => void) => {
 
 	const dispatch = useCallback((action: Action) => send({ type: 'action', action }), [send]);
 
+	useEffect(() => {
+		setClientLogSink(send);
+
+		return () => setClientLogSink(null);
+	}, [send]);
+
+	const claimMain = useCallback(() => send({ type: 'claim_main' }), [send]);
+
 	const sendBinary = useCallback((chunk: ArrayBuffer) => {
 		if (socket.current?.readyState === WebSocket.OPEN) {
 			socket.current.send(chunk);
@@ -288,9 +345,13 @@ export const useConnection = (onSpeech: (message: SpeechMessage) => void) => {
 		ignoredAt,
 		openRequest,
 		keptDictation,
+		mainState: readMainState(main, tabId),
+		mainDevice: main?.device ?? '',
+		claimMain,
 	};
 };
 
+// Who has the main screen: the one that listens and speaks. Unknown until the server says.
 export interface KeptDictation {
 	text: string;
 	reason: string;

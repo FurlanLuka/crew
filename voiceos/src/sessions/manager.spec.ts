@@ -858,6 +858,7 @@ describe('sessions asking sessions', () => {
 			'mcp__voiceos__ask_session',
 			'mcp__voiceos__tell_session',
 			'mcp__voiceos__request_secret',
+			'mcp__voiceos__search_files',
 		]);
 		expect(Object.keys((fork?.mcpServers as object) ?? {})).toEqual(['voiceos']);
 		expect(fork?.allowedTools).toBeUndefined();
