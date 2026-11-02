@@ -1001,6 +1001,9 @@
 }
 .vo-stream {
 	display: grid;
+	/* One column the stream's own width: an auto column grew to the widest line (a long path, a
+	   table, a code line) and pushed every line past the screen's edge. */
+	grid-template-columns: minmax(0, 1fr);
 	align-content: start;
 	gap: 4px;
 	min-width: 0;

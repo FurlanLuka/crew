@@ -421,9 +421,9 @@ func TestTmuxSessionIdle_AndKillTmuxWindow(t *testing.T) {
 	if err := CreateTmuxSession(session, dir); err != nil {
 		t.Fatal(err)
 	}
-	if !TmuxSessionIdle(session) {
-		t.Error("a session of idle shells is idle")
-	}
+	// A new pane's shell runs its rc files first (CI runners' do real work there): idle once it
+	// has settled, not the instant the session exists.
+	waitFor(t, "a session of idle shells to be idle", func() bool { return TmuxSessionIdle(session) })
 }
 
 // TmuxRunInSession makes the session around the first command and adds a

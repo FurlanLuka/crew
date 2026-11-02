@@ -4965,6 +4965,58 @@ describe('phone', () => {
 		await context.close();
 	}, 20_000);
 
+	it("a long path, a wide table and a long code line: the history stays the screen's width; table and code scroll on their own", async () => {
+		await ensureIdle(REF);
+		store.dispatch({
+			type: 'assistant_text',
+			ref: REF,
+			text: [
+				'The file is /Users/dev/.crew/workspaces/store/main/store-front/src/catalog/components/SearchBoxWithAutocompleteAndKeyboardNavigation.tsx',
+				'',
+				'| column | type | default | description |',
+				'|---|---|---|---|',
+				'| product_variant_identifier | varchar(255) | null | the variant this row belongs to, joined on product_variants.id |',
+				'',
+				'```ts',
+				'export const filterProductsByQueryAndCategoryAndPriceRange = (products: Product[], query: string, category: string) => products.filter((product) => product.name.includes(query));',
+				'```',
+			].join('\n'),
+		});
+		const { context, page } = await openPhone(onSession);
+		await page.locator('.vo-stream table').waitFor({ timeout: 5000 });
+
+		const widths = await page.evaluate(() => {
+			const stream = document.querySelector('.vo-stream') as HTMLElement;
+			const scrolls = (selector: string) => {
+				const node = stream.querySelector(selector) as HTMLElement;
+
+				return node.scrollWidth > node.clientWidth && getComputedStyle(node).overflowX === 'auto';
+			};
+
+			// A cell breaks only between words: "default" stays one line, never "def / aul / t".
+			const header = [...stream.querySelectorAll('th')].find(
+				(cell) => cell.textContent === 'default',
+			);
+			const range = document.createRange();
+			range.selectNodeContents(header as Node);
+
+			return {
+				isStreamInside: stream.scrollWidth <= stream.clientWidth,
+				isTableScrolling: scrolls('table'),
+				isCodeScrolling: scrolls('pre'),
+				headerLines: range.getClientRects().length,
+			};
+		});
+		expect(widths).toEqual({
+			isStreamInside: true,
+			isTableScrolling: true,
+			isCodeScrolling: true,
+			headerLines: 1,
+		});
+		expect(await isNotWider(page)).toBe(true);
+		await context.close();
+	}, 20_000);
+
 	it('holding the mic sends ptt_start, letting go ptt_stop; the bar lights up while held', async () => {
 		await ensureIdle(REF);
 		const { context, page, client } = await openPhone(onSession);
