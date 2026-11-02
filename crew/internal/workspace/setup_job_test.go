@@ -170,6 +170,15 @@ func TestInterrupt(t *testing.T) {
 	if i := interrupt(nil, "api", "runner gone"); i.Stage != StageCheckout || i.Detail != "runner interrupted (runner gone)" {
 		t.Errorf("no step: %+v", i)
 	}
+	// Killed with its window: the install's child died first and its step recorded the failure,
+	// then the runner died before its verdict. The run stopped at the install, not the checkout.
+	failed := []RunStep{{Name: "checkout", Status: StepOK}, {Name: "npm ci", Status: StepFailed, Detail: "signal: killed"}}
+	if i := interrupt(failed, "api", "runner gone"); i.Stage != StageInstall || i.Detail != "runner interrupted during npm ci (runner gone)" {
+		t.Errorf("failed step, nothing running: %+v", i)
+	}
+	if failed[1].Detail != "signal: killed" {
+		t.Errorf("a step that recorded its own failure keeps it: %+v", failed[1])
+	}
 }
 
 func TestMemberOrder(t *testing.T) {
