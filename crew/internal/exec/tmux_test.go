@@ -1,6 +1,7 @@
 package exec
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -424,6 +425,68 @@ func TestTmuxSessionIdle_AndKillTmuxWindow(t *testing.T) {
 	// A new pane's shell runs its rc files first (CI runners' do real work there): idle once it
 	// has settled, not the instant the session exists.
 	waitFor(t, "a session of idle shells to be idle", func() bool { return TmuxSessionIdle(session) })
+}
+
+// A relaunch right after a stop, when crew's session is the server's only one (a fresh
+// machine, CI): killing it shuts the server down, and the new-session sent in that moment
+// must still land.
+func TestCreateTmuxSession_RightAfterTheServerShutsDown(t *testing.T) {
+	requireTmux(t)
+	dir := startPrivateTmux(t)
+	session := fmt.Sprintf("crew-test-relaunch-%d", os.Getpid())
+	t.Cleanup(func() { KillTmuxSession(session) })
+
+	for round := 0; round < 20; round++ {
+		if err := CreateTmuxSession(session, dir); err != nil {
+			t.Fatalf("round %d: %v", round, err)
+		}
+		KillTmuxSession(session)
+	}
+}
+
+// A session that already exists is refused at once, with tmux's own words.
+func TestCreateTmuxSession_DuplicateSaysSo(t *testing.T) {
+	requireTmux(t)
+	dir := startPrivateTmux(t)
+	session := fmt.Sprintf("crew-test-dup-%d", os.Getpid())
+	t.Cleanup(func() { KillTmuxSession(session) })
+
+	if err := CreateTmuxSession(session, dir); err != nil {
+		t.Fatal(err)
+	}
+	err := CreateTmuxSession(session, dir)
+	if err == nil || !strings.Contains(err.Error(), "duplicate session") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// The retry itself: through a server shutting down, never for a duplicate, and tmux's last
+// words when it never lands.
+func TestNewSessionWithRetry(t *testing.T) {
+	failed := errors.New("exit status 1")
+	cases := []struct {
+		name    string
+		replies []error
+		outputs []string
+		calls   int
+		wantErr bool
+		wantMsg string
+	}{
+		{"the server came back", []error{failed, nil}, []string{"server exited unexpectedly", ""}, 2, false, ""},
+		{"it never did", []error{failed, failed, failed}, []string{"no server", "no server", "still no server"}, 3, true, "still no server"},
+		{"a duplicate is an answer", []error{failed}, []string{"duplicate session: crew-dev-proxy"}, 1, true, "duplicate session: crew-dev-proxy"},
+		{"first try", []error{nil}, []string{""}, 1, false, ""},
+	}
+	for _, c := range cases {
+		calls := 0
+		msg, err := newSessionWithRetry(func() ([]byte, error) {
+			calls++
+			return []byte(c.outputs[calls-1]), c.replies[calls-1]
+		}, func(string, error) {})
+		if calls != c.calls || (err != nil) != c.wantErr || msg != c.wantMsg {
+			t.Errorf("%s: calls=%d err=%v msg=%q", c.name, calls, err, msg)
+		}
+	}
 }
 
 // TmuxRunInSession makes the session around the first command and adds a

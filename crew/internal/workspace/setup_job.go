@@ -572,7 +572,7 @@ func (r *Runner) Abort(reason string) {
 
 // interrupt marks the running step (if any) failed as interrupted, in
 // place, and returns the issue a runner that did not finish leaves behind
-// — at the stage of that step.
+// — at the stage of the running step, else of the last failed one.
 func interrupt(steps []RunStep, proj, reason string) Issue {
 	step := ""
 	for i := len(steps) - 1; i >= 0; i-- {
@@ -580,6 +580,16 @@ func interrupt(steps []RunStep, proj, reason string) Issue {
 			step = steps[i].Name
 			steps[i].Status, steps[i].Detail = StepFailed, "interrupted"
 			break
+		}
+	}
+	// The install's child dies before the runner, so its step can record the failure
+	// before the runner dies.
+	if step == "" {
+		for i := len(steps) - 1; i >= 0; i-- {
+			if steps[i].Status == StepFailed {
+				step = steps[i].Name
+				break
+			}
 		}
 	}
 	detail := "runner interrupted"

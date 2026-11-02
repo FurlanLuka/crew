@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/FurlanLuka/crew/crew/internal/config"
 	"github.com/FurlanLuka/crew/crew/internal/debug"
@@ -45,12 +46,49 @@ func CreateTmuxSession(session, dir string) error {
 	if home, err := os.UserHomeDir(); err == nil {
 		cmd.Dir = home
 	}
-	if err := cmd.Run(); err != nil {
-		debug.Log("tmux", "new-session -s %s → error: %v", session, err)
+	first := true
+	msg, err := newSessionWithRetry(func() ([]byte, error) {
+		if first {
+			first = false
+			return cmd.CombinedOutput()
+		}
+		retry := exec.Command("tmux", args...)
+		retry.Env, retry.Dir = cmd.Env, cmd.Dir
+		return retry.CombinedOutput()
+	}, func(msg string, err error) {
+		debug.Log("tmux", "new-session -s %s → error: %v (%s), retrying", session, err, msg)
+		time.Sleep(newSessionRetryDelay)
+	})
+	if err != nil {
+		debug.Log("tmux", "new-session -s %s → error: %v (%s)", session, err, msg)
+		if msg != "" {
+			return fmt.Errorf("%w: %s", err, msg)
+		}
 		return err
 	}
 	return nil
 }
+
+// Killing a server's last session shuts the server down, and a new-session sent in that
+// moment fails ("server exited unexpectedly"): a relaunch right after a stop hits it
+// whenever crew's sessions are the only ones (a fresh machine, CI). The next client starts a
+// server of its own, so a short retry is enough. A session that already exists is an
+// answer, not a race: never retried.
+func newSessionWithRetry(run func() ([]byte, error), beforeRetry func(msg string, err error)) (string, error) {
+	out, err := run()
+	msg := strings.TrimSpace(string(out))
+	for attempt := 1; err != nil && attempt < newSessionTries && !strings.Contains(msg, "duplicate session"); attempt++ {
+		beforeRetry(msg, err)
+		out, err = run()
+		msg = strings.TrimSpace(string(out))
+	}
+	return msg, err
+}
+
+const (
+	newSessionTries      = 3
+	newSessionRetryDelay = 150 * time.Millisecond
+)
 
 // EnvWithoutTMUX returns os.Environ() with $TMUX removed.
 func EnvWithoutTMUX() []string {
