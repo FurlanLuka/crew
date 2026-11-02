@@ -38,23 +38,14 @@ func CreateTmuxSession(session, dir string) error {
 		args = append(args, "-c", dir)
 	}
 	debug.Log("tmux", "new-session -d -s %s -c %s", session, dir)
-	cmd := exec.Command("tmux", args...)
-	cmd.Env = EnvWithoutTMUX()
 	// When no server is running this client daemonizes into one, inheriting
 	// crew's working directory. Anchoring it outside the workspace tree keeps
 	// the server from resembling an abandoned workspace process to any sweep.
-	if home, err := os.UserHomeDir(); err == nil {
-		cmd.Dir = home
-	}
-	first := true
+	home, _ := os.UserHomeDir()
 	msg, err := newSessionWithRetry(func() ([]byte, error) {
-		if first {
-			first = false
-			return cmd.CombinedOutput()
-		}
-		retry := exec.Command("tmux", args...)
-		retry.Env, retry.Dir = cmd.Env, cmd.Dir
-		return retry.CombinedOutput()
+		cmd := exec.Command("tmux", args...)
+		cmd.Env, cmd.Dir = EnvWithoutTMUX(), home
+		return cmd.CombinedOutput()
 	}, func(msg string, err error) {
 		debug.Log("tmux", "new-session -s %s → error: %v (%s), retrying", session, err, msg)
 		time.Sleep(newSessionRetryDelay)
@@ -176,8 +167,16 @@ func TmuxRestartLastCommand(target string) {
 	debug.Log("tmux", "restart-last-command -t %s", target)
 	killPaneProcesses("-t", target)
 	exec.Command("tmux", "send-keys", "-t", target, "C-c").Run()
+	// Up typed while the shell is still reaping the killed command never reaches its line
+	// editor, and the restart silently does nothing: wait for the shell to be in front.
+	deadline := time.Now().Add(restartShellWait)
+	for paneBusy(target) && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
 	exec.Command("tmux", "send-keys", "-t", target, "Up", "Enter").Run()
 }
+
+const restartShellWait = 2 * time.Second
 
 // KillTmuxSession kills a tmux session and the processes of every pane.
 // tmux kill-session only SIGHUPs each pane's direct process, so dev-server
@@ -352,7 +351,10 @@ func isShell(command string) bool {
 // TmuxPaneBusy reports whether a window's pane is still running something
 // other than its shell — the process crew started is alive.
 func TmuxPaneBusy(session, window string) bool {
-	target := session + ":" + window
+	return paneBusy(session + ":" + window)
+}
+
+func paneBusy(target string) bool {
 	out, err := exec.Command("tmux", "display-message", "-p", "-t", target, "#{pane_current_command}").Output()
 	if err != nil {
 		return false
