@@ -173,6 +173,9 @@ func TmuxRestartLastCommand(target string) {
 	for paneBusy(target) && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
 	}
+	if paneBusy(target) {
+		debug.Log("tmux", "restart-last-command -t %s → pane still busy after %s, sending Up anyway", target, restartShellWait)
+	}
 	exec.Command("tmux", "send-keys", "-t", target, "Up", "Enter").Run()
 }
 
