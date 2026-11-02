@@ -541,6 +541,13 @@ h1 {
 	text-align: left;
 	padding: 5px 14px 5px 0;
 	border-bottom: 1px solid var(--hair);
+	/* Cells break only between words: a long identifier widens the table, which scrolls sideways,
+	   instead of splitting "default" into three lines. The minimum stops the last column, often the
+	   long description, from being squeezed to a word per line once the table is wider than the
+	   screen. */
+	word-break: normal;
+	overflow-wrap: normal;
+	min-width: 12ch;
 }
 .md th {
 	color: var(--label-3);
