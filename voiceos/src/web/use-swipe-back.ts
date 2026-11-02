@@ -6,6 +6,11 @@ import { type RefObject, useEffect, useRef } from 'react';
 import { decideSwipeEnd, decideSwipeStart, EDGE_PX } from './phone-nav.js';
 
 const SCREEN = ':scope > .ph-screen';
+const UNDER = ':scope > .ph-under';
+// Where the uncovered screen starts, as iOS sets it back: a little to the left and dimmed. The same
+// as .ph-under's resting transform and filter in phone.css; change both together.
+const UNDER_SHIFT_PERCENT = -24;
+const UNDER_DIM = 0.6;
 const SETTLE_MS = 200;
 // A back the server applies: the screen waits off to the side for the new view, and only comes back
 // if none arrived (the connection dropped), never in the round trip's meantime.
@@ -37,6 +42,22 @@ const place = (screen: HTMLElement, x: number, isAnimated: boolean) => {
 		? `transform ${SETTLE_MS}ms cubic-bezier(.2,.8,.2,1)`
 		: 'none';
 	screen.style.transform = x === 0 ? '' : `translateX(${x}px)`;
+};
+
+// The screen underneath follows the finger: from set back and dimmed to in place as progress goes
+// 0 → 1. It renders a frame after the swipe starts, so each move looks it up.
+const placeUnder = (root: HTMLElement, progress: number, isAnimated: boolean) => {
+	const under = root.querySelector<HTMLElement>(UNDER);
+
+	if (!under) {
+		return;
+	}
+
+	under.style.transition = isAnimated
+		? `transform ${SETTLE_MS}ms cubic-bezier(.2,.8,.2,1), filter ${SETTLE_MS}ms`
+		: 'none';
+	under.style.transform = `translateX(${UNDER_SHIFT_PERCENT * (1 - progress)}%)`;
+	under.style.filter = `brightness(${UNDER_DIM + (1 - UNDER_DIM) * progress})`;
 };
 
 export const useSwipeBack = ({ rootRef, isEnabled, onBack, onPeek }: SwipeBackParams): void => {
@@ -116,6 +137,7 @@ export const useSwipeBack = ({ rootRef, isEnabled, onBack, onPeek }: SwipeBackPa
 			track.lastX = touch.clientX;
 			track.lastAt = event.timeStamp;
 			place(track.screen, Math.max(0, dx), false);
+			placeUnder(root, Math.max(0, dx) / root.clientWidth, false);
 		};
 
 		// A cancelled touch (the system took the gesture) never goes back: the screen springs home.
@@ -133,6 +155,7 @@ export const useSwipeBack = ({ rootRef, isEnabled, onBack, onPeek }: SwipeBackPa
 
 			if (event.type === 'touchcancel' || decideSwipeEnd({ dx, velocity, width }) === 'cancel') {
 				place(screen, 0, true);
+				placeUnder(root, 0, true);
 				setTimeout(() => {
 					root.classList.remove('swiping');
 					onPeekRef.current(false);
@@ -142,6 +165,7 @@ export const useSwipeBack = ({ rootRef, isEnabled, onBack, onPeek }: SwipeBackPa
 			}
 
 			place(screen, width, true);
+			placeUnder(root, 1, true);
 			setTimeout(() => {
 				const result = onBackRef.current();
 				root.classList.remove('swiping');

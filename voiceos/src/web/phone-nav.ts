@@ -71,3 +71,49 @@ interface SwipeEnd {
 // Past a third of the screen, or flicked: back. Otherwise the screen springs home.
 export const decideSwipeEnd = ({ dx, velocity, width }: SwipeEnd): 'back' | 'cancel' =>
 	dx > width / 3 || (velocity > 0.5 && dx > 30) ? 'back' : 'cancel';
+
+// A screen the phone moved to before the server said so: shown at once, so a tap or a swipe never
+// waits on the round trip. Each move the server has yet to answer is a key in `expected`, in order:
+// quick moves (a tap, then back) stay on the last one while the answers come in one by one. The
+// server always wins: a view it reaches that the phone didn't ask for drops the pending one, and a
+// move it never answers is dropped after PENDING_MS (usePendingView's timer).
+export const PENDING_MS = 3_000;
+
+export interface PendingView {
+	view: View;
+	expected: string[];
+}
+
+// A move to `view` while the server shows `serverKey`. Moving to where it already is, or will be,
+// adds nothing to wait for.
+export const addPending = (
+	pending: PendingView | null,
+	view: View,
+	serverKey: string,
+): PendingView | null => {
+	const expected = pending?.expected ?? [];
+	const key = readViewKey(view);
+
+	if (key === (expected.at(-1) ?? serverKey)) {
+		return expected.length > 0 ? { view, expected } : null;
+	}
+
+	return { view, expected: [...expected, key] };
+};
+
+// The server's view changed to `serverKey`: the next answer it was waiting for, or something else.
+export const advancePending = (
+	pending: PendingView | null,
+	serverKey: string,
+): PendingView | null => {
+	if (!pending || pending.expected[0] !== serverKey) {
+		return null;
+	}
+
+	const expected = pending.expected.slice(1);
+
+	return expected.length > 0 ? { ...pending, expected } : null;
+};
+
+export const readShownView = (pending: PendingView | null, serverView: View): View =>
+	pending && pending.expected.length > 0 ? pending.view : serverView;

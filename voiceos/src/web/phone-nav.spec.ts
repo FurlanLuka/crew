@@ -6,6 +6,9 @@ import {
 	decideSwipeStart,
 	readBackView,
 	readDepth,
+	readShownView,
+	addPending,
+	advancePending,
 	readTransition,
 } from './phone-nav.js';
 
@@ -61,4 +64,36 @@ describe('decideSwipeEnd', () => {
 		expect(decideSwipeEnd({ dx: 60, velocity: 0.1, width: 390 })).toBe('cancel');
 		expect(decideSwipeEnd({ dx: 10, velocity: 2, width: 390 })).toBe('cancel');
 	});
+});
+
+describe('the pending view', () => {
+	const SESSION_KEY = 'session:store-front/main';
+
+	it('a move shows at once, until the server answers it', () => {
+		const pending = addPending(null, SESSION, 'active');
+
+		expect(readShownView(pending, HOME)).toEqual(SESSION);
+		expect(advancePending(pending, SESSION_KEY)).toBeNull();
+	});
+
+	it('a tap then back, answered one by one: Home stays on screen the whole time', () => {
+		let pending = addPending(null, SESSION, 'active');
+		pending = addPending(pending, HOME, 'active');
+
+		expect(readShownView(pending, HOME)).toEqual(HOME);
+		pending = advancePending(pending, SESSION_KEY);
+		expect(readShownView(pending, SESSION)).toEqual(HOME);
+		expect(advancePending(pending, 'active')).toBeNull();
+	});
+
+	it('the server going somewhere the phone did not ask for drops it: the server wins', () => {
+		const pending = addPending(null, SESSION, 'active');
+
+		expect(advancePending(pending, 'settings')).toBeNull();
+	});
+
+	it('a move to the screen already shown waits for nothing', () =>
+		expect(addPending(null, HOME, 'active')).toBeNull());
+
+	it('nothing pending → the server view', () => expect(readShownView(null, HOME)).toEqual(HOME));
 });

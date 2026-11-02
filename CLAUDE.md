@@ -327,7 +327,9 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   `VoiceOS` (voice input, notices and dialogs stay): `PhoneTopBar`, Home = `PhoneHome` (a grouped
   list, `describePhoneCard`), each screen a `.ph-screen` that slides by depth (`phone-nav.ts`: one back
   rule, `parentView`), swiped back from the left edge in the installed iPhone app (`use-swipe-back.ts`) and
-  popped by the browser's back through one history entry (`use-phone-history.ts`), sized to the
+  popped by the browser's back through one history entry (`use-phone-history.ts`), moved at once
+  before the server answers (`use-phone-pending.ts`: each unanswered `switch_view` queued in order,
+  any other server view wins, 3 s timeout), sized to the
   visual viewport (`use-phone-viewport.ts`); a phone's audio session is `play-and-record`
   (`audio-session.ts`) and the speech player wakes or remakes its context, logging under `speech`,
   `PhoneSession` (`AskDock`/`DenialSheet` as the stream's last children), `PhoneMore` (⋯, built on
