@@ -1,8 +1,15 @@
-// The phone page fits the visible viewport, keyboard included: iOS shrinks only the visual viewport
-// when the keyboard opens and scrolls the whole page to show the focused field, which pushed the top
-// bar off screen and left the page scrollable. The height follows the visual viewport (--vvh) and the
-// window is put back at the top, so only each screen's own list ever scrolls.
+// The phone page fits what is visible when the keyboard is up: iOS shrinks only the visual viewport
+// then and pans it down to show the focused field, which left the box near the top of what is seen
+// and the app's top bar above it. With the keyboard up the page follows the visual viewport (its
+// height --vvh and where it starts --vvt), so the box sits right on the keyboard; the window is put
+// back at the top, so only each screen's own list ever scrolls.
 import { useEffect } from 'react';
+
+// The visible part this much smaller than the page: a keyboard is up, not just the toolbar moving.
+const KEYBOARD_SHARE = 0.8;
+
+export const isKeyboardUp = (visibleHeight: number, pageHeight: number): boolean =>
+	visibleHeight < pageHeight * KEYBOARD_SHARE;
 
 export const usePhoneViewport = (): void => {
 	useEffect(() => {
@@ -14,8 +21,21 @@ export const usePhoneViewport = (): void => {
 
 		const root = document.documentElement;
 
+		// Only while the keyboard is up: at rest the page is the full screen (100dvh). Sized to the
+		// visual viewport at load, an installed app could come out a little short before iOS settled
+		// its bars, and the box sat above the bottom until something resized.
 		const fit = () => {
-			root.style.setProperty('--vvh', `${Math.round(viewport.height)}px`);
+			const isUp = isKeyboardUp(viewport.height, window.innerHeight);
+
+			root.toggleAttribute('data-keyboard', isUp);
+
+			if (isUp) {
+				root.style.setProperty('--vvh', `${Math.round(viewport.height)}px`);
+				root.style.setProperty('--vvt', `${Math.round(viewport.offsetTop)}px`);
+			} else {
+				root.style.removeProperty('--vvh');
+				root.style.removeProperty('--vvt');
+			}
 
 			if (window.scrollY !== 0) {
 				window.scrollTo(0, 0);
@@ -30,6 +50,8 @@ export const usePhoneViewport = (): void => {
 			viewport.removeEventListener('resize', fit);
 			viewport.removeEventListener('scroll', fit);
 			root.style.removeProperty('--vvh');
+			root.style.removeProperty('--vvt');
+			root.removeAttribute('data-keyboard');
 		};
 	}, []);
 };

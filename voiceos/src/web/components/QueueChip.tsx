@@ -12,7 +12,7 @@ interface QueueChipProps {
 }
 
 // Another session's tell waits in the queue too: the chip says so, since the rows are folded away.
-const describePeers = (session: Session): string | null => {
+export const describePeers = (session: Session): string | null => {
 	const labels = [
 		...new Set(session.queue.flatMap((item) => (item.from ? [item.from.label] : []))),
 	];

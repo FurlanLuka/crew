@@ -1,4 +1,4 @@
-import type { Session } from '../../shared/protocol.js';
+import type { QueuedMessage, Session } from '../../shared/protocol.js';
 import { describeCarried } from '../../state/attachments.js';
 import type { Dispatch } from '../types.js';
 
@@ -6,6 +6,18 @@ interface QueueListProps {
 	session: Session;
 	dispatch: Dispatch;
 }
+
+// One queued message as a line: who it is from, its words, the files it carries. Rendered inside
+// one flex item, so who it is from reads as part of the line, never its own column.
+export const QueuedText = ({ item }: { item: QueuedMessage }) => (
+	<>
+		{item.from && <span className="c-amber">from {item.from.label} · </span>}
+		{item.text}
+		{item.attachments?.length ? (
+			<span className="c-dim"> ·{describeCarried(item.attachments)}</span>
+		) : null}
+	</>
+);
 
 export const QueueList = ({ session, dispatch }: QueueListProps) => {
 	if (session.queue.length === 0) {
@@ -17,13 +29,8 @@ export const QueueList = ({ session, dispatch }: QueueListProps) => {
 			{session.queue.map((item, index) => (
 				<div key={item.id} className="qitem">
 					<span className="qtag">queued {index + 1}</span>{' '}
-					{/* One flex item: who it is from reads as part of the line, never its own column. */}
 					<span className="qtext">
-						{item.from && <span className="c-amber">from {item.from.label} · </span>}
-						{item.text}
-						{item.attachments?.length ? (
-							<span className="c-dim"> ·{describeCarried(item.attachments)}</span>
-						) : null}
+						<QueuedText item={item} />
 					</span>
 					<button
 						type="button"
