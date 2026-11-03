@@ -4477,14 +4477,17 @@ describe('phone', () => {
 			hasTouch: true,
 		});
 		await context.addInitScript(() => {
-			const probe = window as unknown as { __gum: number };
+			const probe = window as unknown as { __gum: number; __streams: MediaStream[] };
 			const getUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
 			probe.__gum = 0;
+			probe.__streams = [];
 
-			navigator.mediaDevices.getUserMedia = (constraints) => {
+			navigator.mediaDevices.getUserMedia = async (constraints) => {
 				probe.__gum++;
+				const stream = await getUserMedia(constraints);
+				probe.__streams.push(stream);
 
-				return getUserMedia(constraints);
+				return stream;
 			};
 		});
 		const page = await context.newPage();
@@ -5150,6 +5153,84 @@ describe('phone', () => {
 		await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 });
 		await page.waitForFunction(() => !document.documentElement.hasAttribute('data-keyboard'));
 		expect(await readFit()).toEqual({ isKeyboard: false, height: '' });
+		await context.close();
+	}, 20_000);
+
+	it('push to talk on a phone: leaving the app lets go of the mic, coming back opens nothing, the next press opens it', async () => {
+		await ensureIdle(REF);
+		const { context, page, client } = await openPhone(onSession);
+		const mic = page.getByRole('button', { name: 'Hold to talk' });
+		await mic.waitFor({ timeout: 5000 });
+		// Allowed already: the mic opens at load, for the first press's pre-roll.
+		await page.waitForFunction(() => (window as unknown as { __gum: number }).__gum === 1);
+
+		const setVisibility = (state: 'hidden' | 'visible') =>
+			page.evaluate((value) => {
+				Object.defineProperty(document, 'visibilityState', { value, configurable: true });
+				document.dispatchEvent(new Event('visibilitychange'));
+			}, state);
+		const isHeld = () =>
+			page.evaluate(() =>
+				(window as unknown as { __streams: MediaStream[] }).__streams.some((stream) =>
+					stream.getTracks().some((track) => track.readyState === 'live'),
+				),
+			);
+
+		expect(await isHeld()).toBe(true);
+		await setVisibility('hidden');
+		await page.waitForFunction(
+			() =>
+				!(window as unknown as { __streams: MediaStream[] }).__streams.some((stream) =>
+					stream.getTracks().some((track) => track.readyState === 'live'),
+				),
+		);
+		await setVisibility('visible');
+		await Bun.sleep(300);
+		expect(await countGetUserMedia(page)).toBe(1);
+		expect(await isHeld()).toBe(false);
+
+		const box = await mic.boundingBox();
+		await page.mouse.move((box?.x ?? 0) + 18, (box?.y ?? 0) + 18);
+		await page.mouse.down();
+		await waitUntil(() => fromClient(client, 'ptt_start').length === 1);
+		expect(await countGetUserMedia(page)).toBe(2);
+		await page.mouse.up();
+		await waitUntil(() => fromClient(client, 'ptt_stop').length === 1);
+		await context.close();
+	}, 20_000);
+
+	it('push to talk on a phone, left mid-press or right after: each press still ends with its ptt_stop', async () => {
+		await ensureIdle(REF);
+		const { context, page, client } = await openPhone(onSession);
+		const mic = page.getByRole('button', { name: 'Hold to talk' });
+		await mic.waitFor({ timeout: 5000 });
+		const box = await mic.boundingBox();
+
+		await page.mouse.move((box?.x ?? 0) + 18, (box?.y ?? 0) + 18);
+		await page.mouse.down();
+		await waitUntil(() => fromClient(client, 'ptt_start').length === 1);
+		await page.evaluate(() => {
+			Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+			document.dispatchEvent(new Event('visibilitychange'));
+		});
+		await waitUntil(() => fromClient(client, 'ptt_stop').length === 1);
+		await Bun.sleep(300);
+		expect(fromClient(client, 'ptt_stop')).toHaveLength(1);
+		await page.mouse.up();
+
+		// Let go, then left at once: the press's tail is still streaming, and still ends with its stop.
+		await page.evaluate(() => {
+			Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+			document.dispatchEvent(new Event('visibilitychange'));
+		});
+		await page.mouse.down();
+		await waitUntil(() => fromClient(client, 'ptt_start').length === 2);
+		await page.mouse.up();
+		await page.evaluate(() => {
+			Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+			document.dispatchEvent(new Event('visibilitychange'));
+		});
+		await waitUntil(() => fromClient(client, 'ptt_stop').length === 2);
 		await context.close();
 	}, 20_000);
 

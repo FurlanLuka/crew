@@ -7,6 +7,7 @@ import {
 	isInputMode,
 	listenStartMessage,
 	readStoredListenMode,
+	shouldReleaseOnLeave,
 } from './listen-mode.js';
 
 const storageWith = (items: Record<string, string>) => ({
@@ -127,5 +128,16 @@ describe('createEchoGatedSend', () => {
 		})(chunk);
 
 		expect(asked).toEqual([400]);
+	});
+});
+
+describe('shouldReleaseOnLeave', () => {
+	it('push to talk and an idle dictation let go; listening modes and a dictation under way keep it', () => {
+		expect(shouldReleaseOnLeave('push', false)).toBe(true);
+		expect(shouldReleaseOnLeave('dictation', false)).toBe(true);
+		expect(shouldReleaseOnLeave('dictation', true)).toBe(false);
+		expect(shouldReleaseOnLeave('hands-free', false)).toBe(false);
+		expect(shouldReleaseOnLeave('on-demand', false)).toBe(false);
+		expect(shouldReleaseOnLeave('text', false)).toBe(false);
 	});
 });

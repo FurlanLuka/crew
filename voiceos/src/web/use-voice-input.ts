@@ -5,7 +5,12 @@ import type { ClientMessage, State } from '../shared/protocol.js';
 import { Mic, isMicAllowed } from './audio.js';
 import { clientLog } from './client-log.js';
 import { isInDialog } from './in-dialog.js';
-import { createEchoGatedSend, type InputMode, isListeningMode } from './listen-mode.js';
+import {
+	createEchoGatedSend,
+	type InputMode,
+	isListeningMode,
+	shouldReleaseOnLeave,
+} from './listen-mode.js';
 import { IS_PHONE } from './phone.js';
 import { PRE_ROLL_MS } from './ptt.js';
 import type { ListenCommand, MicStatus } from './types.js';
@@ -94,6 +99,8 @@ export const useVoiceInput = ({
 	const [dictationStartedAt, setDictationStartedAt] = useState<number | null>(null);
 	const [isDiscardArmed, setIsDiscardArmed] = useState(false);
 	const isDictating = dictationStartedAt !== null;
+	const isDictatingRef = useRef(isDictating);
+	isDictatingRef.current = isDictating;
 	const isOnDiscordRef = useRef(false);
 	isOnDiscordRef.current = Boolean(state.discord?.isOwnerIn);
 	// Voice off, or another screen holding the main role: nothing listens or plays here.
@@ -207,6 +214,14 @@ export const useVoiceInput = ({
 			const hasRecentSpeech = player.isAudibleWithin(PRE_ROLL_MS);
 			player.stop();
 			const sampleRate = await opening.catch(() => null);
+
+			// Let go before the mic opened, and the page left meanwhile, which closed the opening mic: a
+			// tap, not a refusal.
+			if (sampleRate === null && !isPressedRef.current) {
+				clientLog('info', 'mic', 'released before the mic opened');
+
+				return;
+			}
 
 			if (sampleRate === null) {
 				isPressedRef.current = false;
@@ -359,8 +374,25 @@ export const useVoiceInput = ({
 		};
 
 		const handleVisibilityChange = () => {
-			if (document.visibilityState === 'hidden') {
-				endPressOnLeave();
+			if (document.visibilityState !== 'hidden') {
+				return;
+			}
+
+			endPressOnLeave();
+
+			// A phone pauses a held mic when the app leaves the screen and turns it back on when it
+			// returns, with its mic sounds each time. Push to talk (and a dictation not under way) needs
+			// no mic until the next press, which opens it again inside the gesture. An utterance still
+			// streaming (a press, or its tail after the release) keeps it this once: closing would cut
+			// the tail and its ptt_stop.
+			if (
+				IS_PHONE &&
+				!micRef.current?.isTalking &&
+				shouldReleaseOnLeave(listenModeRef.current, isDictatingRef.current)
+			) {
+				clientLog('info', 'mic', 'released: page hidden');
+				micRef.current?.close();
+				onMicStatusChange('idle');
 			}
 		};
 
@@ -375,7 +407,7 @@ export const useVoiceInput = ({
 			window.removeEventListener('blur', endPressOnLeave);
 			document.removeEventListener('visibilitychange', handleVisibilityChange);
 		};
-	}, [handleTalkStart, handleTalkStop]);
+	}, [handleTalkStart, handleTalkStop, onMicStatusChange]);
 
 	return {
 		listenMode,

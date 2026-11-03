@@ -65,6 +65,11 @@ export class Mic {
 
 	constructor(private events: MicEvents) {}
 
+	// An utterance still streaming: held, or its tail after the release, until its ptt_stop.
+	get isTalking(): boolean {
+		return this.buffer?.isTalking ?? false;
+	}
+
 	ensure(mode: MicMode = 'raw'): Promise<number> {
 		if (this.opening && this.mode !== mode) {
 			this.close();

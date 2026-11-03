@@ -26,6 +26,12 @@ export const applyListenCommand = (current: InputMode, commanded: ListenMode): I
 // Only the listening modes keep a stream open; push and dictation open one per press.
 export const isListeningMode = (mode: InputMode): mode is ListeningMode =>
 	mode === 'on-demand' || mode === 'hands-free';
+
+// Whether a phone lets go of its mic when the app leaves the screen: a mode that opens it on a
+// press can; one that listens all along, or a dictation under way, keeps it. Text only holds none.
+export const shouldReleaseOnLeave = (mode: InputMode, isDictating: boolean): boolean =>
+	mode === 'push' || (mode === 'dictation' && !isDictating);
+
 // Before the modes there was only a hands-free switch, stored as '1'.
 const OLD_HANDS_FREE_STORAGE_KEY = 'voiceos.handsFree';
 
