@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Store } from '../state/store.js';
 import { configureLog } from '../log.js';
-import { loadVoiceOff, persistVoiceOff } from './voice-off.js';
+import { loadSpeechOff, loadVoiceOff, persistSpeechOff, persistVoiceOff } from './voice-off.js';
 
 configureLog({ quiet: true });
 
@@ -29,5 +29,22 @@ describe('voice off', () => {
 
 		store.dispatch({ type: 'set_voice_off', voiceOff: false });
 		expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ voiceOff: false });
+	});
+});
+
+describe('speech off', () => {
+	it('no file → spoken replies on; loaded at boot; a change is written to its own file', () => {
+		const file = scratch().replace('voice-off.json', 'speech-off.json');
+
+		expect(loadSpeechOff(file)).toBe(false);
+		writeFileSync(file, JSON.stringify({ speechOff: true }));
+		const store = new Store();
+
+		persistSpeechOff({ store, file });
+		expect(store.state.speechOff).toBe(true);
+		expect(store.state.voiceOff).toBe(false);
+
+		store.dispatch({ type: 'set_speech_off', speechOff: false });
+		expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ speechOff: false });
 	});
 });

@@ -23,6 +23,7 @@ export interface Paths {
 	groupsFile: string;
 	modesFile: string;
 	voiceOffFile: string;
+	speechOffFile: string;
 	onboardedFile: string;
 	// crew writes phones.json and tailscale.json; Voice OS writes phones-seen.json.
 	phonesFile: string;
@@ -60,6 +61,7 @@ export const resolvePaths = (env: Record<string, string | undefined> = process.e
 		groupsFile: join(voiceDir, 'groups.json'),
 		modesFile: join(voiceDir, 'modes.json'),
 		voiceOffFile: join(voiceDir, 'voice-off.json'),
+		speechOffFile: join(voiceDir, 'speech-off.json'),
 		onboardedFile: join(voiceDir, 'onboarded.json'),
 		phonesFile: join(voiceDir, 'phones.json'),
 		phonesSeenFile: join(voiceDir, 'phones-seen.json'),

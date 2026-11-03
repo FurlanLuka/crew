@@ -1584,6 +1584,12 @@ describe('filler and worded lines', () => {
 					harness.store.dispatch({ type: 'set_voice_off', voiceOff: true });
 				},
 			],
+			[
+				'speech off',
+				async (harness) => {
+					harness.store.dispatch({ type: 'set_speech_off', speechOff: true });
+				},
+			],
 		])('%s → no ack', async (_, setup) => {
 			jest.useFakeTimers();
 			const harness = createHarness();
@@ -1957,9 +1963,12 @@ describe('filler and worded lines', () => {
 		});
 	});
 
-	describe('voice off', () => {
-		const turnOff = (harness: ReturnType<typeof createHarness>) =>
-			harness.store.dispatch({ type: 'set_voice_off', voiceOff: true });
+	// Voice off and speech off silence a line the same way: every case runs under both switches.
+	describe.each([
+		['voice off', { type: 'set_voice_off', voiceOff: true } as const],
+		['speech off', { type: 'set_speech_off', speechOff: true } as const],
+	])('%s', (_name, silence) => {
+		const turnOff = (harness: ReturnType<typeof createHarness>) => harness.store.dispatch(silence);
 
 		it('lines go to the page unplayed, none waits for a gap or the screen, nothing is synthesized', async () => {
 			const harness = createHarness();

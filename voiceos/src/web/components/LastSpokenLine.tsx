@@ -1,3 +1,4 @@
+import { isSpeechSilenced } from '../../shared/voice.js';
 import type { SpokenLine, State } from '../../shared/protocol.js';
 import { WaveIcon } from './icons.js';
 
@@ -26,8 +27,8 @@ export const LastSpokenLine = ({ state }: LastSpokenLineProps) => {
 
 	return (
 		<div className="vo-spoken speech">
-			{/* With voice off nothing is played: no waveform, so the line never reads as heard. */}
-			{state.voiceOff ? null : <WaveIcon />}
+			{/* Silenced, nothing is played: no waveform, so the line never reads as heard. */}
+			{isSpeechSilenced(state) ? null : <WaveIcon />}
 			<span className="who">Voice OS</span>
 			<p className="said">{lastSpoken.text}</p>
 		</div>

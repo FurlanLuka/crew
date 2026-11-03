@@ -2250,6 +2250,28 @@ describe('set_onboarded', () => {
 	});
 });
 
+describe('set_speech_off', () => {
+	it('off → only the flag; a repeat changes nothing; back on → the waiting updates are dropped', () => {
+		const waiting = run([
+			{ type: 'worktrees', worktrees: [worktree('store-front/main')] },
+			{ type: 'active_loaded', refs: ['store-front/main'] },
+			{ type: 'meanwhile_added', ref: 'store-front/main', kind: 'done', about: 'tests pass' },
+		]).state;
+
+		const off = run([{ type: 'set_speech_off', speechOff: true }], waiting);
+		expect(off.state.speechOff).toBe(true);
+		expect(off.state.voiceOff).toBe(false);
+		expect(off.state.meanwhile).toHaveLength(1);
+		const again = run([{ type: 'set_speech_off', speechOff: true }], off.state);
+		expect(again.state.speechOff).toBe(true);
+		expect(again.effects).toEqual([]);
+
+		const on = run([{ type: 'set_speech_off', speechOff: false }], off.state);
+		expect(on.state.speechOff).toBe(false);
+		expect(on.state.meanwhile).toEqual([]);
+	});
+});
+
 describe('set_voice_off', () => {
 	it('off → only the flag; back on → the updates that waited are dropped, the page showed them', () => {
 		const waiting = run([

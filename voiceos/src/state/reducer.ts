@@ -237,6 +237,7 @@ export const createInitialState = (): State => ({
 	modes: {},
 	attachments: {},
 	voiceOff: false,
+	speechOff: false,
 	onboarded: false,
 	discord: null,
 	pendingActivations: [],
@@ -1164,6 +1165,18 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 				...state,
 				voiceOff: input.voiceOff,
 				...(input.voiceOff ? {} : { meanwhile: [] }),
+			});
+
+		case 'set_speech_off':
+			if (input.speechOff === state.speechOff) {
+				return withoutEffects(state);
+			}
+
+			// Back on, the updates that waited are not read out: the page showed them meanwhile.
+			return withoutEffects({
+				...state,
+				speechOff: input.speechOff,
+				...(input.speechOff ? {} : { meanwhile: [] }),
 			});
 
 		case 'set_onboarded':

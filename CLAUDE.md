@@ -416,7 +416,9 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   which go through the held-command confirm. **Voice off** (`State.voiceOff`, `set_voice_off`, the top bar's
   struck "voice", `voice-off.json`) is server-wide: no listener or TTS socket, Discord's bot out of
   its channel (`pause`/`resume`), lines to the page unplayed; distinct from the kernel's `mute`
-  (less chatter).
+  (less chatter). **Speech off** (`State.speechOff`, `set_speech_off`, Settings → Voice, `speech-off.json`)
+  is the listening half kept: every line goes to the page unplayed and unsynthesized (`isSilent` in
+  `voice-out.ts`, the same path voice off takes), the line being spoken is cut (`followSpeechOff`).
   **Plain sessions** (`internal/chat`, `cmd_chat.go`): `crew chat add [--dir] [--name]` / `chat rm` /
   `ls chats` keep `~/.crew/chats.json` per machine (the folder must exist; `chat` is a reserved
   workspace name). Voice OS lists each as `chat/<id>` beside the worktrees (`CrewAdapter.listWorktrees`

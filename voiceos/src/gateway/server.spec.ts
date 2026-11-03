@@ -370,6 +370,7 @@ describe('parseClientMessage', () => {
 		play_meanwhile: { type: 'play_meanwhile' },
 		recap_heard: { type: 'recap_heard', refs: ['store/main'] },
 		set_voice_off: { type: 'set_voice_off', voiceOff: true },
+		set_speech_off: { type: 'set_speech_off', speechOff: true },
 		set_onboarded: { type: 'set_onboarded', onboarded: true },
 		move_active: { type: 'move_active', ref: 'store/main', before: null },
 		offer_switch: { type: 'offer_switch', ref: 'store/main' },

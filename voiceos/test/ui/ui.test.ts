@@ -924,6 +924,34 @@ describe('voice os ui', () => {
 		await context.close();
 	}, 20_000);
 
+	it('spoken replies off in Settings: the server stops speaking, listening carries on; back on', async () => {
+		const { context, page, client } = await openMicTab();
+		const other = await signIn();
+		await takeMainScreen(page);
+		await chooseMode(page, 'Hands-free');
+		await waitUntil(() => listFromClient(client, 'listen_start').length === 1);
+		store.dispatch({ type: 'switch_view', view: { kind: 'settings' } });
+		const row = page.locator('[data-setting="speech"]');
+		await row.waitFor({ timeout: 5000 });
+
+		try {
+			await row.getByRole('button', { name: 'Turn off' }).click();
+			await waitUntil(() => store.state.speechOff);
+			await row.getByText('Spoken replies are off').waitFor({ timeout: 5000 });
+			// Only the replies: voice stays on and the tab keeps listening.
+			expect(store.state.voiceOff).toBe(false);
+			expect(listFromClient(client, 'listen_stop')).toHaveLength(0);
+
+			await row.getByRole('button', { name: 'Turn on' }).click();
+			await waitUntil(() => !store.state.speechOff);
+		} finally {
+			store.dispatch({ type: 'set_speech_off', speechOff: false });
+			await chooseMode(page, 'Push to talk');
+			await context.close();
+			await other.context.close();
+		}
+	}, 20_000);
+
 	it('voice off from the top bar → listening stops, "Voice" struck in the moment, no press, typing still sends; back on → listening again, the moment whole', async () => {
 		const { context, page, client } = await openMicTab();
 		const other = await signIn();

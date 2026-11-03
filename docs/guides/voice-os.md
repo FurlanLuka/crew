@@ -350,6 +350,14 @@ server and lasts across restarts.
 
 ![The top bar with voice off: voice is struck through and ringed, next to the settings gear](../images/voice-os/voice-off.png)
 
+### Only the replies off
+
+Sometimes I want to talk to Voice OS but read its answers instead of hearing them. **Settings →
+Voice → Spoken replies → Turn off** does that. Voice OS keeps listening in every mode, on the page and
+in Discord, and everything it would have said shows on the page instead. Nothing is sent to be spoken,
+so there's no wait for a line nobody hears. Turn it back on in the same place; like voice off, it's
+for the whole server and lasts across restarts.
+
 ## Talking to sessions
 
 Speak the way you would to a colleague. Filler, restarts and half-sentences are fine, and there
