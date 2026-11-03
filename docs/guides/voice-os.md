@@ -898,7 +898,10 @@ back gesture.
 ![store/main on a phone: the request to add a search box to the catalog, the reads and edits, a diff of CatalogPage.tsx, 14 tests passing and the answer still streaming, with Hold the mic to talk at the bottom](../images/voice-os/phone-session.png)
 
 A question, a plan or a permission sits at the end of the stream, right above the bar, so you
-answer it with your thumb.
+answer it with your thumb. Messages waiting behind the current turn show as **2 queued** just above
+the bar; tap it to see them, with **Send now** and **Cancel** for each.
+
+![The queued sheet on a phone: Queued, sent in order once this turn ends, with "then run the e2e tests for the catalog" and "and open a PR when they pass", each with Send now and Cancel](../images/voice-os/phone-queue.png)
 
 ![store/wrk1 on a phone waiting on a question at the end of its stream: where should the worker pick up the order emails from, with A Redis queue, A jobs table in Postgres, Send them inline for now and Something else](../images/voice-os/phone-question.png)
 

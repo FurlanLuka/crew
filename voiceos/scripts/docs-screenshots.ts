@@ -1258,6 +1258,29 @@ const SHOTS: Shot[] = [
 	{ name: 'phone-home', view: { kind: 'active' }, viewport: PHONE, world: { isWrk1Asking: true } },
 	{ name: 'phone-session', view: MAIN_VIEW, viewport: PHONE, stage: withMainLine },
 	{
+		name: 'phone-queue',
+		view: MAIN_VIEW,
+		viewport: PHONE,
+		stage: (world: State) =>
+			play(
+				[
+					{
+						input: { type: 'send', ref: MAIN, text: 'then run the e2e tests for the catalog' },
+						secondsAgo: 30,
+					},
+					{
+						input: { type: 'send', ref: MAIN, text: 'and open a PR when they pass' },
+						secondsAgo: 20,
+					},
+				],
+				withMainLine(world),
+			),
+		prepare: async (page) => {
+			await page.locator('.ph-queue').click();
+			await page.getByRole('region', { name: 'Queued messages' }).waitFor();
+		},
+	},
+	{
 		name: 'phone-question',
 		view: { kind: 'session', ref: WRK1 },
 		viewport: PHONE,

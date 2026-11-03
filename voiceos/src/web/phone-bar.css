@@ -7,6 +7,10 @@
 	background: transparent;
 	box-shadow: none;
 }
+/* On the keyboard: no room for the home indicator it covers. */
+html[data-keyboard] .vo.phone .phone-bar {
+	padding-bottom: 8px;
+}
 .vo.phone .phone-bar .vo-offer {
 	margin: 0 -18px 8px;
 	padding: 10px 18px;

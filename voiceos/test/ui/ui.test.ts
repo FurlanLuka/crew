@@ -5017,6 +5017,142 @@ describe('phone', () => {
 		await context.close();
 	}, 20_000);
 
+	it('queued messages on a phone: "N queued" above the bar; its sheet sends one now or cancels it', async () => {
+		await ensureIdle(REF);
+		for (const text of ['run the tests', 'then deploy to staging', 'and post the link']) {
+			store.dispatch({ type: 'send', ref: REF, text });
+		}
+		// The first may have started a turn of its own: the rest wait.
+		const queue = () => store.state.sessions[REF]?.queue ?? [];
+		await waitUntil(() => queue().length >= 2);
+		const { context, page, client } = await openPhone(onSession);
+		const sentOf = (type: string) =>
+			fromClient(client, 'action')
+				.map((entry) => (entry.message as { action: { type: string; queuedId?: string } }).action)
+				.filter((action) => action.type === type);
+
+		const row = page.locator('.ph-queue');
+		await row.waitFor({ timeout: 5000 });
+		expect(await row.getAttribute('aria-label')).toBe(
+			`${queue().length} queued, sent after this turn`,
+		);
+		await row.click();
+		const sheet = page.getByRole('region', { name: 'Queued messages' });
+		await sheet.waitFor({ timeout: 5000 });
+		expect(await isNotWider(page)).toBe(true);
+
+		const deploy = queue().find((item) => item.text === 'then deploy to staging');
+		await sheet
+			.locator('li', { hasText: 'then deploy to staging' })
+			.getByRole('button', { name: 'Cancel' })
+			.click();
+		await waitUntil(() => sentOf('cancel_queued').length === 1);
+		expect(sentOf('cancel_queued')[0]?.queuedId).toBe(deploy?.id);
+		await page
+			.locator(`.ph-queue[aria-label="${queue().length} queued, sent after this turn"]`)
+			.waitFor({ timeout: 5000 });
+
+		const post = queue().find((item) => item.text === 'and post the link');
+		await sheet
+			.locator('li', { hasText: 'and post the link' })
+			.getByRole('button', { name: 'Send now' })
+			.click();
+		await waitUntil(() => sentOf('promote_queued').length === 1);
+		expect(sentOf('promote_queued')[0]?.queuedId).toBe(post?.id);
+
+		// The last one gone: the row and the sheet go too, and the next queue starts folded.
+		for (const item of queue()) {
+			store.dispatch({ type: 'cancel_queued', ref: REF, queuedId: item.id });
+		}
+		await page.locator('.ph-queue').waitFor({ state: 'detached', timeout: 5000 });
+		expect(await sheet.count()).toBe(0);
+		if (store.state.sessions[REF]?.status !== 'running') {
+			store.dispatch({ type: 'turn_started', ref: REF });
+		}
+		store.dispatch({ type: 'send', ref: REF, text: 'one more' });
+		await row.waitFor({ timeout: 5000 });
+		expect(await row.getAttribute('aria-expanded')).toBe('false');
+		await context.close();
+
+		// Nothing left to send behind the tests after this one.
+		for (const item of queue()) {
+			store.dispatch({ type: 'cancel_queued', ref: REF, queuedId: item.id });
+		}
+		await ensureIdle(REF);
+	}, 20_000);
+
+	it('a queue on a session with no turn running says only how many: nothing is "after this turn"', async () => {
+		await ensureIdle(REF);
+		store.dispatch({ type: 'deactivate', ref: REF });
+		const { context, page } = await openPhone({ kind: 'session', ref: REF });
+
+		try {
+			// Words to an inactive session wait in its queue; nothing starts it.
+			store.dispatch({ type: 'send', ref: REF, text: 'check the logs when you are back' });
+			const row = page.locator('.ph-queue');
+			await row.waitFor({ timeout: 5000 });
+			expect(await row.getAttribute('aria-label')).toBe('1 queued');
+			expect(await row.innerText()).not.toContain('after this turn');
+		} finally {
+			for (const item of store.state.sessions[REF]?.queue ?? []) {
+				store.dispatch({ type: 'cancel_queued', ref: REF, queuedId: item.id });
+			}
+			store.dispatch({ type: 'activate', ref: REF });
+			await context.close();
+		}
+	}, 20_000);
+
+	it('with the keyboard up the page sits on what is visible: it starts where the visual viewport does', async () => {
+		const { context, page } = await openPhone(onSession);
+		await page.locator('.phone-bar').waitFor({ timeout: 5000 });
+
+		// What usePhoneViewport sets when iOS pans the visual viewport down to show a field.
+		const box = await page.evaluate(() => {
+			document.documentElement.style.setProperty('--vvt', '120px');
+			document.documentElement.style.setProperty('--vvh', '400px');
+			const box = (document.querySelector('.vo.phone') as HTMLElement).getBoundingClientRect();
+
+			return { top: Math.round(box.top), height: Math.round(box.height) };
+		});
+		expect(box).toEqual({ top: 120, height: 400 });
+
+		// With the keyboard up the bar drops the room it keeps for the home indicator.
+		const padding = () =>
+			page.locator('.phone-bar').evaluate((node) => getComputedStyle(node).paddingBottom);
+		expect(await padding()).toBe('12px');
+		await page.evaluate(() => document.documentElement.toggleAttribute('data-keyboard', true));
+		expect(await padding()).toBe('8px');
+		await context.close();
+	}, 20_000);
+
+	it('the page follows the visible part only while it is much smaller (a keyboard), and gives it back after', async () => {
+		const { context, page } = await openPhone(onSession);
+		await page.locator('.phone-bar').waitFor({ timeout: 5000 });
+		const readFit = () =>
+			page.evaluate(() => ({
+				isKeyboard: document.documentElement.hasAttribute('data-keyboard'),
+				height: document.documentElement.style.getPropertyValue('--vvh'),
+			}));
+
+		// At rest the page is the full screen: nothing set.
+		expect(await readFit()).toEqual({ isKeyboard: false, height: '' });
+
+		// Zoomed in, the visual viewport is half the page, as a keyboard makes it.
+		const cdp = await context.newCDPSession(page);
+		await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });
+		await page.waitForFunction(() => document.documentElement.hasAttribute('data-keyboard'));
+		const zoomed = await page.evaluate(() => ({
+			height: document.documentElement.style.getPropertyValue('--vvh'),
+			visible: `${Math.round(window.visualViewport?.height ?? 0)}px`,
+		}));
+		expect(zoomed.height).toBe(zoomed.visible);
+
+		await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 });
+		await page.waitForFunction(() => !document.documentElement.hasAttribute('data-keyboard'));
+		expect(await readFit()).toEqual({ isKeyboard: false, height: '' });
+		await context.close();
+	}, 20_000);
+
 	it('holding the mic sends ptt_start, letting go ptt_stop; the bar lights up while held', async () => {
 		await ensureIdle(REF);
 		const { context, page, client } = await openPhone(onSession);

@@ -330,9 +330,10 @@ checkout-api / signals / admin / infra-ops set — never a real product.
   popped by the browser's back through one history entry (`use-phone-history.ts`), moved at once
   before the server answers (`use-phone-pending.ts`: each unanswered `switch_view` queued in order,
   any other server view wins, 3 s timeout), sized to the
-  visual viewport (`use-phone-viewport.ts`); a phone's audio session is `play-and-record`
+  visual viewport (`use-phone-viewport.ts`: height and offset, `data-keyboard` when it is up); a phone's audio session is `play-and-record`
   (`audio-session.ts`) and the speech player wakes or remakes its context, logging under `speech`,
-  `PhoneSession` (`AskDock`/`DenialSheet` as the stream's last children), `PhoneMore` (⋯, built on
+  `PhoneSession` (`AskDock`/`DenialSheet` as the stream's last children, `PhoneQueue`'s "N queued"
+  row and sheet under it), `PhoneMore` (⋯, built on
   `SessionPanels`, shared with `Cockpit`), `PhoneBar` (mode sheet left; words or a box in the
   middle; hold mic for push, send for dictation and text, nothing for the always-listening modes),
   `InstallGuide` (a `/phone/` link not standalone: iOS steps or Android's install prompt). The

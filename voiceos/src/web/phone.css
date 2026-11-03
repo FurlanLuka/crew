@@ -26,7 +26,7 @@ html:has(.vo.phone) body {
 	overscroll-behavior: none;
 }
 .vo.phone {
-	inset: 0 0 auto;
+	inset: var(--vvt, 0px) 0 auto;
 	height: var(--vvh, 100dvh);
 	grid-template-rows: minmax(0, 1fr) auto;
 	overflow: hidden;

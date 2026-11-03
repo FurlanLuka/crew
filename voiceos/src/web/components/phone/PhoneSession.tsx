@@ -12,6 +12,7 @@ import { useSessionDialogs } from '../SessionPanels.js';
 import { SessionStateRow } from '../SessionStateRow.js';
 import { SessionStream } from '../SessionStream.js';
 import { PhoneMore } from './PhoneMore.js';
+import { PhoneQueue } from './PhoneQueue.js';
 
 interface PhoneSessionProps {
 	session: Session;
@@ -51,6 +52,8 @@ export const PhoneSession = ({
 				)}
 				{ask && <AskDock ask={ask} label={readLabel(state, ask.ref)} dispatch={dispatch} />}
 			</SessionStream>
+			{/* Mounted only while something is queued, so the next queue always starts folded. */}
+			{session.queue.length > 0 && <PhoneQueue session={session} dispatch={dispatch} />}
 			{isMoreOpen && (
 				<PhoneMore
 					session={session}
