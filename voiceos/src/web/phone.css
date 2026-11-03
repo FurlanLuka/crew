@@ -18,20 +18,26 @@ html:has(.vo.phone) body {
 	background: #0b0d10;
 }
 /* Only each screen's own list scrolls: never the page, never past its ends into the browser's
-   rubber band, and never sideways. The height follows the visual viewport (usePhoneViewport), so an
-   open keyboard shrinks the app instead of pushing it up. */
+   rubber band, and never sideways. With the keyboard up the page follows the visual viewport
+   (usePhoneViewport, below), so an open keyboard shrinks the app instead of pushing it up. */
 html:has(.vo.phone),
 html:has(.vo.phone) body {
 	overflow: hidden;
 	overscroll-behavior: none;
 }
 .vo.phone {
-	inset: var(--vvt, 0px) 0 auto;
-	height: var(--vvh, 100dvh);
+	/* Pinned to the screen's four edges, not a computed height: an installed app's 100dvh could come
+	   out short at launch and after a screen change, leaving the bar well above the bottom. */
+	inset: 0;
 	grid-template-rows: minmax(0, 1fr) auto;
 	overflow: hidden;
 	-webkit-tap-highlight-color: transparent;
 	-webkit-text-size-adjust: 100%;
+}
+/* With the keyboard up, what is visible: where it starts and how tall it is (usePhoneViewport). */
+html[data-keyboard] .vo.phone {
+	inset: var(--vvt, 0px) 0 auto;
+	height: var(--vvh, 100%);
 }
 .vo.phone .vo-main,
 .vo.phone .mpanel .scroll,

@@ -84,7 +84,8 @@ export const PhoneVoiceOS = ({
 
 	// ⋯ counts as a level: the phone's back closes it like any screen.
 	const level = readDepth(view) + (isMoreOpen ? 1 : 0);
-	usePhoneViewport();
+	const viewKey = readViewKey(view);
+	usePhoneViewport(viewKey);
 	usePhoneHistory(level, goBack);
 	// Only the installed iPhone app: Android's system back and a browser's own edge swipe already pop
 	// the history entry, and a second back of ours would skip a level.
@@ -134,7 +135,7 @@ export const PhoneVoiceOS = ({
 					</main>
 				</div>
 			)}
-			<div key={readViewKey(view)} className={`ph-screen ${transition ?? ''}`}>
+			<div key={viewKey} className={`ph-screen ${transition ?? ''}`}>
 				<PhoneTopBar
 					state={state}
 					dispatch={dispatch}
