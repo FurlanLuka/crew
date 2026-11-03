@@ -127,8 +127,10 @@ export const PhoneBar = ({ state, voice, isAwake, keptDictation, send }: PhoneBa
 	const isHolding = listenMode === 'push' && micStatus === 'live';
 	const isTooLong = draft.trim().length > MAX_TEXT_CHARS;
 	const inactiveRef = isShowingWords || isDictating ? null : readInactiveScreen(state);
-	// Words in the box are never hidden by a mode: a kept dictation shows, whatever the mode.
-	const isTyping = mode === 'text' || draft.length > 0;
+	// Words in the box are never hidden by a mode: a kept dictation shows, whatever the mode. Typing
+	// is for a session: off one (Home, Settings), a box would only bring up the keyboard for nothing.
+	const isTyping = (mode === 'text' && sessionRef !== null) || draft.length > 0;
+	const isTypingElsewhere = mode === 'text' && sessionRef === null && draft.length === 0;
 
 	useEffect(() => {
 		if (keptDictation) {
@@ -208,10 +210,16 @@ export const PhoneBar = ({ state, voice, isAwake, keptDictation, send }: PhoneBa
 			placeholder={
 				state.voiceOff
 					? 'Voice is off · type a message'
-					: `Message ${sessionRef ? readSessionLabel(state, sessionRef) : 'Voice OS'}`
+					: sessionRef
+						? `Message ${readSessionLabel(state, sessionRef)}`
+						: undefined
 			}
 			aria-label="Type a message"
 		/>
+	) : isTypingElsewhere ? (
+		<span className="words hint">
+			{state.voiceOff ? 'Voice is off · open a session to type' : 'Open a session to type'}
+		</span>
 	) : (
 		<span className="words hint">
 			{describePhoneHint({ mode, micStatus, isAwake, isDictating })}
@@ -219,7 +227,15 @@ export const PhoneBar = ({ state, voice, isAwake, keptDictation, send }: PhoneBa
 	);
 
 	const right =
-		isTyping && !isShowingWords ? (
+		isTypingElsewhere && state.voiceOff ? (
+			<button
+				type="button"
+				className="btn sm"
+				onClick={() => send({ type: 'action', action: { type: 'set_voice_off', voiceOff: false } })}
+			>
+				Turn voice on
+			</button>
+		) : isTypingElsewhere ? null : isTyping && !isShowingWords ? (
 			<button type="submit" className="send-btn" aria-label="Send" disabled={!draft.trim()}>
 				<SendIcon />
 			</button>

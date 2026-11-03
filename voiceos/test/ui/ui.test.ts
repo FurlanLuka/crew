@@ -5133,12 +5133,47 @@ describe('phone', () => {
 		}
 	}, 20_000);
 
+	it('the bar sits at the very bottom at rest, on every screen and after each change', async () => {
+		await ensureIdle(REF);
+		const { context, page } = await openPhone();
+		const barBottom = () =>
+			page
+				.locator('.phone-bar')
+				.evaluate((node) => Math.round(node.getBoundingClientRect().bottom));
+
+		await page.locator(`.ph-row[data-ref="${REF}"]`).waitFor({ timeout: 5000 });
+		expect(await barBottom()).toBe(844);
+		await page.locator(`.ph-row[data-ref="${REF}"]`).click();
+		await page.getByRole('button', { name: 'More' }).waitFor({ timeout: 5000 });
+		await Bun.sleep(400);
+		expect(await barBottom()).toBe(844);
+		await page.getByRole('button', { name: 'Back', exact: true }).click();
+		await page.locator('.ph-list').first().waitFor({ timeout: 5000 });
+		await Bun.sleep(400);
+		expect(await barBottom()).toBe(844);
+
+		// Sizes left over from a keyboard (or an iOS height that came out short) never move the page
+		// at rest: only the keyboard rule reads them.
+		const box = await page.evaluate(() => {
+			document.documentElement.toggleAttribute('data-keyboard', false);
+			document.documentElement.style.setProperty('--vvh', '700px');
+			document.documentElement.style.setProperty('--vvt', '40px');
+			const rect = (document.querySelector('.vo.phone') as HTMLElement).getBoundingClientRect();
+
+			return { top: Math.round(rect.top), bottom: Math.round(rect.bottom) };
+		});
+		expect(box).toEqual({ top: 0, bottom: 844 });
+		expect(await barBottom()).toBe(844);
+		await context.close();
+	}, 20_000);
+
 	it('with the keyboard up the page sits on what is visible: it starts where the visual viewport does', async () => {
 		const { context, page } = await openPhone(onSession);
 		await page.locator('.phone-bar').waitFor({ timeout: 5000 });
 
 		// What usePhoneViewport sets when iOS pans the visual viewport down to show a field.
 		const box = await page.evaluate(() => {
+			document.documentElement.toggleAttribute('data-keyboard', true);
 			document.documentElement.style.setProperty('--vvt', '120px');
 			document.documentElement.style.setProperty('--vvh', '400px');
 			const box = (document.querySelector('.vo.phone') as HTMLElement).getBoundingClientRect();
@@ -5150,6 +5185,7 @@ describe('phone', () => {
 		// With the keyboard up the bar drops the room it keeps for the home indicator.
 		const padding = () =>
 			page.locator('.phone-bar').evaluate((node) => getComputedStyle(node).paddingBottom);
+		await page.evaluate(() => document.documentElement.toggleAttribute('data-keyboard', false));
 		expect(await padding()).toBe('12px');
 		await page.evaluate(() => document.documentElement.toggleAttribute('data-keyboard', true));
 		expect(await padding()).toBe('8px');

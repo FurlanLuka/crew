@@ -105,10 +105,30 @@ describe('PhoneBar', () => {
 		expect(html).not.toContain('Hold to talk');
 	});
 
-	it('voice off: a message box whatever the mode', () => {
+	it('voice off in a session: a message box whatever the mode', () => {
 		const html = render(voiceIn('push'), { ...onSession(), voiceOff: true });
 
 		expect(html).toContain('placeholder="Voice is off · type a message"');
+	});
+
+	it('voice off on Home: no box (no keyboard for nothing), the way to turn voice back on', () => {
+		const html = render(voiceIn('push'), {
+			...onSession(),
+			voiceOff: true,
+			view: { kind: 'active' },
+		});
+
+		expect(html).not.toContain('<textarea');
+		expect(html).toContain('Voice is off · open a session to type');
+		expect(html).toContain('Turn voice on');
+	});
+
+	it('text only on Home: no box either, just where typing happens', () => {
+		const html = render(voiceIn('text'), { ...onSession(), view: { kind: 'settings' } });
+
+		expect(html).not.toContain('<textarea');
+		expect(html).toContain('Open a session to type');
+		expect(html).not.toContain('Turn voice on');
 	});
 
 	it('no attachments, no route chip, no spoken line', () => {
