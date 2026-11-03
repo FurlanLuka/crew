@@ -32,3 +32,26 @@ export const followVoiceOff = ({ store, onOff, onOn }: FollowVoiceOffParams): ((
 		queueMicrotask(isOff ? onOff : onOn);
 	});
 };
+
+interface FollowSpeechOffParams {
+	store: Store;
+	onOff: () => void;
+}
+
+// Speech off: the line being spoken is cut; listening goes on untouched.
+export const followSpeechOff = ({ store, onOff }: FollowSpeechOffParams): (() => void) => {
+	let isOff = store.state.speechOff;
+
+	return store.subscribe((_stamped, state) => {
+		if (state.speechOff === isOff) {
+			return;
+		}
+
+		isOff = state.speechOff;
+		log.info(isOff ? 'speech off' : 'speech on');
+
+		if (isOff) {
+			queueMicrotask(onOff);
+		}
+	});
+};

@@ -404,7 +404,9 @@ export const Settings = ({
 				</div>
 				<div className="vs-sec" id="vs-voice">
 					<h2>Voice</h2>
-					<p className="vs-lead">Turn every voice thing off at once. Typing keeps working.</p>
+					<p className="vs-lead">
+						Turn every voice thing off at once, or only its spoken replies. Typing keeps working.
+					</p>
 					<div className="box">
 						<div className="box-row">
 							<span className={`dot ${state.voiceOff ? '' : 'ok'}`} />
@@ -424,6 +426,26 @@ export const Settings = ({
 								onClick={() => dispatch({ type: 'set_voice_off', voiceOff: !state.voiceOff })}
 							>
 								{state.voiceOff ? 'Turn voice on' : 'Mute voice'}
+							</button>
+						</div>
+						<div className="box-row" data-setting="speech">
+							<span className={`dot ${state.speechOff || state.voiceOff ? '' : 'ok'}`} />
+							<span className="sub">
+								<b>{state.speechOff ? 'Spoken replies are off' : 'Spoken replies are on'}</b>
+								<span className="m">
+									{state.voiceOff
+										? 'Voice is off, so nothing is spoken.'
+										: state.speechOff
+											? 'Voice OS still listens; its answers show on screen, never aloud.'
+											: 'Voice OS reads its answers aloud.'}
+								</span>
+							</span>
+							<button
+								type="button"
+								className="btn"
+								onClick={() => dispatch({ type: 'set_speech_off', speechOff: !state.speechOff })}
+							>
+								{state.speechOff ? 'Turn on' : 'Turn off'}
 							</button>
 						</div>
 					</div>

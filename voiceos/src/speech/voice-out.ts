@@ -1,4 +1,5 @@
 import { createLogger } from '../log.js';
+import { isSpeechSilenced } from '../shared/voice.js';
 import { listHeardAsks } from '../shared/active.js';
 import { isSetupRef } from '../shared/machine-ref.js';
 import {
@@ -432,7 +433,7 @@ export class VoiceOut {
 		const now = this.now();
 		const elapsedMs = now - turn.startedAt;
 		const decision = decideInstantAck({
-			isMuted: this.queue.isMuted || this.options.store.state.voiceOff,
+			isMuted: this.queue.isMuted || isSpeechSilenced(this.options.store.state),
 			words: countSpokenWords(text),
 			minWords: MIN_REQUEST_WORDS,
 			msSinceSpoke: this.lastSpokeAt === null ? null : now - this.lastSpokeAt,
@@ -557,8 +558,8 @@ export class VoiceOut {
 	}
 
 	remind(state: State): void {
-		// The page shows what waits; with voice off a reminder would only be a line nobody hears.
-		if (state.voiceOff) {
+		// The page shows what waits; silenced, a reminder would only be a line nobody hears.
+		if (isSpeechSilenced(state)) {
 			return;
 		}
 
@@ -862,19 +863,19 @@ export class VoiceOut {
 			return;
 		}
 
-		// Voice off: a line goes straight to the page, unplayed, without the waits that pace a voice;
+		// Silenced: a line goes straight to the page, unplayed, without the waits that pace a voice;
 		// filler is not worth a line there.
-		const isVoiceOff = this.options.store.state.voiceOff;
+		const isSilenced = isSpeechSilenced(this.options.store.state);
 
-		if (isVoiceOff && item.isFiller) {
-			log.info('filler dropped: voice off', { id: item.id });
+		if (isSilenced && item.isFiller) {
+			log.info('filler dropped: silenced', { id: item.id });
 			void this.pump();
 
 			return;
 		}
 
 		// Keeps its place while it is worded, a moment at most; then it plays as it is.
-		if (!isVoiceOff && item.wordingUntil !== undefined && item.wordingUntil > this.now()) {
+		if (!isSilenced && item.wordingUntil !== undefined && item.wordingUntil > this.now()) {
 			this.holdHead(item, item.wordingUntil - this.now());
 
 			return;
@@ -882,7 +883,7 @@ export class VoiceOut {
 
 		// Another session's ask waits for a breath after the last line, not the whole quiet.
 		const gapLeft =
-			item.waitsForGap && !isVoiceOff
+			item.waitsForGap && !isSilenced
 				? Math.min(
 						GAP_BEFORE_ASK_MS - (this.now() - this.quietSince),
 						MAX_GAP_WAIT_MS - (this.now() - item.at),
@@ -895,7 +896,7 @@ export class VoiceOut {
 			return;
 		}
 
-		if (!isVoiceOff && this.holdIfOffScreen(item)) {
+		if (!isSilenced && this.holdIfOffScreen(item)) {
 			void this.pump();
 
 			return;
@@ -940,9 +941,9 @@ export class VoiceOut {
 
 		const synthesize = this.options.synthesize;
 
-		if (!synthesize || !tab || isVoiceOff) {
+		if (!synthesize || !tab || isSilenced) {
 			// No main screen to speak in: the line is shown, not heard.
-			if (synthesize && !tab && !isVoiceOff) {
+			if (synthesize && !tab && !isSilenced) {
 				log.info('line unheard: no speaking tab', { id: item.id });
 			}
 

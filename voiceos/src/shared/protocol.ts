@@ -650,6 +650,9 @@ export interface State {
 	// Voice off (the top bar's "voice"): nothing listens or speaks, Discord's bot leaves its channel;
 	// typing and the page go on. Kept across restarts.
 	voiceOff: boolean;
+	// Speech off: Voice OS listens as always and shows its lines, but never speaks them (no synthesis,
+	// on the page or in Discord). Kept across restarts.
+	speechOff: boolean;
 	// This Mac went through Set up's first run, or skipped it: it never opens again, even with no
 	// worktree. Kept across restarts.
 	onboarded: boolean;
@@ -780,6 +783,7 @@ export type Action =
 	| { type: 'rename_session'; ref: string; name: string }
 	// The top bar's "voice" (and loaded at boot).
 	| { type: 'set_voice_off'; voiceOff: boolean }
+	| { type: 'set_speech_off'; speechOff: boolean }
 	// The first run finished or skipped, or crew already had worktrees (and loaded at boot).
 	| { type: 'set_onboarded'; onboarded: boolean }
 	// "What did I miss?", or the quiet came: the waiting updates are said as one line.
