@@ -7,10 +7,12 @@ import { decideSwipeEnd, decideSwipeStart, EDGE_PX } from './phone-nav.js';
 
 const SCREEN = ':scope > .ph-screen';
 const UNDER = ':scope > .ph-under';
-// Where the uncovered screen starts, as iOS sets it back: a little to the left and dimmed. The same
-// as .ph-under's resting transform and filter in phone.css; change both together.
+const UNDER_DIM = ':scope > .ph-under > .ph-under-dim';
+// Where the uncovered screen starts, as iOS sets it back: a little to the left, under a dark layer.
+// The same as .ph-under's resting transform and .ph-under-dim's opacity in phone.css; change both
+// together.
 const UNDER_SHIFT_PERCENT = -24;
-const UNDER_DIM = 0.6;
+const UNDER_DIM_OPACITY = 0.4;
 const SETTLE_MS = 200;
 // A back the server applies: the screen waits off to the side for the new view, and only comes back
 // if none arrived (the connection dropped), never in the round trip's meantime.
@@ -23,8 +25,6 @@ interface SwipeBackParams {
 	rootRef: RefObject<HTMLElement | null>;
 	isEnabled: boolean;
 	onBack: () => BackResult;
-	// The screen being uncovered is drawn only while a swipe shows it.
-	onPeek: (isPeeking: boolean) => void;
 }
 
 interface Track {
@@ -34,6 +34,8 @@ interface Track {
 	lastX: number;
 	lastAt: number;
 	velocity: number;
+	// How far the screen is to follow the finger, written on the next frame.
+	dx: number;
 	phase: 'wait' | 'track';
 }
 
@@ -45,27 +47,28 @@ const place = (screen: HTMLElement, x: number, isAnimated: boolean) => {
 };
 
 // The screen underneath follows the finger: from set back and dimmed to in place as progress goes
-// 0 → 1. It renders a frame after the swipe starts, so each move looks it up.
+// 0 → 1. Only a transform and an opacity change: neither repaints the screen it moves.
 const placeUnder = (root: HTMLElement, progress: number, isAnimated: boolean) => {
 	const under = root.querySelector<HTMLElement>(UNDER);
+	const dim = root.querySelector<HTMLElement>(UNDER_DIM);
+	const transition = (property: string) =>
+		isAnimated ? `${property} ${SETTLE_MS}ms cubic-bezier(.2,.8,.2,1)` : 'none';
 
-	if (!under) {
-		return;
+	if (under) {
+		under.style.transition = transition('transform');
+		under.style.transform = `translateX(${UNDER_SHIFT_PERCENT * (1 - progress)}%)`;
 	}
 
-	under.style.transition = isAnimated
-		? `transform ${SETTLE_MS}ms cubic-bezier(.2,.8,.2,1), filter ${SETTLE_MS}ms`
-		: 'none';
-	under.style.transform = `translateX(${UNDER_SHIFT_PERCENT * (1 - progress)}%)`;
-	under.style.filter = `brightness(${UNDER_DIM + (1 - UNDER_DIM) * progress})`;
+	if (dim) {
+		dim.style.transition = transition('opacity');
+		dim.style.opacity = `${UNDER_DIM_OPACITY * (1 - progress)}`;
+	}
 };
 
-export const useSwipeBack = ({ rootRef, isEnabled, onBack, onPeek }: SwipeBackParams): void => {
+export const useSwipeBack = ({ rootRef, isEnabled, onBack }: SwipeBackParams): void => {
 	// The state changes many times a second; a swipe in progress must outlive those renders.
 	const onBackRef = useRef(onBack);
 	onBackRef.current = onBack;
-	const onPeekRef = useRef(onPeek);
-	onPeekRef.current = onPeek;
 
 	useEffect(() => {
 		const root = rootRef.current;
@@ -75,6 +78,7 @@ export const useSwipeBack = ({ rootRef, isEnabled, onBack, onPeek }: SwipeBackPa
 		}
 
 		let track: Track | null = null;
+		let frame: number | null = null;
 
 		const handleStart = (event: TouchEvent) => {
 			const touch = event.touches[0];
@@ -97,6 +101,7 @@ export const useSwipeBack = ({ rootRef, isEnabled, onBack, onPeek }: SwipeBackPa
 							lastX: touch.clientX,
 							lastAt: event.timeStamp,
 							velocity: 0,
+							dx: 0,
 							phase: 'wait',
 						}
 					: null;
@@ -127,7 +132,6 @@ export const useSwipeBack = ({ rootRef, isEnabled, onBack, onPeek }: SwipeBackPa
 
 				track.phase = 'track';
 				root.classList.add('swiping');
-				onPeekRef.current(true);
 			}
 
 			// The finger owns the screen now: no scroll underneath, no rubber band.
@@ -136,8 +140,19 @@ export const useSwipeBack = ({ rootRef, isEnabled, onBack, onPeek }: SwipeBackPa
 			track.velocity = (touch.clientX - track.lastX) / elapsed;
 			track.lastX = touch.clientX;
 			track.lastAt = event.timeStamp;
-			place(track.screen, Math.max(0, dx), false);
-			placeUnder(root, Math.max(0, dx) / root.clientWidth, false);
+			track.dx = Math.max(0, dx);
+
+			// Several touchmoves can land in one frame: the screen is written once, on the next one.
+			if (frame === null) {
+				frame = requestAnimationFrame(() => {
+					frame = null;
+
+					if (track?.phase === 'track') {
+						place(track.screen, track.dx, false);
+						placeUnder(root, track.dx / root.clientWidth, false);
+					}
+				});
+			}
 		};
 
 		// A cancelled touch (the system took the gesture) never goes back: the screen springs home.
@@ -153,13 +168,15 @@ export const useSwipeBack = ({ rootRef, isEnabled, onBack, onPeek }: SwipeBackPa
 			const width = root.clientWidth;
 			track = null;
 
+			if (frame !== null) {
+				cancelAnimationFrame(frame);
+				frame = null;
+			}
+
 			if (event.type === 'touchcancel' || decideSwipeEnd({ dx, velocity, width }) === 'cancel') {
 				place(screen, 0, true);
 				placeUnder(root, 0, true);
-				setTimeout(() => {
-					root.classList.remove('swiping');
-					onPeekRef.current(false);
-				}, SETTLE_MS);
+				setTimeout(() => root.classList.remove('swiping'), SETTLE_MS);
 
 				return;
 			}
@@ -169,7 +186,6 @@ export const useSwipeBack = ({ rootRef, isEnabled, onBack, onPeek }: SwipeBackPa
 			setTimeout(() => {
 				const result = onBackRef.current();
 				root.classList.remove('swiping');
-				onPeekRef.current(false);
 				// A back that keeps this screen (⋯ closing) must not leave it off to the side.
 				setTimeout(
 					() => {
@@ -191,7 +207,10 @@ export const useSwipeBack = ({ rootRef, isEnabled, onBack, onPeek }: SwipeBackPa
 			// Torn down mid-swipe (the view changed under the finger): nothing may stay uncovered.
 			if (track?.phase === 'track') {
 				root.classList.remove('swiping');
-				onPeekRef.current(false);
+			}
+
+			if (frame !== null) {
+				cancelAnimationFrame(frame);
 			}
 
 			root.removeEventListener('touchstart', handleStart);
