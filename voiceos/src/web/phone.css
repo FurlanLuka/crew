@@ -78,7 +78,9 @@ html[data-keyboard] .vo.phone {
 	box-shadow: -10px 0 30px rgba(0, 0, 0, 0.6);
 }
 /* What a back swipe uncovers: the screen it returns to, set back a little and dimmed, as iOS does.
-   use-swipe-back.ts starts from these values (UNDER_SHIFT_PERCENT, UNDER_DIM); change both together. */
+   use-swipe-back.ts starts from these values (UNDER_SHIFT_PERCENT: this transform; UNDER_DIM_OPACITY:
+   .ph-under-dim's opacity); change both together. Drawn ahead but out of the layout (display: none)
+   until a swipe shows it, so a streaming session never lays out the Home behind it. */
 .vo.phone .ph-under {
 	/* The screen's own grid cell: the bar below stays on top and in place. */
 	grid-row: 1;
@@ -86,12 +88,29 @@ html[data-keyboard] .vo.phone {
 	position: absolute;
 	inset: 0;
 	z-index: 0;
-	display: flex;
 	flex-direction: column;
 	overflow: hidden;
 	transform: translateX(-24%);
-	filter: brightness(0.6);
 	pointer-events: none;
+	display: none;
+}
+.vo.phone.swiping .ph-under {
+	display: flex;
+}
+/* Dimmed with an opacity layer, not a brightness filter: a filter is redrawn over the whole screen
+   on every frame of the drag, an opacity change is not. */
+.vo.phone .ph-under-dim {
+	position: absolute;
+	inset: 0;
+	/* Above everything in the Home underneath, its top bar (z-index 20) included. */
+	z-index: 21;
+	background: #000;
+	opacity: 0.4;
+}
+/* Promoted to their own layers for the gesture alone. */
+.vo.phone.swiping .ph-screen,
+.vo.phone.swiping .ph-under {
+	will-change: transform;
 }
 .vo.phone .ph-under > .vo-main {
 	flex: 1;

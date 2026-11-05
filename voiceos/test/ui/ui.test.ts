@@ -4818,7 +4818,9 @@ describe('phone', () => {
 		await drag(page, 6, 76, 'touchend', 120);
 		await Bun.sleep(400);
 		expect(store.state.view.kind).toBe('session');
-		await page.locator('.ph-under').waitFor({ state: 'detached', timeout: 2000 });
+		await page.locator('.ph-under').waitFor({ state: 'hidden', timeout: 2000 });
+		// Still drawn, only hidden: ready for the next swipe without a render.
+		expect(await page.locator('.ph-under').count()).toBe(1);
 		expect(await readScreenShift(page)).toBe('');
 
 		await drag(page, 6, 236);
@@ -4838,22 +4840,43 @@ describe('phone', () => {
 		const { context, page } = await openPhone(fromHome);
 		await markInstalled(page, fromHome);
 
+		// Home underneath is drawn before the finger lands, hidden: the drag renders nothing new.
+		await page.locator(`.ph-under .ph-row[data-ref="${REF}"]`).waitFor({ state: 'attached' });
+		expect(await page.locator('.ph-under').isVisible()).toBe(false);
+
 		// Held at 150 px: the finger is still down.
 		await drag(page, 6, 156, 'none', 60);
 		await page.locator(`.ph-under .ph-row[data-ref="${REF}"]`).waitFor({ timeout: 5000 });
-		// Home underneath follows the finger: part-way in, part-way lit.
-		const under = await page.locator('.ph-under').evaluate((node) => ({
-			shift: Number.parseFloat(
-				/translateX\((-?[\d.]+)%\)/.exec((node as HTMLElement).style.transform)?.[1] ?? 'NaN',
-			),
-			light: Number.parseFloat(
-				/brightness\(([\d.]+)\)/.exec((node as HTMLElement).style.filter)?.[1] ?? 'NaN',
-			),
+		// Written once a frame, from where the finger stopped (150 px in), not an earlier move.
+		await page.waitForFunction(
+			() =>
+				(document.querySelector('.ph-screen') as HTMLElement).style.transform ===
+				'translateX(150px)',
+		);
+		// Home underneath follows the finger: part-way in, part-way out from under its dark layer.
+		const under = await page.evaluate(() => {
+			const layer = document.querySelector('.ph-under') as HTMLElement;
+			const dim = document.querySelector('.ph-under-dim') as HTMLElement;
+
+			return {
+				shift: Number.parseFloat(
+					/translateX\((-?[\d.]+)%\)/.exec(layer.style.transform)?.[1] ?? 'NaN',
+				),
+				dim: Number.parseFloat(dim.style.opacity),
+				filter: getComputedStyle(layer).filter,
+			};
+		});
+		const progress = 150 / 390;
+		expect(under.shift).toBeCloseTo(-24 * (1 - progress), 1);
+		expect(under.dim).toBeCloseTo(0.4 * (1 - progress), 2);
+		// No filter on the layer: it would be redrawn on every frame of the drag.
+		expect(under.filter).toBe('none');
+		// The dark layer covers all of Home underneath, its top bar too.
+		const layers = await page.evaluate(() => ({
+			dim: Number(getComputedStyle(document.querySelector('.ph-under-dim') as Element).zIndex),
+			bar: Number(getComputedStyle(document.querySelector('.ph-under .mtop') as Element).zIndex),
 		}));
-		expect(under.shift).toBeGreaterThan(-24);
-		expect(under.shift).toBeLessThan(0);
-		expect(under.light).toBeGreaterThan(0.6);
-		expect(under.light).toBeLessThan(1);
+		expect(layers.dim).toBeGreaterThan(layers.bar);
 		// The bar stays on top of what is uncovered.
 		const isBarOnTop = await page.evaluate(() => {
 			const bar = (document.querySelector('.phone-bar') as HTMLElement).getBoundingClientRect();
@@ -4913,13 +4936,13 @@ describe('phone', () => {
 		await markInstalled(page, fromHome);
 
 		await drag(page, 6, 156, 'none', 60);
-		await page.locator('.ph-under').waitFor({ timeout: 5000 });
+		await page.locator('.ph-under').waitFor({ state: 'visible', timeout: 5000 });
 		store.dispatch({ type: 'switch_view', view: { kind: 'active' } });
 		await page.locator('.ph-list').first().waitFor({ timeout: 5000 });
 		store.dispatch({ type: 'switch_view', view: fromHome });
 		await page.getByRole('button', { name: 'More' }).waitFor({ timeout: 5000 });
 
-		expect(await page.locator('.ph-under').count()).toBe(0);
+		expect(await page.locator('.ph-under').isVisible()).toBe(false);
 		expect(await page.locator('.vo.phone.swiping').count()).toBe(0);
 		expect(await readScreenShift(page)).toBe('');
 		await context.close();
@@ -4933,7 +4956,7 @@ describe('phone', () => {
 		await drag(page, 6, 236, 'touchcancel');
 		await Bun.sleep(500);
 		expect(store.state.view.kind).toBe('session');
-		await page.locator('.ph-under').waitFor({ state: 'detached', timeout: 2000 });
+		await page.locator('.ph-under').waitFor({ state: 'hidden', timeout: 2000 });
 		expect(await readScreenShift(page)).toBe('');
 		await context.close();
 	}, 20_000);
