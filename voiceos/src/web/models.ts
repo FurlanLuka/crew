@@ -1,15 +1,7 @@
 // The composer's model chip, pure: a model id said short ("claude-opus-5-5[1m]" → "Opus 5.5 · 1M"),
-// and the models its menu offers. The ids go to Claude Code as they are (set_model).
-export interface ModelChoice {
-	id: string;
-	hint: string;
-}
-
-export const MODEL_CHOICES: ModelChoice[] = [
-	{ id: 'claude-opus-5-5[1m]', hint: 'The most capable; long context' },
-	{ id: 'claude-sonnet-5-5', hint: 'Faster, for routine work' },
-	{ id: 'claude-haiku-5-5', hint: 'Fastest, for small edits' },
-];
+// and which of the models the session lists it runs on. The ids go to Claude Code as they are
+// (set_model).
+import type { SessionModel } from '../shared/protocol.js';
 
 const FAMILY_ID = /^claude-([a-z]+)-(\d+)-(\d+)(?:-\d{8})?(\[1m\])?$/i;
 
@@ -40,10 +32,24 @@ export const describeSessionModel = (id: string, windowTokens: number | null): s
 		: said;
 };
 
-// The menu's choice the session is on. Claude Code leaves [1m] out of the id it reports, so the window
-// comes from the context reading: Opus at 200k is not the 1M choice, and picking that one switches it.
-export const isCurrentChoice = (
-	choiceId: string,
-	model: string,
-	windowTokens: number | null,
-): boolean => describeModel(choiceId) === describeSessionModel(model, windowTokens);
+// The same model however it was named: no window suffix, no date.
+const toBareId = (id: string): string => id.replace(/\[1m\]$/i, '').replace(/-\d{8}$/, '');
+
+// The row the session is on. A /model pick reports the row's own id ("opus"); a start reports the full
+// id, which a named model's row covers before "default" does.
+export const findCurrentModel = (models: SessionModel[], model: string): SessionModel | null => {
+	const bare = toBareId(model);
+	const covering = models.filter((row) => row.resolved && toBareId(row.resolved) === bare);
+
+	return (
+		models.find((row) => row.id === model) ??
+		covering.find((row) => row.id !== 'default') ??
+		covering[0] ??
+		null
+	);
+};
+
+// The full id behind what the session reports: an alias picked from the menu is said as the model it
+// runs on ("opus" → "Opus 5.5").
+export const readChipModel = (models: SessionModel[], model: string): string =>
+	models.find((row) => row.id === model)?.resolved ?? model;

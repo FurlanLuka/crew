@@ -88,6 +88,11 @@ describe('toMainInput', () => {
 			commands: [{ name: 'review', description: 'Review a change', argumentHint: '<pr>' }],
 		},
 		{
+			type: 'models_listed',
+			ref: 'store/main',
+			models: [{ id: 'opus', name: 'Opus 5.5', description: 'Complex work' }],
+		},
+		{
 			type: 'subagent_started',
 			ref: 'store/main',
 			taskId: 't',

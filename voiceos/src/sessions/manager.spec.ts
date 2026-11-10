@@ -723,6 +723,84 @@ describe('slash commands', () => {
 		harness.manager.stopAll();
 	});
 
+	it("the models its Claude Code offers → on the session for the chip's menu, before any words", async () => {
+		const harness = createCommandHarness({
+			supportedModels: [
+				{
+					value: 'opus',
+					resolvedModel: 'claude-opus-5-5',
+					displayName: 'Opus 5.5',
+					description: 'For complex work',
+				},
+				{ value: 'claude-fable-5-1', displayName: 'Fable 5.1', description: 'Toughest challenges' },
+			],
+		});
+		await waitTick();
+
+		expect(harness.store.state.sessions[REF]?.models).toEqual([
+			{
+				id: 'opus',
+				resolved: 'claude-opus-5-5',
+				name: 'Opus 5.5',
+				description: 'For complex work',
+			},
+			{ id: 'claude-fable-5-1', name: 'Fable 5.1', description: 'Toughest challenges' },
+		]);
+		harness.manager.stopAll();
+	});
+
+	it('a long list or an oversized row → capped to what a remote snapshot accepts', async () => {
+		const long = 'x'.repeat(300);
+		const harness = createCommandHarness({
+			supportedModels: [
+				{ value: long, displayName: 'Too long an id', description: '' },
+				{ value: 'odd', resolvedModel: long, displayName: 'Too long a model', description: '' },
+				...Array.from({ length: 60 }, (_, index) => ({
+					value: `model-${index}`,
+					displayName: long,
+					description: long,
+				})),
+			],
+		});
+		await waitTick();
+
+		const models = harness.store.state.sessions[REF]?.models ?? [];
+
+		expect(models).toHaveLength(50);
+		expect(models[0]?.id).toBe('model-0');
+		expect(models.every((row) => row.name.length <= 200 && row.description.length <= 200)).toBe(
+			true,
+		);
+		harness.manager.stopAll();
+	});
+
+	it('listing the models fails → the session still runs, with no list', async () => {
+		const harness = createCommandHarness({ modelsError: new Error('unsupported') });
+		await waitTick();
+
+		harness.store.dispatch({ type: 'send', ref: REF, text: 'hello' });
+		await waitTick();
+		await waitTick();
+
+		// The turn ran and ended: the context meter read it.
+		expect(harness.store.state.sessions[REF]?.context?.used).toBe(1000);
+		expect(harness.store.state.sessions[REF]?.status).toBe('idle');
+		expect(harness.store.state.sessions[REF]?.models).toBeUndefined();
+		harness.manager.stopAll();
+	});
+
+	it('the "default" row → the SDK\'s own default (no id), said as default', async () => {
+		const harness = createCommandHarness();
+		await waitTick();
+
+		harness.store.dispatch({ type: 'set_model', ref: REF, model: 'default' });
+		await waitTick();
+
+		expect(harness.fake.models).toEqual(['(default)']);
+		expect(harness.store.state.sessions[REF]?.model).toBe('default');
+		harness.manager.stopAll();
+	});
+
 	it('a reload that applies, and a skills reload, refresh the menu', async () => {
 		const harness = createCommandHarness({ reloadedCommands: [REVIEW, SHIP] });
 		await waitTick();

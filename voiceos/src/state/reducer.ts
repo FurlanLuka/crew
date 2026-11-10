@@ -611,6 +611,7 @@ const reduceInput = (state: State, stamped: Stamped): ReducerResult => {
 			return reduceAttachment(state, input);
 
 		case 'commands_listed':
+		case 'models_listed':
 		case 'reload_session':
 		case 'set_model':
 			return reduceSessionCommand(state, input, stamped);

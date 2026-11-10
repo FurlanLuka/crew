@@ -24,6 +24,25 @@ describe('session commands', () => {
 		).toBeUndefined();
 	});
 
+	it('a listed set of models replaces the last; a session nobody knows takes none', () => {
+		const OPUS = { id: 'opus', resolved: 'claude-opus-5-5', name: 'Opus 5.5', description: '' };
+		const FABLE = { id: 'claude-fable-5-1', name: 'Fable 5.1', description: '' };
+		const listed = run([{ type: 'models_listed', ref: REF, models: [OPUS] }], {
+			start: idleSession(),
+		}).state;
+
+		expect(listed.sessions[REF]?.models).toEqual([OPUS]);
+		expect(
+			run([{ type: 'models_listed', ref: REF, models: [OPUS, FABLE] }], { start: listed }).state
+				.sessions[REF]?.models,
+		).toEqual([OPUS, FABLE]);
+		expect(
+			run([{ type: 'models_listed', ref: 'nowhere/main', models: [OPUS] }], {
+				start: idleSession(),
+			}).state.sessions['nowhere/main'],
+		).toBeUndefined();
+	});
+
 	it('a reload or a model for a running session → the worker does it', () => {
 		const start = idleSession();
 

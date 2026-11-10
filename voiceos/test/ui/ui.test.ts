@@ -4312,18 +4312,60 @@ describe('slash commands', () => {
 		await context.close();
 	}, 20_000);
 
-	it('the model chip: shown once the session reports its model; a pick sends that model and the chip follows the report', async () => {
+	it("the model chip: shown once the session reports its model; its menu is the session's own list, a pick sends that row's id and the chip follows the report", async () => {
 		const { context, page } = await openWithCommands();
 		const before = received.length;
-		const chip = page.getByRole('button', { name: /^Model:/ });
+		const chip = page.locator('.model-chip');
 
+		// No list yet (an older remote, or before it arrives): the model is said, nothing to open.
+		store.dispatch({ type: 'models_listed', ref: REF, models: [] });
 		store.dispatch({ type: 'session_model', ref: REF, model: 'claude-opus-5-5[1m]' });
 		await chip.waitFor({ timeout: 5000 });
 		expect(await chip.textContent()).toBe('Opus 5.5 · 1M');
+		expect(await page.getByRole('button', { name: /^Model:/ }).count()).toBe(0);
+
+		store.dispatch({
+			type: 'models_listed',
+			ref: REF,
+			models: [
+				{
+					id: 'default',
+					resolved: 'claude-opus-5-5',
+					name: 'Default (recommended)',
+					description: 'Opus 5.5',
+				},
+				{
+					id: 'opus',
+					resolved: 'claude-opus-5-5',
+					name: 'Opus 5.5',
+					description: 'For complex work',
+				},
+				{
+					id: 'claude-fable-5-1',
+					resolved: 'claude-fable-5-1',
+					name: 'Fable 5.1',
+					description: 'For your toughest challenges',
+				},
+				{
+					id: 'sonnet',
+					resolved: 'claude-sonnet-5-5',
+					name: 'Sonnet 5.5',
+					description: 'Most efficient',
+				},
+			],
+		});
+		const button = page.getByRole('button', { name: /^Model:/ });
+
+		await button.waitFor({ timeout: 5000 });
+		await button.click();
+		expect(await page.getByRole('menuitemradio').count()).toBe(4);
+		await page.getByRole('menuitemradio', { name: /Fable 5\.1/ }).waitFor({ timeout: 5000 });
+		expect(
+			await page.getByRole('menuitemradio', { name: /^Opus 5\.5/ }).getAttribute('aria-checked'),
+		).toBe('true');
 
 		// The model it already runs on: the menu closes, nothing is sent.
-		await chip.click();
-		await page.getByRole('menuitemradio', { name: /Opus 5\.5/ }).click();
+		await page.getByRole('menuitemradio', { name: /^Opus 5\.5/ }).click();
 		await page.getByRole('menu').waitFor({ state: 'detached', timeout: 5000 });
 		await Bun.sleep(150);
 		expect(
@@ -4334,7 +4376,7 @@ describe('slash commands', () => {
 				),
 		).toBe(false);
 
-		await chip.click();
+		await button.click();
 		await page.getByRole('menuitemradio', { name: /Sonnet 5\.5/ }).click();
 		await waitUntil(() =>
 			received
@@ -4343,17 +4385,19 @@ describe('slash commands', () => {
 					(entry) =>
 						entry.message.type === 'action' &&
 						entry.message.action.type === 'set_model' &&
-						entry.message.action.model === 'claude-sonnet-5-5',
+						entry.message.action.model === 'sonnet',
 				),
 		);
-		// Not before the session says it switched.
+		// Not before the session says it switched; then the alias is said as the model it runs on.
 		expect(await chip.textContent()).toBe('Opus 5.5 · 1M');
-		store.dispatch({ type: 'session_model', ref: REF, model: 'claude-sonnet-5-5' });
+		store.dispatch({ type: 'context_usage', ref: REF, used: 1000, max: 200_000 });
+		store.dispatch({ type: 'session_model', ref: REF, model: 'sonnet' });
 		await page.waitForFunction(
 			() => document.querySelector('.model-chip')?.textContent === 'Sonnet 5.5',
 			undefined,
 			{ timeout: 5000 },
 		);
+		store.dispatch({ type: 'conversation_reset', ref: REF });
 		await context.close();
 	}, 20_000);
 

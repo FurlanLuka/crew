@@ -12,6 +12,15 @@ export interface FakeQueryParams {
 	askOn?: string;
 	// The session's slash commands, as Claude Code lists them.
 	commands?: { name: string; description: string; argumentHint: string }[];
+	// The models it offers, as Claude Code's supportedModels() lists them.
+	supportedModels?: {
+		value: string;
+		resolvedModel?: string;
+		displayName: string;
+		description: string;
+	}[];
+	// Listing the models fails with this (an older CLI, a control error).
+	modelsError?: Error;
 	// A plugin reload asked to hold on cache impact is held.
 	holdReload?: boolean;
 	// What the session lists after a reload (else the same commands).
@@ -46,6 +55,8 @@ export const createFakeQuery = ({
 	sideReply = [],
 	askOn,
 	commands = [],
+	supportedModels = [],
+	modelsError,
 	holdReload = false,
 	reloadedCommands,
 	controlError,
@@ -170,6 +181,13 @@ export const createFakeQuery = ({
 			// As full as the turns so far: 1000 tokens each, against a 200k window.
 			getContextUsage: async () => ({ totalTokens: 1000 * sent.length, rawMaxTokens: 200_000 }),
 			supportedCommands: async () => listed,
+			supportedModels: async () => {
+				if (modelsError) {
+					throw modelsError;
+				}
+
+				return supportedModels;
+			},
 			reloadSkills: async () => {
 				reloads.push('skills');
 
@@ -202,7 +220,7 @@ export const createFakeQuery = ({
 				};
 			},
 			setModel: async (model?: string) => {
-				models.push(model ?? '');
+				models.push(model ?? '(default)');
 
 				if (controlError) {
 					throw controlError;

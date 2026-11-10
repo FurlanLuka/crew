@@ -354,12 +354,24 @@ export interface Session {
 	// Its slash commands as Claude Code lists them (built-ins usable here, skills, plugin and project
 	// commands), for the box's "/" menu; absent until it has started once. Not persisted.
 	commands?: SessionCommand[];
+	// The models its Claude Code offers, as /model lists them, for the model chip's menu; absent until
+	// it has started once. Not persisted.
+	models?: SessionModel[];
 }
 
 export interface SessionCommand {
 	name: string;
 	description: string;
 	argumentHint: string;
+}
+
+export interface SessionModel {
+	// What set_model sends: an alias ("opus", "default") or a full id.
+	id: string;
+	// The full id an alias runs on ("claude-opus-5-5"), to match what the session reports.
+	resolved?: string;
+	name: string;
+	description: string;
 }
 
 export interface VoiceEntry {
@@ -824,6 +836,7 @@ export type Observation =
 	| { type: 'attachment_added'; ref: string; attachment: Attachment }
 	// A session's slash commands, at its start and whenever Claude Code's list changes.
 	| { type: 'commands_listed'; ref: string; commands: SessionCommand[] }
+	| { type: 'models_listed'; ref: string; models: SessionModel[] }
 	// The developer's notes of a workspace as they now stand (its newest lines), for the page.
 	| { type: 'notes'; workspace: string; lines: string[] }
 	// What a session is working on, named after a turn it spoke for itself.

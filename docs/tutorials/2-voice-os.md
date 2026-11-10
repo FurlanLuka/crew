@@ -160,8 +160,9 @@ permissions for store main") Voice OS asks first. Pick one from the chip, type `
 "switch to plan mode". The mode sticks per session, across restarts. Questions and plans come to
 you in every mode.
 
-The second chip is the model ("Opus 5.5 · 1M"). Tap it to pick Opus, Sonnet or Haiku for the next
-turn, the same as `/model`.
+The second chip is the model ("Opus 5.5 · 1M"). Tap it to pick the model for the next turn, the
+same as `/model`. The list is the one the session's Claude Code offers your account, so a new model
+shows up there without a Voice OS update.
 
 The meter says how full the context is ("42k / 200k"). It turns amber as Claude Code nears
 compacting on its own and red just before it does. Tap it for **Compact** or **Clear**; both ask you

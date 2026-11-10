@@ -9,6 +9,7 @@ import type {
 	Observation,
 	PendingAsk,
 	SessionCommand,
+	SessionModel,
 	WorktreeInfo,
 } from '../shared/protocol.js';
 import type { HandsEffect } from './mapping.js';
@@ -38,6 +39,8 @@ export interface SessionSnapshot {
 	context?: ContextUsage;
 	// The model it runs on, for the composer's chip after a reconnect. Absent from an older remote.
 	model?: string;
+	// The models its chip offers, listed once at its start. Absent from an older remote.
+	models?: SessionModel[];
 }
 
 export interface AsideInFlight {
@@ -141,6 +144,7 @@ export const REMOTE_OBSERVATIONS = new Set<Observation['type']>([
 	'worker_exited',
 	'history_restored',
 	'commands_listed',
+	'models_listed',
 	'subagent_started',
 	'subagent_step',
 	'subagent_backgrounded',
@@ -195,6 +199,18 @@ const snapshotSchema = z.object({
 					.optional(),
 				context: z
 					.object({ used: z.number(), max: z.number(), compactAt: z.number().optional() })
+					.optional(),
+				model: z.string().max(200).optional(),
+				models: z
+					.array(
+						z.object({
+							id: z.string().max(200),
+							resolved: z.string().max(200).optional(),
+							name: z.string().max(200),
+							description: z.string().max(1000),
+						}),
+					)
+					.max(50)
 					.optional(),
 			}),
 		)
