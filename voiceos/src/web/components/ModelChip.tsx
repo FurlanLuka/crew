@@ -1,9 +1,10 @@
 // The session's model, beside its permission mode: tap it, pick another, the same switch /model
 // makes. The state says the model Claude Code reported; the chip follows it, so a pick shows once
-// the session has taken it.
+// the session has taken it. The menu is the list the session's Claude Code gave; before it has one
+// (or from an older remote) the chip only says the model.
 import { useCallback, useRef, useState } from 'react';
 import type { ClientMessage, State } from '../../shared/protocol.js';
-import { MODEL_CHOICES, describeModel, describeSessionModel, isCurrentChoice } from '../models.js';
+import { describeSessionModel, findCurrentModel, readChipModel } from '../models.js';
 import { useDismiss } from '../use-dismiss.js';
 
 interface ModelChipProps {
@@ -18,6 +19,7 @@ export const ModelChip = ({ state, sessionRef, send }: ModelChipProps) => {
 	const closeMenu = useCallback(() => setIsOpen(false), []);
 	const session = state.sessions[sessionRef];
 	const model = session?.model ?? null;
+	const models = session?.models ?? [];
 
 	useDismiss(isOpen, wrapRef, closeMenu);
 
@@ -26,12 +28,23 @@ export const ModelChip = ({ state, sessionRef, send }: ModelChipProps) => {
 	}
 
 	const windowTokens = session?.context?.max ?? null;
-	const said = describeSessionModel(model, windowTokens);
+	const said = describeSessionModel(readChipModel(models, model), windowTokens);
+	const current = findCurrentModel(models, model);
+
+	if (models.length === 0) {
+		return (
+			<div className="perm-wrap model-wrap">
+				<span className="perm-chip model-chip" title={`Model: ${model}`}>
+					{said}
+				</span>
+			</div>
+		);
+	}
 
 	const pick = (next: string) => {
 		setIsOpen(false);
 
-		if (!isCurrentChoice(next, model, windowTokens)) {
+		if (next !== current?.id) {
 			send({ type: 'action', action: { type: 'set_model', ref: sessionRef, model: next } });
 		}
 	};
@@ -51,8 +64,8 @@ export const ModelChip = ({ state, sessionRef, send }: ModelChipProps) => {
 			</button>
 			{isOpen ? (
 				<div className="perm-menu" role="menu">
-					{MODEL_CHOICES.map((choice) => {
-						const isOn = isCurrentChoice(choice.id, model, windowTokens);
+					{models.map((choice) => {
+						const isOn = choice.id === current?.id;
 
 						return (
 							<button
@@ -63,8 +76,8 @@ export const ModelChip = ({ state, sessionRef, send }: ModelChipProps) => {
 								className={`perm-option ${isOn ? 'on' : ''}`}
 								onClick={() => pick(choice.id)}
 							>
-								<span className="name">{describeModel(choice.id)}</span>
-								<span className="hint">{choice.hint}</span>
+								<span className="name">{choice.name}</span>
+								<span className="hint">{choice.description}</span>
 							</button>
 						);
 					})}

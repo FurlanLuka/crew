@@ -87,6 +87,20 @@ describe('planResync', () => {
 		]);
 	});
 
+	it("a fresh main → the session's models come back with it", () => {
+		const models = [{ id: 'opus', resolved: 'claude-opus-5-5', name: 'Opus 5.5', description: '' }];
+		const { inputs } = planResync(
+			mainWith(),
+			'vm1',
+			snapshot({ sessions: [{ ref: 'store/main', status: 'idle', lastTurn: null, models }] }),
+		);
+
+		expect(inputs).toEqual([
+			{ type: 'session_started', ref: REMOTE },
+			{ type: 'models_listed', ref: REMOTE, models },
+		]);
+	});
+
 	it('a fresh main, an old turn there → no news: not reported', () => {
 		const { inputs } = planResync(
 			mainWith(),

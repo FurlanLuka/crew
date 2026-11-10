@@ -1,13 +1,14 @@
 // The box's slash commands that act on a session instead of going to its Claude: the commands it
-// lists for the "/" menu, a reload of its plugins or skills, and its model. Each reaches the worker
-// as an effect (a remote session's through the link) and comes back as a line in the stream.
+// lists for the "/" menu, the models it lists for the model chip, a reload of its plugins or
+// skills, and its model. Each reaches the worker as an effect (a remote session's through the link)
+// and comes back as a line in the stream.
 import type { Input, Stamped, State } from '../shared/protocol.js';
 import { isWorkerUp, pushNotice, updateSession, withoutEffects } from './helpers.js';
 import type { ReducerResult } from './reducer.js';
 
 type SessionCommandInput = Extract<
 	Input,
-	{ type: 'commands_listed' | 'reload_session' | 'set_model' }
+	{ type: 'commands_listed' | 'models_listed' | 'reload_session' | 'set_model' }
 >;
 
 const hasWorker = (state: State, ref: string): boolean => isWorkerUp(state.sessions[ref]?.status);
@@ -25,6 +26,10 @@ export const reduceSessionCommand = (
 		case 'commands_listed':
 			return withoutEffects(
 				updateSession(state, input.ref, (session) => ({ ...session, commands: input.commands })),
+			);
+		case 'models_listed':
+			return withoutEffects(
+				updateSession(state, input.ref, (session) => ({ ...session, models: input.models })),
 			);
 		case 'reload_session':
 		case 'set_model': {

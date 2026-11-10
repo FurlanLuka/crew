@@ -138,6 +138,19 @@ describe("a session's model on the remote", () => {
 	});
 });
 
+describe("a session's models on the remote", () => {
+	it('kept and given in the snapshot', () => {
+		const OPUS = { id: 'opus', resolved: 'claude-opus-5-5', name: 'Opus 5.5', description: '' };
+		const read: Observation[] = [
+			{ type: 'session_started', ref: 'store/main' },
+			{ type: 'models_listed', ref: 'store/main', models: [OPUS] },
+		];
+		const state = read.reduce(trackObservation, createHostState());
+
+		expect(buildSnapshot(state, []).sessions[0]).toMatchObject({ models: [OPUS] });
+	});
+});
+
 describe("a session's context reading on the remote", () => {
 	it('kept beside its commands and given in the snapshot; a clear drops it', () => {
 		const REVIEW = { name: 'review', description: 'Review a change', argumentHint: '<pr>' };

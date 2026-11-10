@@ -10,7 +10,12 @@ import type {
 	Snapshot,
 	SessionSnapshot,
 } from './protocol.js';
-import type { ContextUsage, SessionCommand, WorktreeInfo } from '../shared/protocol.js';
+import type {
+	ContextUsage,
+	SessionCommand,
+	SessionModel,
+	WorktreeInfo,
+} from '../shared/protocol.js';
 
 export type HostSessionStatus = 'stopped' | 'starting' | 'idle' | 'running';
 
@@ -20,6 +25,7 @@ export interface HostSession {
 	commands?: SessionCommand[];
 	context?: ContextUsage;
 	model?: string;
+	models?: SessionModel[];
 }
 
 export interface HostState {
@@ -105,6 +111,19 @@ export const trackObservation = (state: HostState, observation: Observation): Ho
 					},
 				},
 			};
+		case 'models_listed':
+			return {
+				...state,
+				sessions: {
+					...state.sessions,
+					[observation.ref]: {
+						...state.sessions[observation.ref],
+						status: state.sessions[observation.ref]?.status ?? 'idle',
+						lastTurn: state.sessions[observation.ref]?.lastTurn ?? null,
+						models: observation.models,
+					},
+				},
+			};
 		// A cleared conversation's old reading no longer holds.
 		case 'conversation_reset': {
 			const { context: _cleared, ...session } = state.sessions[observation.ref] ?? {
@@ -182,6 +201,7 @@ export const buildSnapshot = (state: HostState, worktrees: WorktreeInfo[]): Snap
 				...(session.commands ? { commands: session.commands } : {}),
 				...(session.context ? { context: session.context } : {}),
 				...(session.model ? { model: session.model } : {}),
+				...(session.models ? { models: session.models } : {}),
 			}),
 		),
 	asks: state.asks,

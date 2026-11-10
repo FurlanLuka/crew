@@ -2,11 +2,12 @@ import type { McpSdkServerConfigWithInstance } from '@anthropic-ai/claude-agent-
 import { isChatRef } from '../shared/machine-ref.js';
 import {
 	query as sdkQuery,
+	type ModelInfo,
 	type Query,
 	type SDKUserMessage,
 	type SlashCommand,
 } from '@anthropic-ai/claude-agent-sdk';
-import type { Observation, SdkMode, SessionCommand } from '../shared/protocol.js';
+import type { Observation, SdkMode, SessionCommand, SessionModel } from '../shared/protocol.js';
 import { createLogger } from '../log.js';
 import { readGuardedCommand } from '../state/commands.js';
 import { createMapContext, mapMessage, readDenial, type RawMessage } from './events.js';
@@ -214,6 +215,23 @@ const toSessionCommand = ({ name, description, argumentHint }: SlashCommand): Se
 	argumentHint: argumentHint.slice(0, 80),
 });
 
+// Claude Code lists a few dozen at most; the caps keep a strange answer out of the state and inside
+// what a remote's snapshot accepts (remote/protocol.ts).
+const MAX_MODELS = 50;
+const MAX_MODEL_ID = 200;
+
+const toSessionModel = ({
+	value,
+	resolvedModel,
+	displayName,
+	description,
+}: ModelInfo): SessionModel => ({
+	id: value,
+	...(resolvedModel ? { resolved: resolvedModel } : {}),
+	name: displayName.slice(0, 200),
+	description: description.slice(0, 200),
+});
+
 const countOf = (count: number, singular: string): string =>
 	`${count} ${count === 1 ? singular : `${singular}s`}`;
 
@@ -394,7 +412,8 @@ export class Worker {
 		}
 
 		try {
-			await query.setModel(model);
+			// The list's "default" row is Claude Code's own default, which the SDK names undefined.
+			await query.setModel(model === 'default' ? undefined : model);
 			emit({ type: 'session_notice', ref, text: `Model: ${model}.` });
 			emit({ type: 'session_model', ref, model });
 		} catch (error) {
@@ -449,6 +468,30 @@ export class Worker {
 			this.emitCommands((await this.activeQuery?.supportedCommands()) ?? []);
 		} catch (error) {
 			log.warn('commands not listed', { ref: this.options.ref, error: String(error) });
+		}
+	}
+
+	// The model chip's menu: what Claude Code's /model offers this account and folder.
+	private async listModels(): Promise<void> {
+		const { ref, emit } = this.options;
+
+		try {
+			const models = (await this.activeQuery?.supportedModels()) ?? [];
+
+			log.debug('models', { ref, count: models.length });
+			emit({
+				type: 'models_listed',
+				ref,
+				models: models
+					.filter(
+						(row) =>
+							row.value.length <= MAX_MODEL_ID && (row.resolvedModel ?? '').length <= MAX_MODEL_ID,
+					)
+					.slice(0, MAX_MODELS)
+					.map(toSessionModel),
+			});
+		} catch (error) {
+			log.warn('models not listed', { ref, error: String(error) });
 		}
 	}
 
@@ -535,6 +578,7 @@ export class Worker {
 			// Asked of the CLI at once: its init message comes only with the first words, and the menu
 			// is wanted before them.
 			void this.listCommands();
+			void this.listModels();
 
 			for await (const message of this.activeQuery) {
 				const raw = message as unknown as InitMessage;

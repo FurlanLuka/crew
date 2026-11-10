@@ -115,6 +115,27 @@ describe('parseRemoteLine', () => {
 
 		expect(parseRemoteLine(encodeLine(hello).trim())).toEqual({ ok: true, message: hello });
 	});
+
+	it("a session's model and its listed models survive the snapshot: the chip and its menu after a reconnect", () => {
+		const session = {
+			ref: 'store/main',
+			status: 'idle' as const,
+			lastTurn: null,
+			model: 'claude-opus-5-5',
+			models: [
+				{ id: 'opus', resolved: 'claude-opus-5-5', name: 'Opus 5.5', description: 'Complex work' },
+				{ id: 'claude-fable-5-1', name: 'Fable 5.1', description: 'Toughest challenges' },
+			],
+		};
+		const hello = {
+			type: 'hello' as const,
+			version: '1.0.0',
+			host: 'vm1',
+			snapshot: { worktrees: [], sessions: [session], asks: [], asides: [] },
+		};
+
+		expect(parseRemoteLine(encodeLine(hello).trim())).toEqual({ ok: true, message: hello });
+	});
 });
 
 describe('parseMainLine', () => {
